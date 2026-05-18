@@ -27,6 +27,7 @@ export interface Message {
   chatId:       string;
   role:         "user" | "assistant";
   content:      string;
+  reasoning?:   string;        // chain-of-thought from reasoning models
   modelId?:     string;
   costUsd?:     number;        // actual API cost — stored post-send
   inputTokens?: number;

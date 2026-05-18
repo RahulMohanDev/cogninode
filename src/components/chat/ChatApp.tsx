@@ -47,7 +47,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
       .filter((n): n is DbNode => !!n);
   }, [nodes, currentNodeId]);
 
-  const { state, streamingText, error: streamError, send, cancel } = useStream(chatId, currentNodeId);
+  const { state, streamingText, streamingReasoning, error: streamError, send, cancel } = useStream(chatId, currentNodeId);
 
   // Branch quote — passed to Composer as a chip when branching from selection
   // or from a message's "Branch from this" action.
@@ -354,6 +354,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           currentNodeId={currentNodeId}
           streamState={state}
           streamingText={streamingText}
+          streamingReasoning={streamingReasoning}
           {...(streamError !== null ? { streamError } : {})}
           onBranchFromMessage={(msg, q) => void handleBranchFromMessage(msg, q)}
           reflectionsMode={reflectionsMode}

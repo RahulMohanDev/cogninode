@@ -18,6 +18,10 @@ interface StreamParams {
   openRouterId: string;        // e.g. "anthropic/claude-sonnet-4.5"
   messages:     Array<{ role: string; content: unknown }>;
   onChunk:      (text: string) => void;
+  /** Reasoning chunks from reasoning models (DeepSeek R1, Tencent HY3,
+   *  OpenAI o1-style, etc). Separate from onChunk so the UI can render
+   *  them in a distinct collapsible "Thinking" panel. */
+  onReasoning?: (text: string) => void;
   onDone:       (usage: Extract<StreamEvent, { type: "done" }>["usage"]) => void;
   onError:      (msg: string, status?: number) => void;
   signal?:      AbortSignal;
@@ -94,28 +98,6 @@ export async function streamMessage(params: StreamParams): Promise<void> {
   let inputTokens  = 0;
   let outputTokens = 0;
   let finishReason: string | null = null;
-  // Track whether the current run of chunks is "reasoning" vs "content" so
-  // we can wrap the reasoning portion in a markdown blockquote on the way
-  // through. Once content begins, we drop out of the blockquote.
-  let inReasoning = false;
-
-  const emitReasoning = (text: string): void => {
-    if (!inReasoning) {
-      params.onChunk("> _Thinking…_\n> ");
-      inReasoning = true;
-    }
-    // Keep the blockquote contiguous: every newline becomes "\n> ".
-    params.onChunk(text.replace(/\n/g, "\n> "));
-  };
-
-  const emitContent = (text: string): void => {
-    if (inReasoning) {
-      // Close the blockquote with a blank line so the answer starts fresh.
-      params.onChunk("\n\n");
-      inReasoning = false;
-    }
-    params.onChunk(text);
-  };
 
   const parser = createParser({
     onEvent: (event: EventSourceMessage) => {
@@ -139,11 +121,11 @@ export async function streamMessage(params: StreamParams): Promise<void> {
           // OpenRouter normalizes reasoning to `reasoning`; some upstream
           // providers leak the original `reasoning_content`. Handle both.
           const reasoning = delta.reasoning ?? delta.reasoning_content;
-          if (typeof reasoning === "string" && reasoning) {
-            emitReasoning(reasoning);
+          if (typeof reasoning === "string" && reasoning && params.onReasoning) {
+            params.onReasoning(reasoning);
           }
           if (typeof delta.content === "string" && delta.content) {
-            emitContent(delta.content);
+            params.onChunk(delta.content);
           }
         }
         if (choice?.finish_reason) finishReason = choice.finish_reason;

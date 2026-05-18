@@ -12,12 +12,14 @@ import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { Message }           from "./Message";
 import { MarkdownBody }      from "./MarkdownBody";
+import { Reasoning }         from "./Reasoning";
 
 export interface StreamProps {
   chatId:               string;
   currentNodeId:        string;
   streamState:          "idle" | "streaming" | "error";
   streamingText:        string;
+  streamingReasoning?:  string;
   streamError?:         string;
   onBranchFromMessage?: (msg: DbMessage, quote?: string) => void;
   reflectionsMode?:     boolean;
@@ -34,6 +36,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     currentNodeId,
     streamState,
     streamingText,
+    streamingReasoning,
     streamError,
     onBranchFromMessage,
     reflectionsMode = false,
@@ -119,12 +122,17 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
               <span>assistant</span>
             </div>
             <div className="m-body streaming-body">
+              {streamingReasoning ? (
+                <Reasoning text={streamingReasoning} streaming />
+              ) : null}
               {streamingText
                 ? <>
                     <MarkdownBody text={streamingText} />
                     <span className="thinking" aria-hidden="true"><i /></span>
                   </>
-                : <div className="thinking"><i /><i /><i /></div>}
+                : !streamingReasoning
+                  ? <div className="thinking"><i /><i /><i /></div>
+                  : null}
             </div>
           </div>
         )}

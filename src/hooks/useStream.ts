@@ -17,9 +17,10 @@ function deriveTitle(text: string): string {
 }
 
 export function useStream(chatId: string, nodeId: string) {
-  const [state,         setState]         = useState<StreamState>("idle");
-  const [streamingText, setStreamingText] = useState("");
-  const [error,         setError]         = useState<string | null>(null);
+  const [state,              setState]              = useState<StreamState>("idle");
+  const [streamingText,      setStreamingText]      = useState("");
+  const [streamingReasoning, setStreamingReasoning] = useState("");
+  const [error,              setError]              = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { apiKey, prefs } = useSettings();
 
@@ -40,6 +41,7 @@ export function useStream(chatId: string, nodeId: string) {
 
     setState("streaming");
     setStreamingText("");
+    setStreamingReasoning("");
     setError(null);
     abortRef.current = new AbortController();
 
@@ -76,7 +78,8 @@ export function useStream(chatId: string, nodeId: string) {
     // "State your need clearly" replies for first-turn messages.
     const pathMessages = await buildPathMessages(chatId, nodeId);
 
-    let fullContent = "";
+    let fullContent   = "";
+    let fullReasoning = "";
 
     await streamMessage({
       apiKey,
@@ -90,14 +93,21 @@ export function useStream(chatId: string, nodeId: string) {
         setStreamingText(prev => prev + text);
       },
 
+      onReasoning: (text) => {
+        fullReasoning += text;
+        setStreamingReasoning(prev => prev + text);
+      },
+
       onDone: async ({ inputTokens, outputTokens, costUsd }) => {
-        // Persist assistant message
+        // Persist assistant message — reasoning is an optional separate field
+        // so the UI can render it in a collapsible "Thinking" section.
         await db.messages.add({
           _id:          crypto.randomUUID(),
           nodeId,
           chatId,
           role:         "assistant",
           content:      fullContent,
+          ...(fullReasoning ? { reasoning: fullReasoning } : {}),
           modelId:      params.modelId,
           costUsd,
           inputTokens,
@@ -111,6 +121,7 @@ export function useStream(chatId: string, nodeId: string) {
 
         setState("idle");
         setStreamingText("");
+        setStreamingReasoning("");
       },
 
       onError: async (msg, status) => {
@@ -118,6 +129,7 @@ export function useStream(chatId: string, nodeId: string) {
         await db.messages.delete(userMsgId);
         setState("error");
         setStreamingText("");
+        setStreamingReasoning("");
         setError(status ? `${msg} (HTTP ${status})` : msg);
         console.error("Stream error:", msg, status);
       },
@@ -128,7 +140,8 @@ export function useStream(chatId: string, nodeId: string) {
     abortRef.current?.abort();
     setState("idle");
     setStreamingText("");
+    setStreamingReasoning("");
   }, []);
 
-  return { state, streamingText, error, send, cancel };
+  return { state, streamingText, streamingReasoning, error, send, cancel };
 }

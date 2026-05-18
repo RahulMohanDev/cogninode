@@ -19,6 +19,7 @@ import { db, type Message as DbMessage } from "../../lib/db";
 import { formatCost, getModel } from "../../lib/cost";
 import { useSettings }      from "../../hooks/useSettings";
 import { MarkdownBody }     from "./MarkdownBody";
+import { Reasoning }        from "./Reasoning";
 
 // Tiptap + tiptap-markdown + prosemirror together are ~600KB unminified.
 // Lazy-load the editor so it only ships to the user the first time they
@@ -288,6 +289,10 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
             <span className="quote-from">↳ branched from</span>
             <span className="quote-text">"{message.quote}"</span>
           </div>
+        )}
+
+        {isAssistant && message.reasoning && (
+          <Reasoning text={message.reasoning} />
         )}
 
         {editing ? (

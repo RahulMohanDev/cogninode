@@ -3294,3 +3294,89 @@ a { color: inherit; text-decoration: none; }
   background: color-mix(in oklab, var(--lilac) 86%, var(--ink));
   border-color: color-mix(in oklab, var(--lilac) 86%, var(--ink));
 }
+
+/* ── reasoning / "thinking" panel ─────────────── */
+/* Collapsible chain-of-thought display for reasoning models. Auto-opens
+   while streaming, collapses by default when complete. Header has a tiny
+   four-pointed star that spins while the model is actively thinking. */
+
+.reasoning {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--bg-2) 60%, transparent);
+  overflow: hidden;
+}
+
+.rs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.12s, color 0.12s;
+}
+.rs-head:hover { color: var(--ink-2); background: color-mix(in oklab, var(--lilac) 6%, transparent); }
+
+.rs-label { flex: 1; min-width: 0; }
+
+.rs-caret {
+  color: var(--ink-3);
+  transition: transform 0.18s ease;
+  flex: 0 0 auto;
+}
+.reasoning.open .rs-caret { transform: rotate(180deg); }
+
+.rs-body {
+  padding: 4px 14px 12px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  border-top: 1px solid color-mix(in oklab, var(--line) 60%, transparent);
+  background: color-mix(in oklab, var(--bg-2) 80%, transparent);
+}
+.rs-body .md > :first-child { margin-top: 8px; }
+.rs-body .md > :last-child  { margin-bottom: 0; }
+.rs-empty { color: var(--ink-3); font-style: italic; font-size: 12px; }
+
+/* Active-streaming visual: lilac border accent + brighter header. */
+.reasoning.streaming { border-color: color-mix(in oklab, var(--lilac) 50%, var(--line)); }
+.reasoning.streaming .rs-head { color: var(--ink); }
+.reasoning.streaming .rs-label::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  margin-left: 2px;
+}
+
+/* The star itself — a small currentColor sparkle. Spins when .spin is set. */
+.rs-star {
+  flex: 0 0 auto;
+  color: var(--lilac);
+  filter: drop-shadow(0 0 4px color-mix(in oklab, var(--lilac) 50%, transparent));
+}
+.rs-star.spin { animation: rs-spin 1.4s linear infinite; }
+
+@keyframes rs-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .rs-star.spin { animation: rs-pulse 1.8s ease-in-out infinite; }
+}
+@keyframes rs-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
