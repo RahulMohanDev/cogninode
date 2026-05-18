@@ -7,10 +7,9 @@
 // the stream and each message receives the visible edit/delete/merge
 // affordances via its own props.
 
-import { forwardRef, useEffect, useMemo, useRef } from "react";
+import { forwardRef, useEffect, useRef } from "react";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
-import { findPath }          from "../../lib/path";
 import { Message }           from "./Message";
 
 export interface StreamProps {
@@ -27,7 +26,6 @@ export interface StreamProps {
 
 export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   {
-    chatId,
     currentNodeId,
     streamState,
     streamingText,
@@ -39,32 +37,15 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   },
   ref,
 ) {
-  // Live: all nodes for breadcrumb labels.
-  const nodes = useLiveQuery(
-    () => db.nodes.where("chatId").equals(chatId).toArray(),
-    [chatId],
-  ) ?? [];
-
-  // Breadcrumb shows ancestor lineage; the conversation itself only renders
-  // messages on the current node. Parent-node messages are still sent to the
-  // model via buildPathMessages — we just don't clutter the UI with them.
-  const pathNodeIds = useMemo(
-    () => findPath(nodes, currentNodeId),
-    [nodes, currentNodeId],
-  );
-
+  // Messages for the current node only — parent-node messages are sent to the
+  // model via buildPathMessages but we don't clutter the UI with them. The
+  // breadcrumb that used to live here has moved to the TopBar in ChatApp.
   const pathMessages = useLiveQuery(
     () => db.messages
       .where("nodeId").equals(currentNodeId)
       .sortBy("createdAt"),
     [currentNodeId],
   ) ?? [];
-
-  // Breadcrumb labels — root first, then each child node label truncated.
-  const breadcrumb = useMemo(() => {
-    const map = new Map(nodes.map(n => [n._id, n]));
-    return pathNodeIds.map(id => map.get(id)).filter((n): n is NonNullable<typeof n> => !!n);
-  }, [nodes, pathNodeIds]);
 
   // Auto-scroll bottom on new content.
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -102,24 +83,6 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
       )}
 
       <div className="stream-inner">
-        {breadcrumb.length > 1 && (
-          <div className="crumb" style={{ paddingBottom: 0, marginBottom: 4 }}>
-            <span className="c-title">root</span>
-            {breadcrumb.slice(1).map((n, i) => {
-              const label = n.label.length > 24 ? n.label.slice(0, 24) + "…" : n.label;
-              return (
-                <span key={n._id} style={{ display: "inline-flex", alignItems: "center" }}>
-                  <span className="c-sep">›</span>
-                  <span className={`c-node d${Math.min(3, i + 1)}`}>
-                    <span className="c-dot" />
-                    {label}
-                  </span>
-                </span>
-              );
-            })}
-          </div>
-        )}
-
         {isEmpty && (
           <div className="empty" style={{ minHeight: 240 }}>
             <div className="empty-inner">
