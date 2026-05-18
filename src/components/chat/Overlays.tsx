@@ -1,5 +1,5 @@
 // src/components/chat/Overlays.tsx
-// QuickJump (Ctrl+Q / Cmd+K), TreeMap (Ctrl+T), Shortcuts cheat sheet (Ctrl+? / Shift+?).
+// QuickJump (Ctrl+Q / Cmd+K), TreeMap (Ctrl+T), Shortcuts cheat sheet (Ctrl+/).
 // Self-managed: installs a single global keydown listener and renders three modal
 // overlays gated by local state. Consumer is ChatApp.
 
@@ -26,6 +26,17 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
     const onKey = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
 
+      // Ignore keystrokes while typing in an input/textarea/contenteditable
+      // so the shortcuts don't hijack normal text entry. Modifiers still
+      // pass through for QuickJump/TreeMap/Shortcuts.
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable
+      );
+      if (inField && !ctrl && e.key !== "Escape") return;
+
       // Cmd+K or Ctrl+Q → QuickJump
       if (ctrl && (e.key === "q" || e.key === "Q" || e.key === "k" || e.key === "K")) {
         e.preventDefault();
@@ -38,8 +49,8 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
         setOpen(prev => (prev === "treemap" ? null : "treemap"));
         return;
       }
-      // Ctrl+? or Shift+? → Shortcuts
-      if ((ctrl || e.shiftKey) && e.key === "?") {
+      // Ctrl+/ → Shortcuts cheat sheet (also accepts Ctrl+? for Shift+/ layouts)
+      if (ctrl && (e.key === "/" || e.key === "?")) {
         e.preventDefault();
         setOpen(prev => (prev === "shortcuts" ? null : "shortcuts"));
         return;
@@ -406,7 +417,7 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
     {
       name: "Help",
       items: [
-        { keys: ["⌃", "?"],        label: "This cheat sheet" },
+        { keys: ["⌃", "/"],        label: "This cheat sheet" },
       ],
     },
   ];
