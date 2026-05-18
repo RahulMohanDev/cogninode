@@ -6,11 +6,29 @@
 // edit / delete / merge affordances and the body becomes click-to-edit.
 // Delete and merge run in a single Dexie transaction.
 
-import { useEffect, useState, type ReactNode } from "react";
-import { useLiveQuery }             from "dexie-react-hooks";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  lazy,
+  Suspense,
+  type ReactNode,
+} from "react";
+import ReactMarkdown        from "react-markdown";
+import remarkGfm            from "remark-gfm";
+import type { Components }  from "react-markdown";
+import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
-import { formatCost, getModel }     from "../../lib/cost";
-import { useSettings }              from "../../hooks/useSettings";
+import { formatCost, getModel } from "../../lib/cost";
+import { useSettings }      from "../../hooks/useSettings";
+
+// Tiptap + tiptap-markdown + prosemirror together are ~600KB unminified.
+// Lazy-load the editor so it only ships to the user the first time they
+// open an edit affordance. The same import surface is re-used by both the
+// hover-edit and reflections-mode entry points. We avoid any static
+// import from `lib/markdown` in this file so Rollup can hoist the editor
+// into its own async chunk.
+const RichEditor = lazy(() => import("../../lib/markdown"));
 
 export interface MessageProps {
   message:        DbMessage;
@@ -20,82 +38,34 @@ export interface MessageProps {
   prevMessage?:   DbMessage;
 }
 
-// ── tiny markdown renderer ────────────────────────────────────────
-// Handles code fences (```), inline `code`, **bold**, paragraphs.
-// Intentionally minimal — no syntax highlighting, no link parsing.
+// ── markdown body ─────────────────────────────────────────────────
+// react-markdown handles parsing; remark-gfm adds tables, task lists,
+// strikethrough and autolinks. We do NOT pass rehype-raw, so any raw HTML
+// the assistant emits is rendered as literal text — that's our sanitization.
+// Anchors are forced to open in a new tab with a hardened rel.
 
-type Block =
-  | { type: "code"; lang: string; body: string }
-  | { type: "p";    body: string };
+const markdownComponents: Components = {
+  a: ({ node: _node, href, children, ...rest }) => (
+    <a
+      {...rest}
+      href={href ?? "#"}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {children}
+    </a>
+  ),
+};
 
-function tokenize(text: string): Block[] {
-  const blocks: Block[] = [];
-  const segments = text.split(/```([\s\S]*?)```/);
-  segments.forEach((seg, i) => {
-    if (i % 2 === 1) {
-      const firstBreak = seg.indexOf("\n");
-      const lang = firstBreak >= 0 ? seg.slice(0, firstBreak).trim() : "";
-      const body = firstBreak >= 0 ? seg.slice(firstBreak + 1) : seg;
-      blocks.push({ type: "code", lang, body: body.replace(/\n$/, "") });
-    } else {
-      const paragraphs = seg.split(/\n{2,}/);
-      paragraphs.forEach(p => {
-        if (p.trim()) blocks.push({ type: "p", body: p });
-      });
-    }
-  });
-  return blocks;
-}
-
-function renderInline(text: string, baseKey: string): ReactNode[] {
-  // Tokenise **bold** and `inline` while preserving the rest as plain text.
-  const out: ReactNode[] = [];
-  const re   = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-  let last = 0;
-  let key  = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) {
-      out.push(<span key={`${baseKey}-t-${key++}`}>{text.slice(last, m.index)}</span>);
-    }
-    const tok = m[0];
-    if (tok.startsWith("**")) {
-      out.push(<strong key={`${baseKey}-b-${key++}`}>{tok.slice(2, -2)}</strong>);
-    } else if (tok.startsWith("`")) {
-      out.push(<code key={`${baseKey}-c-${key++}`}>{tok.slice(1, -1)}</code>);
-    }
-    last = m.index + tok.length;
-  }
-  if (last < text.length) {
-    out.push(<span key={`${baseKey}-t-${key++}`}>{text.slice(last)}</span>);
-  }
-  return out;
-}
-
-function renderBody(text: string): ReactNode {
+function MarkdownBody({ text }: { text: string }) {
   if (!text) return null;
-  const blocks = tokenize(text);
-  return blocks.map((b, i) => {
-    if (b.type === "code") {
-      return (
-        <pre key={`p-${i}`}>
-          <code>{b.body}</code>
-        </pre>
-      );
-    }
-    // Treat newlines inside a paragraph as line breaks.
-    const lines = b.body.split("\n");
-    return (
-      <p key={`p-${i}`}>
-        {lines.map((line, li) => (
-          <span key={`l-${li}`}>
-            {renderInline(line, `p-${i}-l-${li}`)}
-            {li < lines.length - 1 && <br />}
-          </span>
-        ))}
-      </p>
-    );
-  });
+  return (
+    <div className="md">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 // ── file chips ────────────────────────────────────────────────────
@@ -232,10 +202,25 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
     void navigator.clipboard.writeText(message.content).catch(() => {});
   };
 
-  const handleSaveEdit = async (): Promise<void> => {
-    await db.messages.update(message._id, { content: draft });
+  // Persist a markdown payload and close the editor. We compare against the
+  // *current* message content to avoid clobbering unchanged rows with a
+  // pointless write.
+  const handleSaveMarkdown = useCallback(
+    (markdown: string): void => {
+      const next = markdown.replace(/\s+$/g, "");
+      setDraft(next);
+      if (next !== message.content) {
+        void db.messages.update(message._id, { content: next });
+      }
+      setEditing(false);
+    },
+    [message._id, message.content],
+  );
+
+  const handleCancelEdit = useCallback((): void => {
+    setDraft(message.content);
     setEditing(false);
-  };
+  }, [message.content]);
 
   const handleDelete = async (): Promise<void> => {
     await db.messages.delete(message._id);
@@ -260,18 +245,25 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
     await db.chats.update(message.chatId, { currentNodeId: node.parentId });
   };
 
-  const bodyTextareaStyle: React.CSSProperties = {
-    width: "100%",
-    minHeight: 80,
-    padding: 10,
-    border: "1px dashed var(--lilac)",
-    borderRadius: 8,
-    background: "var(--bg-tint)",
-    color: "var(--ink)",
-    font: "inherit",
-    outline: "none",
-    resize: "vertical",
-  };
+  // Empty-state placeholder for click-to-edit affordance in reflections mode.
+  const emptyHint: ReactNode = (
+    <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>
+      (empty — click to edit)
+    </span>
+  );
+
+  // Render the rich editor inside a Suspense boundary so the lazy chunk
+  // doesn't crash the message tree while it's resolving.
+  const editorPane: ReactNode = (
+    <Suspense fallback={<div className="rte-shell rte-loading">Loading editor…</div>}>
+      <RichEditor
+        initial={draft}
+        onSave={handleSaveMarkdown}
+        onCancel={handleCancelEdit}
+        variant={message.role === "user" ? "inverted" : "default"}
+      />
+    </Suspense>
+  );
 
   return (
     <div className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""}`}>
@@ -331,23 +323,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
         )}
 
         {editing ? (
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void handleSaveEdit()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void handleSaveEdit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setDraft(message.content);
-                setEditing(false);
-              }
-            }}
-            autoFocus
-            style={bodyTextareaStyle}
-          />
+          editorPane
         ) : reflectionsMode ? (
           // Click-to-edit affordance: visible dashed outline replicates the design.
           <div
@@ -363,14 +339,12 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
               background: "var(--bg-tint)",
             }}
           >
-            {renderBody(message.content) ?? (
-              <span style={{ color: "var(--ink-3)", fontStyle: "italic" }}>
-                (empty — click to edit)
-              </span>
-            )}
+            {message.content.trim()
+              ? <MarkdownBody text={message.content} />
+              : emptyHint}
           </div>
         ) : (
-          renderBody(message.content)
+          <MarkdownBody text={message.content} />
         )}
 
         {message.fileIds && message.fileIds.length > 0 && (
@@ -448,7 +422,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
               </svg>
             </button>
             <button title={editing ? "Save edit" : "Edit (reflections)"} onClick={() => {
-              if (editing) void handleSaveEdit();
+              if (editing) handleSaveMarkdown(draft);
               else         setEditing(true);
             }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -468,7 +442,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
               </svg>
             </button>
             <button title={editing ? "Save edit" : "Edit"} onClick={() => {
-              if (editing) void handleSaveEdit();
+              if (editing) handleSaveMarkdown(draft);
               else         setEditing(true);
             }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
