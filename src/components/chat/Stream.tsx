@@ -7,7 +7,7 @@
 // the stream and each message receives the visible edit/delete/merge
 // affordances via its own props.
 
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { Message }           from "./Message";
@@ -22,6 +22,10 @@ export interface StreamProps {
   reflectionsMode?:     boolean;
   onExitReflections?:   () => void;
   onSaveReflection?:    () => void;
+  /** Optional banner slot — ChatApp injects the "Collapse to one" action
+   *  (with its own inline-confirm UI) here so all collapse logic stays
+   *  in ChatApp.tsx. Rendered to the LEFT of Save / Done. */
+  collapseAction?:      ReactNode;
 }
 
 export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
@@ -34,6 +38,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     reflectionsMode = false,
     onExitReflections,
     onSaveReflection,
+    collapseAction,
   },
   ref,
 ) {
@@ -68,6 +73,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
             <div className="rb-sub">Click to edit. Delete the noise. Merge what belongs together. Press ⌃R to exit.</div>
           </div>
           <div className="rb-actions">
+            {collapseAction}
             {onSaveReflection && (
               <button onClick={() => onSaveReflection()} title="Snapshot this path into your reflections">
                 Save as reflection
