@@ -68,17 +68,20 @@ export function useStream(chatId: string, nodeId: string) {
       }
     }
 
-    // Build path context from Dexie
+    // Build full path context from Dexie. The user message we just added is
+    // the CURRENT request — it must be the last message in the request body,
+    // not dropped. The previous code did `pathMessages.slice(0, -1)` which
+    // silently stripped the user's actual question, leaving the model with
+    // only the system prompt and producing "I don't see a question" /
+    // "State your need clearly" replies for first-turn messages.
     const pathMessages = await buildPathMessages(chatId, nodeId);
-    // Remove the message we just added (it's already the last user msg)
-    const contextMessages = pathMessages.slice(0, -1);
 
     let fullContent = "";
 
     await streamMessage({
       apiKey,
       openRouterId: model.openRouterId,
-      messages: contextMessages,
+      messages: pathMessages,
       model,
       signal: abortRef.current.signal,
 
@@ -99,7 +102,7 @@ export function useStream(chatId: string, nodeId: string) {
           costUsd,
           inputTokens,
           outputTokens,
-          pathDepth:    contextMessages.length,
+          pathDepth:    pathMessages.length,
           createdAt:    Date.now(),
         });
 
