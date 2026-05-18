@@ -2688,3 +2688,124 @@ a { color: inherit; text-decoration: none; }
 .qj-overlay.sm-overlay {
   align-items: flex-start;
 }
+
+/* ── nav delete + theme toggle ─────────────── */
+/* Per-row trash icons live inside .chat-row / .branch-row / .chat-card
+   markup added by Sidebar + Chats. They fade in on hover so the resting
+   state stays calm. Confirm pills auto-revert after 4s (handled in TS). */
+
+.chat-row.has-delete,
+.branch-row.has-delete { position: relative; }
+
+.row-del {
+  opacity: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--ink-3);
+  margin-left: 4px;
+  flex: none;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.chat-row:hover .row-del,
+.branch-row:hover .row-del,
+.row-del:focus-visible { opacity: 0.85; }
+.row-del:hover {
+  opacity: 1;
+  background: color-mix(in oklab, var(--coral) 18%, transparent);
+  color: var(--coral);
+}
+.chat-row.active .row-del { color: color-mix(in oklab, var(--bg) 75%, transparent); }
+.chat-row.active .row-del:hover {
+  background: color-mix(in oklab, var(--coral) 26%, transparent);
+  color: var(--bg);
+}
+
+/* The branch-row variant nudges the trash to the right edge — the row's
+   flex layout pushes b-label to fill, so a margin-left:auto pins it. */
+.row-del-branch { margin-left: auto; }
+
+.confirm-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 10px 6px;
+  padding: 6px 10px;
+  background: color-mix(in oklab, var(--coral) 12%, var(--bg-3));
+  border: 1px solid color-mix(in oklab, var(--coral) 30%, var(--line));
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.confirm-pill .cp-label { flex: 1; min-width: 0; }
+.confirm-pill .cp-yes,
+.confirm-pill .cp-no {
+  font: inherit;
+  padding: 2px 6px;
+  border-radius: 5px;
+  transition: background 0.1s, color 0.1s;
+}
+.confirm-pill .cp-yes { color: var(--coral); font-weight: 600; }
+.confirm-pill .cp-yes:hover { background: var(--coral); color: white; }
+.confirm-pill .cp-no { color: var(--ink-3); }
+.confirm-pill .cp-no:hover { background: var(--bg-2); color: var(--ink); }
+.confirm-pill .cp-sep { color: var(--ink-4); }
+
+/* Chats grove card delete: floats top-right, mirrors row-del feel. */
+.chat-card.has-delete { position: relative; }
+.cc-del {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.chat-card:hover .cc-del,
+.cc-del:focus-visible { opacity: 0.9; }
+.cc-del:hover {
+  opacity: 1;
+  background: color-mix(in oklab, var(--coral) 18%, transparent);
+  color: var(--coral);
+}
+.cc-confirm {
+  position: absolute;
+  inset: auto 10px 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: color-mix(in oklab, var(--coral) 14%, var(--bg-3));
+  border: 1px solid color-mix(in oklab, var(--coral) 30%, var(--line));
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.cc-confirm .cp-label { flex: 1; min-width: 0; }
+.cc-confirm .cp-yes,
+.cc-confirm .cp-no {
+  font: inherit;
+  padding: 2px 6px;
+  border-radius: 5px;
+  transition: background 0.1s, color 0.1s;
+}
+.cc-confirm .cp-yes { color: var(--coral); font-weight: 600; }
+.cc-confirm .cp-yes:hover { background: var(--coral); color: white; }
+.cc-confirm .cp-no { color: var(--ink-3); }
+.cc-confirm .cp-no:hover { background: var(--bg-2); color: var(--ink); }
+.cc-confirm .cp-sep { color: var(--ink-4); }
+
+/* Branch-row layout: the row uses flex; ensure b-label stretches so the
+   trash icon ends up flush right without changing the existing dot/chevron
+   positions. The existing .branch-row rules in this file don't pin a width
+   on b-label, so this is a no-op for legacy rows. */
+.branch-row.has-delete .b-label { flex: 1 1 auto; min-width: 0; }
+
