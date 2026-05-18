@@ -51,15 +51,15 @@ export async function readFileContent(file: File, kind: StoredFile["kind"]): Pro
 }
 
 export interface ProcessedFile {
-  fileId:       string;
-  name:         string;
-  kind:         StoredFile["kind"];
-  sizeBytes:    number;
-  // For non-image files, the text content to append to the composer
-  textToAppend?: string;
+  fileId:    string;
+  name:      string;
+  kind:      StoredFile["kind"];
+  sizeBytes: number;
 }
 
-// Store file in Dexie and return metadata
+// Store file in Dexie and return metadata. File content is *only* persisted
+// to db.files; injection into the prompt happens later in buildPathMessages
+// so the composer textarea isn't polluted with raw document text.
 export async function storeFile(file: File): Promise<ProcessedFile> {
   const kind    = inferKind(file);
   const content = await readFileContent(file, kind);
@@ -75,23 +75,10 @@ export async function storeFile(file: File): Promise<ProcessedFile> {
     createdAt: Date.now(),
   });
 
-  // Non-image files: inject content into composer as a block
-  const textToAppend =
-    kind === "pdf"
-      ? `\n\n<document name="${file.name}">\n${content}\n</document>`
-      : kind === "code"
-      ? `\n\n\`\`\`${getExtension(file.name)}\n${content}\n\`\`\``
-      : undefined;
-
   return {
     fileId,
     name:  file.name,
     kind,
     sizeBytes: file.size,
-    ...(textToAppend !== undefined ? { textToAppend } : {}),
   };
-}
-
-function getExtension(filename: string): string {
-  return filename.split(".").pop() ?? "";
 }

@@ -161,20 +161,43 @@ export async function buildPathMessages(
       .sortBy("createdAt");
 
     for (const msg of msgs) {
-      // Build content — handle image attachments for multimodal
+      // User messages with attachments: inject file content here so the
+      // composer textarea stays clean (no giant <document> blob visible to
+      // the user) while the model still sees the full document context.
       if (msg.role === "user" && msg.fileIds?.length) {
         const files = await db.files
           .where("_id").anyOf(msg.fileIds)
           .toArray();
 
-        const parts: unknown[] = [{ type: "text", text: msg.content }];
-        for (const file of files) {
-          if (file.kind === "image") {
-            parts.push({ type: "image_url", image_url: { url: file.content } });
+        const images    = files.filter(f => f.kind === "image");
+        const nonImages = files.filter(f => f.kind !== "image");
+
+        // Build the text portion: file context first (so the question reads
+        // naturally after the attached material), then the user's text.
+        const textChunks: string[] = [];
+        for (const file of nonImages) {
+          if (file.kind === "pdf") {
+            textChunks.push(`<document name="${file.name}">\n${file.content}\n</document>`);
+          } else if (file.kind === "code") {
+            const ext = file.name.split(".").pop() ?? "";
+            textChunks.push("```" + ext + "\n" + file.content + "\n```");
+          } else {
+            textChunks.push(`<file name="${file.name}">\n${file.content}\n</file>`);
           }
-          // PDF and code content was already appended to msg.content during compose
         }
-        result.push({ role: "user", content: parts });
+        if (msg.content) textChunks.push(msg.content);
+        const textContent = textChunks.join("\n\n");
+
+        if (images.length === 0) {
+          // Pure text — keep as a string for broadest model compatibility.
+          result.push({ role: "user", content: textContent });
+        } else {
+          const parts: unknown[] = [{ type: "text", text: textContent }];
+          for (const img of images) {
+            parts.push({ type: "image_url", image_url: { url: img.content } });
+          }
+          result.push({ role: "user", content: parts });
+        }
       } else {
         result.push({ role: msg.role, content: msg.content });
       }

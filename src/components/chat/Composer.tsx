@@ -110,9 +110,6 @@ export function Composer({
         try {
           const stored = await storeFile(file);
           setFiles(prev => [...prev, stored]);
-          if (stored.textToAppend) {
-            setText(prev => prev + stored.textToAppend);
-          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           setUploadError(`Couldn't attach "${file.name}": ${msg}`);
