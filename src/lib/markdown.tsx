@@ -15,7 +15,10 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
+  useState,
   type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useEditor, EditorContent }   from "@tiptap/react";
 import StarterKit                     from "@tiptap/starter-kit";
@@ -185,9 +188,120 @@ export function RichEditor({
   // an unwanted blur-save before the format command actually applies).
   const preventBlur = (e: ReactMouseEvent): void => { e.preventDefault(); };
 
+  // ── Link popover state ────────────────────────────────────────
+  // The popover is rendered inline beneath the toolbar's link button. We keep
+  // a wrapper ref so the outside-click listener can let clicks inside the
+  // popover (or on the button itself) through without dismissing.
+  const [linkOpen, setLinkOpen]       = useState(false);
+  const [linkValue, setLinkValue]     = useState("");
+  const linkWrapRef  = useRef<HTMLSpanElement | null>(null);
+  const linkInputRef = useRef<HTMLInputElement | null>(null);
+
+  const closeLink = useCallback((): void => {
+    setLinkOpen(false);
+  }, []);
+
+  const openLink = useCallback((): void => {
+    if (!editor) return;
+    const existing = (editor.getAttributes("link") as { href?: string }).href ?? "";
+    setLinkValue(existing);
+    setLinkOpen(true);
+  }, [editor]);
+
+  // Focus the input once the popover mounts.
+  useEffect(() => {
+    if (!linkOpen) return;
+    // Defer to next frame so the input is attached before focusing.
+    const id = requestAnimationFrame(() => {
+      const el = linkInputRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [linkOpen]);
+
+  // Single document-level mousedown listener for outside-click dismissal.
+  useEffect(() => {
+    if (!linkOpen) return;
+    const onDocDown = (ev: MouseEvent): void => {
+      const wrap = linkWrapRef.current;
+      if (!wrap) return;
+      if (ev.target instanceof Node && wrap.contains(ev.target)) return;
+      setLinkOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [linkOpen]);
+
+  /** Normalize bare-domain inputs ("foo.com") to "https://foo.com". Mailto
+   *  and path-relative hrefs pass through untouched. */
+  const normalizeHref = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return trimmed;
+    if (/^(https?:|mailto:|\/)/i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
+  const applyLink = useCallback((): void => {
+    if (!editor) return;
+    const href = normalizeHref(linkValue);
+    if (!href) {
+      // Empty input on Apply = unlink, matching common editor convention.
+      editor.chain().focus().unsetLink().run();
+      closeLink();
+      return;
+    }
+    // setLink({ href }) works for both collapsed-cursor-in-link and ranged
+    // selections. When the cursor is inside an existing link mark, Tiptap
+    // extends the mark over the full link and updates the href; for a ranged
+    // selection it wraps the range in the link mark. For a fully-collapsed
+    // selection outside any link, ProseMirror has no range to attach a mark
+    // to — fall back to inserting the URL as its own linked label.
+    const sel = editor.state.selection;
+    const inLink = editor.isActive("link");
+    if (sel.empty && !inLink) {
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "text",
+          text: href,
+          marks: [{ type: "link", attrs: { href } }],
+        })
+        .run();
+    } else {
+      editor.chain().focus().setLink({ href }).run();
+    }
+    closeLink();
+  }, [editor, linkValue, closeLink]);
+
+  const removeLink = useCallback((): void => {
+    if (!editor) return;
+    editor.chain().focus().unsetLink().run();
+    closeLink();
+  }, [editor, closeLink]);
+
+  const onLinkInputKeyDown = (ev: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      applyLink();
+      return;
+    }
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeLink();
+    }
+  };
+
   if (!editor) {
     return <div className="rte-shell rte-loading">…</div>;
   }
+
+  const currentHrefForOpen = normalizeHref(linkValue);
+  const showOpenLink = linkOpen && /^(https?:|mailto:)/i.test(currentHrefForOpen);
 
   return (
     <div className={`rte-shell${variant === "inverted" ? " rte-shell-inverted" : ""}`}>
@@ -204,26 +318,73 @@ export function RichEditor({
           </button>
         ))}
         <span className="rte-sep" aria-hidden />
-        <button
-          type="button"
-          title="Insert / toggle link"
-          className={`rte-btn${editor.isActive("link") ? " active" : ""}`}
-          onClick={() => {
-            // No window.prompt: if a link mark is active, strip it; otherwise
-            // wrap the selection in a placeholder URL that the user can edit
-            // inline. (Pasting a URL onto selected text autolinks via
-            // tiptap-markdown's linkify.)
-            if (editor.isActive("link")) {
-              editor.chain().focus().unsetLink().run();
-              return;
-            }
-            if (editor.state.selection.empty) return;
-            const existing = (editor.getAttributes("link") as { href?: string }).href;
-            editor.chain().focus().setLink({ href: existing || "https://" }).run();
-          }}
-        >
-          🔗
-        </button>
+        <span ref={linkWrapRef} className="rte-link-wrap">
+          <button
+            type="button"
+            title="Insert / edit link"
+            aria-haspopup="dialog"
+            aria-expanded={linkOpen}
+            className={`rte-btn${editor.isActive("link") || linkOpen ? " active" : ""}`}
+            onClick={() => (linkOpen ? closeLink() : openLink())}
+          >
+            🔗
+          </button>
+          {linkOpen ? (
+            <div
+              className="rte-link-popover"
+              role="dialog"
+              aria-label="Edit link"
+              // Clicks inside the popover should not blur the editor (which
+              // would commit a save before Apply runs).
+              onMouseDown={preventBlur}
+            >
+              <input
+                ref={linkInputRef}
+                type="text"
+                className="rte-link-input"
+                placeholder="Paste URL or type one"
+                value={linkValue}
+                onChange={(ev) => setLinkValue(ev.target.value)}
+                onKeyDown={onLinkInputKeyDown}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <div className="rte-link-actions">
+                {showOpenLink ? (
+                  <a
+                    className="rte-link-open"
+                    href={currentHrefForOpen}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={currentHrefForOpen}
+                  >
+                    Open ↗
+                  </a>
+                ) : (
+                  <span className="rte-link-open rte-link-open-placeholder" aria-hidden>
+                    Open ↗
+                  </span>
+                )}
+                <span className="rte-link-spacer" />
+                <button
+                  type="button"
+                  className="rte-link-btn rte-link-btn-ghost"
+                  onClick={removeLink}
+                  disabled={!editor.isActive("link")}
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  className="rte-link-btn rte-link-btn-primary"
+                  onClick={applyLink}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </span>
         <span className="rte-spacer" />
         <span className="rte-hint">⌘↵ save · esc cancel</span>
       </div>

@@ -3195,3 +3195,102 @@ a { color: inherit; text-decoration: none; }
 .rte-content ::selection { background: color-mix(in oklab, var(--lilac) 30%, transparent); }
 .rte-inverted ::selection { background: color-mix(in oklab, var(--bg) 30%, transparent); color: var(--bg); }
 
+/* ── link popover ──────────────────── */
+/* Small floating panel anchored to the link toolbar button. The wrapper is
+   `position: relative` so the absolute-positioned popover lands flush under
+   the button. The toolbar has `flex-wrap`, so we keep the popover at
+   `z-index: 30` to escape any wrapped row beneath it. Dark-mode inherits via
+   the `--ink` / `--bg-2` tokens themselves; the `.rte-shell-inverted` cascade
+   then re-tints the chrome to match the inverted bubble. */
+.rte-link-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.rte-link-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px -12px rgba(22, 20, 19, 0.28),
+              0 0 0 3px color-mix(in oklab, var(--lilac) 12%, transparent);
+}
+.rte-shell-inverted .rte-link-popover {
+  background: var(--bg-3);
+  border-color: var(--line);
+}
+.rte-link-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.rte-link-input::placeholder { color: var(--ink-3); }
+.rte-link-input:focus {
+  border-color: var(--lilac);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--lilac) 24%, transparent);
+}
+.rte-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rte-link-open {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--coral);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rte-link-open-placeholder { color: var(--ink-4); text-decoration: none; }
+.rte-link-spacer { flex: 1 1 auto; }
+.rte-link-btn {
+  height: 24px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.rte-link-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.rte-link-btn-ghost {
+  color: var(--ink-2);
+  background: transparent;
+  border-color: var(--line);
+}
+.rte-link-btn-ghost:hover:not(:disabled) {
+  color: var(--coral);
+  border-color: var(--coral);
+  background: color-mix(in oklab, var(--coral) 8%, transparent);
+}
+.rte-link-btn-primary {
+  color: var(--bg);
+  background: var(--lilac);
+  border-color: var(--lilac);
+}
+.rte-link-btn-primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--lilac) 86%, var(--ink));
+  border-color: color-mix(in oklab, var(--lilac) 86%, var(--ink));
+}
