@@ -161,6 +161,15 @@ export function Message({ message, onBranch }: MessageProps) {
     setEditing(false);
   };
 
+  // The "branched from" chip on a branch's first user message jumps the
+  // chat's currentNodeId back to this message's parent — i.e. the source
+  // branch the user split off from.
+  const handleGoToSource = async (): Promise<void> => {
+    const node = await db.nodes.get(message.nodeId);
+    if (!node?.parentId) return;
+    await db.chats.update(message.chatId, { currentNodeId: node.parentId });
+  };
+
   return (
     <div className={`msg ${message.role}`}>
       <div className="m-head">
@@ -180,7 +189,12 @@ export function Message({ message, onBranch }: MessageProps) {
 
       <div className="m-body">
         {message.quote && (
-          <div className="quote-block">
+          <div
+            className="quote-block"
+            onClick={() => void handleGoToSource()}
+            title="Go to source branch"
+            style={{ cursor: "pointer" }}
+          >
             <span className="quote-from">↳ branched from</span>
             <span className="quote-text">"{message.quote}"</span>
           </div>

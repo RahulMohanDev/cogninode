@@ -14,12 +14,14 @@ export interface CustomModel extends ModelDef {
   isCustom: true;
 }
 
+// Model IDs verified against OpenRouter /api/v1/models. Pricing in USD per
+// million tokens, also from OpenRouter (as of the last verification run).
 export const BUILTIN_MODELS: ModelDef[] = [
-  { id: "llama",  name: "Llama 3.1 70B",    vendor: "Meta",      tag: "free",
-    openRouterId: "meta-llama/llama-3.1-70b-instruct:free",
+  { id: "llama",  name: "Llama 3.3 70B",     vendor: "Meta",      tag: "free",
+    openRouterId: "meta-llama/llama-3.3-70b-instruct:free",
     inputPricePerM: 0,     outputPricePerM: 0     },
   { id: "flash",  name: "Gemini Flash 2.0",  vendor: "Google",    tag: "budget · fast",
-    openRouterId: "google/gemini-flash-2.0",
+    openRouterId: "google/gemini-2.0-flash-001",
     inputPricePerM: 0.10,  outputPricePerM: 0.40  },
   { id: "dsv3",   name: "DeepSeek V3",       vendor: "DeepSeek",  tag: "budget · strong",
     openRouterId: "deepseek/deepseek-chat",
@@ -31,14 +33,14 @@ export const BUILTIN_MODELS: ModelDef[] = [
     openRouterId: "deepseek/deepseek-r1",
     inputPricePerM: 0.605, outputPricePerM: 2.41  },
   { id: "haiku",  name: "Claude Haiku 4.5",  vendor: "Anthropic", tag: "mid",
-    openRouterId: "anthropic/claude-haiku-4-5",
-    inputPricePerM: 1.10,  outputPricePerM: 5.50  },
+    openRouterId: "anthropic/claude-haiku-4.5",
+    inputPricePerM: 1.00,  outputPricePerM: 5.00  },
   { id: "gpt4o",  name: "GPT-4o",            vendor: "OpenAI",    tag: "premium",
     openRouterId: "openai/gpt-4o",
     inputPricePerM: 2.75,  outputPricePerM: 11.00 },
   { id: "sonnet", name: "Claude Sonnet 4.5", vendor: "Anthropic", tag: "premium",
-    openRouterId: "anthropic/claude-sonnet-4-5",
-    inputPricePerM: 3.30,  outputPricePerM: 16.50 },
+    openRouterId: "anthropic/claude-sonnet-4.5",
+    inputPricePerM: 3.00,  outputPricePerM: 15.00 },
 ];
 
 // Merged list including user-added custom models from localStorage prefs

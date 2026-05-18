@@ -14,11 +14,12 @@ export interface StreamProps {
   currentNodeId:  string;
   streamState:    "idle" | "streaming" | "error";
   streamingText:  string;
+  streamError?:   string;
   onBranchFromMessage?: (msg: DbMessage, quote?: string) => void;
 }
 
 export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
-  { chatId, currentNodeId, streamState, streamingText, onBranchFromMessage },
+  { chatId, currentNodeId, streamState, streamingText, streamError, onBranchFromMessage },
   ref,
 ) {
   // Live: all nodes for breadcrumb labels.
@@ -27,34 +28,20 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     [chatId],
   ) ?? [];
 
-  // Live: every message on every node along the path. Stitching path order
-  // here (rather than calling buildPathMessages) keeps the Message DB
-  // entities intact for hover-actions, rather than the prompt-shape.
+  // Breadcrumb shows ancestor lineage; the conversation itself only renders
+  // messages on the current node. Parent-node messages are still sent to the
+  // model via buildPathMessages — we just don't clutter the UI with them.
   const pathNodeIds = useMemo(
     () => findPath(nodes, currentNodeId),
     [nodes, currentNodeId],
   );
 
-  const pathMessages = useLiveQuery(async () => {
-    if (pathNodeIds.length === 0) return [];
-    const all = await db.messages
-      .where("nodeId").anyOf(pathNodeIds)
-      .toArray();
-    // Reorder: group by node in path order, sort each by createdAt.
-    const byNode = new Map<string, DbMessage[]>();
-    for (const m of all) {
-      const list = byNode.get(m.nodeId);
-      if (list) list.push(m);
-      else      byNode.set(m.nodeId, [m]);
-    }
-    const out: DbMessage[] = [];
-    for (const nid of pathNodeIds) {
-      const list = byNode.get(nid) ?? [];
-      list.sort((a, b) => a.createdAt - b.createdAt);
-      out.push(...list);
-    }
-    return out;
-  }, [pathNodeIds.join(",")]) ?? [];
+  const pathMessages = useLiveQuery(
+    () => db.messages
+      .where("nodeId").equals(currentNodeId)
+      .sortBy("createdAt"),
+    [currentNodeId],
+  ) ?? [];
 
   // Breadcrumb labels — root first, then each child node label truncated.
   const breadcrumb = useMemo(() => {
@@ -125,7 +112,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
         {streamState === "error" && (
           <div className="msg assistant">
             <div className="m-body" style={{ color: "var(--coral)" }}>
-              Stream error — check your API key in Settings and try again.
+              <strong>Stream error:</strong> {streamError ?? "Unknown error — see browser console for details."}
             </div>
           </div>
         )}
