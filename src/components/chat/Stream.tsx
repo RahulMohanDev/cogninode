@@ -11,6 +11,7 @@ import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { Message }           from "./Message";
+import { MarkdownBody }      from "./MarkdownBody";
 
 export interface StreamProps {
   chatId:               string;
@@ -117,9 +118,12 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
             <div className="m-head">
               <span>assistant</span>
             </div>
-            <div className="m-body">
+            <div className="m-body streaming-body">
               {streamingText
-                ? <p>{streamingText}<span className="thinking" style={{ display: "inline-flex", marginLeft: 4 }}><i /></span></p>
+                ? <>
+                    <MarkdownBody text={streamingText} />
+                    <span className="thinking" aria-hidden="true"><i /></span>
+                  </>
                 : <div className="thinking"><i /><i /><i /></div>}
             </div>
           </div>

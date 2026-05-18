@@ -14,13 +14,11 @@ import {
   Suspense,
   type ReactNode,
 } from "react";
-import ReactMarkdown        from "react-markdown";
-import remarkGfm            from "remark-gfm";
-import type { Components }  from "react-markdown";
 import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { formatCost, getModel } from "../../lib/cost";
 import { useSettings }      from "../../hooks/useSettings";
+import { MarkdownBody }     from "./MarkdownBody";
 
 // Tiptap + tiptap-markdown + prosemirror together are ~600KB unminified.
 // Lazy-load the editor so it only ships to the user the first time they
@@ -36,36 +34,6 @@ export interface MessageProps {
   reflectionsMode?: boolean;
   /** Previous message in this node, if any — required for the merge affordance. */
   prevMessage?:   DbMessage;
-}
-
-// ── markdown body ─────────────────────────────────────────────────
-// react-markdown handles parsing; remark-gfm adds tables, task lists,
-// strikethrough and autolinks. We do NOT pass rehype-raw, so any raw HTML
-// the assistant emits is rendered as literal text — that's our sanitization.
-// Anchors are forced to open in a new tab with a hardened rel.
-
-const markdownComponents: Components = {
-  a: ({ node: _node, href, children, ...rest }) => (
-    <a
-      {...rest}
-      href={href ?? "#"}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {children}
-    </a>
-  ),
-};
-
-function MarkdownBody({ text }: { text: string }) {
-  if (!text) return null;
-  return (
-    <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
 }
 
 // ── file chips ────────────────────────────────────────────────────

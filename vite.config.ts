@@ -16,8 +16,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ["react", "react-dom", "react-router-dom"],
-          dexie:  ["dexie", "dexie-react-hooks"],
+          vendor:     ["react", "react-dom", "react-router-dom"],
+          dexie:      ["dexie", "dexie-react-hooks"],
+          // Streamdown pulls shiki + katex + mermaid + remark/rehype etc.
+          // Split into its own chunk so it loads in parallel with the main
+          // bundle and stays cached across our app updates.
+          streamdown: ["streamdown"],
         },
       },
     },
