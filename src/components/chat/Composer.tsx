@@ -17,15 +17,17 @@ export interface ComposerSendParams {
 }
 
 export interface ComposerProps {
-  chatId:          string;
-  currentNodeId:   string;
-  streamState:     "idle" | "streaming" | "error";
-  onSend:          (params: ComposerSendParams) => void | Promise<void>;
-  onCancel:        () => void;
-  quote?:          string;
-  initialText?:    string;
-  onClearQuote?:   () => void;
-  onOpenSettings?: () => void;
+  chatId:                string;
+  currentNodeId:         string;
+  streamState:           "idle" | "streaming" | "error";
+  onSend:                (params: ComposerSendParams) => void | Promise<void>;
+  onCancel:              () => void;
+  quote?:                string;
+  initialText?:          string;
+  onClearQuote?:         () => void;
+  onOpenSettings?:       () => void;
+  /** Creates an empty branch from the current node — no quote, no message. */
+  onCreateBlankBranch?:  () => void;
 }
 
 const DRAFT_KEY = (chatId: string, nodeId: string) => `cogninode_draft_${chatId}:${nodeId}`;
@@ -52,6 +54,7 @@ export function Composer({
   initialText,
   onClearQuote,
   onOpenSettings,
+  onCreateBlankBranch,
 }: ComposerProps) {
   const { prefs }            = useSettings();
   const [text,   setText]    = useState(() => initialText ?? loadDraft(chatId, currentNodeId));
@@ -267,6 +270,24 @@ export function Composer({
           <span className={`cost-pill ${pillClass}`} title={`Estimated cost on ${model.name}`}>
             {formatEstimate(estCost)}
           </span>
+
+          {onCreateBlankBranch && (
+            <button
+              className="new-branch-btn"
+              type="button"
+              onClick={() => onCreateBlankBranch()}
+              title="Start an empty branch from this node"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="8" cy="3"  r="1.6" stroke="currentColor" strokeWidth="1.4"/>
+                <circle cx="3" cy="13" r="1.6" stroke="currentColor" strokeWidth="1.4"/>
+                <circle cx="13" cy="13" r="1.6" stroke="currentColor" strokeWidth="1.4"/>
+                <path d="M8 4.6 V8 M8 8 L3 11.4 M8 8 L13 11.4"
+                      stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              </svg>
+              <span>+ new branch</span>
+            </button>
+          )}
         </div>
 
         {streamState === "streaming" ? (

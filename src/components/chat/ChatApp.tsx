@@ -6,9 +6,9 @@
 // Also owns the `reflectionsMode` flag (⌃R) and the "save as reflection"
 // snapshot action — see spec section 11.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery }        from "dexie-react-hooks";
-import { db, createBranch, newId, type Message as DbMessage } from "../../lib/db";
+import { db, createBranch, newId, type Message as DbMessage, type Node as DbNode } from "../../lib/db";
 import { useStream }           from "../../hooks/useStream";
 import { useSettings }         from "../../hooks/useSettings";
 import { findPath }            from "../../lib/path";
@@ -29,6 +29,23 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const currentNodeId = chat?.currentNodeId ?? chat?.rootNodeId ?? "";
+
+  // Live: all nodes for the chat — needed for the TopBar breadcrumb.
+  const nodes = useLiveQuery<DbNode[], DbNode[]>(
+    () => db.nodes.where("chatId").equals(chatId).toArray(),
+    [chatId],
+    [],
+  );
+
+  // Breadcrumb data: root + ancestor labels along root → currentNodeId.
+  const breadcrumb = useMemo(() => {
+    if (!currentNodeId) return [] as DbNode[];
+    const ids = findPath(nodes, currentNodeId);
+    const map = new Map(nodes.map(n => [n._id, n]));
+    return ids
+      .map(id => map.get(id))
+      .filter((n): n is DbNode => !!n);
+  }, [nodes, currentNodeId]);
 
   const { state, streamingText, error: streamError, send, cancel } = useStream(chatId, currentNodeId);
 
@@ -112,6 +129,29 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     await handleBranchFromSelection(maybeQuote ?? "Branch");
   };
 
+  // Standalone "+ new branch" affordance — creates an empty branch from the
+  // current node with no quote chip and no message context. Honours the user's
+  // branchMode preference the same way handleBranchFromSelection does.
+  const handleCreateBlankBranch = async (): Promise<void> => {
+    if (!chat) return;
+    const parent = await db.nodes.get(currentNodeId);
+    if (!parent) return;
+    const stayMode = prefs.branchMode === "stay";
+    const stayNodeId = currentNodeId;
+    await db.transaction("rw", db.nodes, db.chats, async () => {
+      await createBranch({
+        chatId,
+        parentId: stayNodeId,
+        depth:    parent.depth + 1,
+        label:    "New branch",
+      });
+      if (stayMode) {
+        await db.chats.update(chatId, { currentNodeId: stayNodeId });
+      }
+    });
+    // No quote chip — this is a fresh branch, not a quoted side-track.
+  };
+
   // Snapshot the current node's distilled path into the reflections table.
   // Body is the messages along root → currentNodeId concatenated as markdown;
   // title is derived from the current node's label (falling back to chat title).
@@ -175,6 +215,13 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
       />
 
       <div className="main">
+        <TopBar
+          title={chat.title}
+          breadcrumb={breadcrumb}
+          reflectionsActive={reflectionsMode}
+          onToggleReflect={() => setReflectionsMode(v => !v)}
+        />
+
         <Stream
           ref={streamRef}
           chatId={chatId}
@@ -199,6 +246,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
             {...(prefill !== null   ? { initialText: prefill } : {})}
             onClearQuote={() => setQuote(undefined)}
             onOpenSettings={() => setSettingsOpen(true)}
+            onCreateBlankBranch={() => void handleCreateBlankBranch()}
           />
         </div>
       </div>
@@ -221,3 +269,90 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
 }
 
 export default ChatApp;
+
+// ── Inline TopBar ────────────────────────────────────────────────────────────
+// Header bar above the Stream. Owns the breadcrumb (root › parent › this) and
+// three pill buttons that open existing overlays/modes. Tree and Jump dispatch
+// a synthetic Ctrl+T / Ctrl+Q keydown so the existing global listener in
+// Overlays.tsx handles the toggle — keeps the wiring single-sourced. Reflect
+// toggles directly via the callback because ChatApp owns that state.
+
+interface TopBarProps {
+  title:             string;
+  breadcrumb:        DbNode[];      // root → currentNodeId, inclusive
+  reflectionsActive: boolean;
+  onToggleReflect:   () => void;
+}
+
+function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBarProps) {
+  const openTree = (): void => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "t", ctrlKey: true }));
+  };
+  const openJump = (): void => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", ctrlKey: true }));
+  };
+
+  // Drop the root entry (its label is just "root" / chat-title); show its
+  // descendants as crumb chips coloured by depth.
+  const tail = breadcrumb.slice(1);
+
+  return (
+    <div className="topbar">
+      <div className="crumb">
+        <span className="c-title" title={title}>{title || "—"}</span>
+        {tail.length > 0 && <span className="c-sep">/</span>}
+        {tail.map((n, i) => {
+          const label = n.label.length > 22 ? n.label.slice(0, 22) + "…" : n.label;
+          const last  = i === tail.length - 1;
+          return (
+            <span key={n._id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className={`c-node d${Math.min(3, n.depth)}`}>
+                <span className="c-dot" />
+                {label}
+              </span>
+              {!last && <span className="c-sep">›</span>}
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="topbar-actions">
+        <button className="tb-btn" type="button" onClick={openTree} title="Tree view">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8"  cy="3"  r="2" stroke="currentColor" strokeWidth="1.4"/>
+            <circle cx="3"  cy="13" r="2" stroke="currentColor" strokeWidth="1.4"/>
+            <circle cx="13" cy="13" r="2" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M8 5 V8 M8 8 L3 11 M8 8 L13 11"
+                  stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
+          Tree
+          <span className="tb-kbd">⌃T</span>
+        </button>
+
+        <button
+          className={`tb-btn ${reflectionsActive ? "lilac" : ""}`}
+          type="button"
+          onClick={onToggleReflect}
+          title="Reflections mode"
+          aria-pressed={reflectionsActive}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 8 a5 5 0 1 1 10 0 a5 5 0 1 1 -10 0 Z" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M5.5 7 Q8 4 10.5 7" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+          </svg>
+          Reflect
+          <span className="tb-kbd">⌃R</span>
+        </button>
+
+        <button className="tb-btn" type="button" onClick={openJump} title="Quick jump">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M10 10 L13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
+          Jump
+          <span className="tb-kbd">⌃Q</span>
+        </button>
+      </div>
+    </div>
+  );
+}
