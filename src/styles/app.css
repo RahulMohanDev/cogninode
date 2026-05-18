@@ -1269,79 +1269,6 @@ a { color: inherit; text-decoration: none; }
 }
 .reflect-banner .rb-actions button.exit { background: white; color: var(--lilac); }
 
-.msg.reflecting .m-body[contenteditable="true"] {
-  outline: 1px dashed var(--lilac);
-  outline-offset: 4px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--bg-tint);
-  color: var(--ink);
-  cursor: text;
-}
-.msg.reflecting.user .m-body[contenteditable="true"] {
-  outline-color: color-mix(in oklab, var(--bg) 50%, var(--lilac));
-  background: var(--ink);
-  color: var(--bg);
-  border-radius: 14px 14px 4px 14px;
-}
-.msg.reflecting .m-foot { display: none; }
-.msg.reflecting:hover .m-body[contenteditable="true"] {
-  outline-color: var(--lilac);
-}
-
-.reflect-handles {
-  position: absolute;
-  left: -44px;
-  top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.msg:hover .reflect-handles { opacity: 1; }
-.msg.user .reflect-handles {
-  left: auto;
-  right: -44px;
-}
-.reflect-handles button {
-  width: 30px; height: 30px;
-  display: grid; place-items: center;
-  border-radius: 7px;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  color: var(--ink-3);
-  font-size: 12px;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
-}
-.reflect-handles button:hover { border-color: var(--lilac); color: var(--lilac); background: white; }
-.reflect-handles button.delete:hover { border-color: #e35d4d; color: #e35d4d; }
-
-.merge-handle {
-  display: flex;
-  justify-content: center;
-  margin: -10px 0;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.stream.reflecting .merge-handle { opacity: 1; }
-.merge-handle button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--lilac);
-  background: white;
-  border: 1px dashed var(--lilac);
-  padding: 3px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.merge-handle button:hover { background: var(--lilac); color: white; }
-
 /* ====== Shortcuts cheatsheet ====== */
 .shortcut-card {
   display: flex;
@@ -2256,7 +2183,6 @@ a { color: inherit; text-decoration: none; }
 /* Reflect mode banner: keep lilac legible on dark. */
 [data-theme="dark"] .reflect-banner { background: var(--lilac); color: #0e0a14; }
 [data-theme="dark"] .reflect-banner .rb-actions button.exit { color: var(--lilac); }
-[data-theme="dark"] .msg.reflecting .m-body[contenteditable="true"] { background: var(--bg-2); }
 
 /* Selection popup: in light it's dark ink-on-cream; in dark we keep the
    same inverted feel by flipping. */

@@ -58,7 +58,19 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
 
   const [settingsOpen,     setSettingsOpen]     = useState(false);
   const [reflectionsMode,  setReflectionsMode]  = useState(false);
+  const [collapseConfirm,  setCollapseConfirm]  = useState(false);
   const streamRef = useRef<HTMLDivElement | null>(null);
+
+  // Live count of messages on the current node — drives the Collapse-to-one
+  // button's disabled state + the "Collapse N messages…" confirm label. We
+  // only need a count so we just read .length off the cached array.
+  const currentNodeMessages = useLiveQuery(
+    () => currentNodeId
+      ? db.messages.where("nodeId").equals(currentNodeId).count()
+      : Promise.resolve(0),
+    [currentNodeId],
+    0,
+  );
 
   // Clear the prefill after first apply so navigating between nodes inside
   // this chat doesn't keep re-applying it.
@@ -189,6 +201,120 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     });
   }, [chat, chatId, currentNodeId]);
 
+  // ── Collapse-to-one ────────────────────────────────────────────────────
+  // Concatenate every message on the current node into a single user-role
+  // message with markdown role headers, then delete the originals. One
+  // Dexie transaction so live-queries see a single committed swap.
+  const handleCollapseToOne = useCallback(async (): Promise<void> => {
+    if (!chat || !currentNodeId) return;
+    const msgs = await db.messages
+      .where("nodeId").equals(currentNodeId)
+      .sortBy("createdAt");
+    if (msgs.length < 2) return;   // nothing to collapse
+
+    const blocks = msgs.map(m => {
+      const header = m.role === "user" ? "## You" : "## Assistant";
+      return `${header}\n\n${m.content}`;
+    });
+    const merged = blocks.join("\n\n---\n\n");
+
+    // Preserve every referenced file id across the collapsed message so any
+    // attachments stay reachable from chips on the new user message.
+    const allFileIds = msgs.flatMap(m => m.fileIds ?? []);
+    const dedupedFiles = allFileIds.length > 0
+      ? Array.from(new Set(allFileIds))
+      : undefined;
+
+    const first = msgs[0]!;
+    const newMsg: DbMessage = {
+      _id:       newId(),
+      nodeId:    currentNodeId,
+      chatId,
+      role:      "user",
+      content:   merged,
+      // sort first; matching firstMessage.createdAt is fine since we wipe
+      // the rest in the same transaction.
+      createdAt: first.createdAt,
+      ...(dedupedFiles !== undefined ? { fileIds: dedupedFiles } : {}),
+    };
+
+    await db.transaction("rw", db.messages, async () => {
+      await db.messages.bulkDelete(msgs.map(m => m._id));
+      await db.messages.add(newMsg);
+    });
+  }, [chat, chatId, currentNodeId]);
+
+  // Auto-revert the inline collapse-confirm after 4s — same pattern as
+  // Message.tsx's delete-confirm pill so the UI never lingers.
+  useEffect(() => {
+    if (!collapseConfirm) return undefined;
+    const t = setTimeout(() => setCollapseConfirm(false), 4000);
+    return () => clearTimeout(t);
+  }, [collapseConfirm]);
+
+  // Exiting reflections mode always clears any pending confirm.
+  useEffect(() => {
+    if (!reflectionsMode) setCollapseConfirm(false);
+  }, [reflectionsMode]);
+
+  // Build the banner-slot element. `disabled` when there's nothing to merge.
+  // Clicking the button swaps the action row for an inline confirm (matching
+  // the delete-confirm pattern in Message.tsx).
+  const collapseDisabled = (currentNodeMessages ?? 0) < 2;
+  const collapseAction = collapseConfirm ? (
+    <span
+      className="rb-collapse-confirm"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "5px 12px",
+        borderRadius: 7,
+        background: "color-mix(in oklab, white 14%, transparent)",
+        fontSize: 12,
+        color: "white",
+      }}
+    >
+      <span>Collapse {currentNodeMessages ?? 0} messages into one?</span>
+      <button
+        onClick={() => { void handleCollapseToOne(); setCollapseConfirm(false); }}
+        style={{
+          padding: "2px 8px",
+          borderRadius: 5,
+          background: "white",
+          color: "var(--lilac)",
+          fontWeight: 600,
+        }}
+      >
+        yes
+      </button>
+      <button
+        onClick={() => setCollapseConfirm(false)}
+        style={{
+          padding: "2px 8px",
+          borderRadius: 5,
+          background: "transparent",
+          color: "white",
+          border: "1px solid color-mix(in oklab, white 40%, transparent)",
+        }}
+      >
+        cancel
+      </button>
+    </span>
+  ) : (
+    <button
+      type="button"
+      onClick={() => setCollapseConfirm(true)}
+      disabled={collapseDisabled}
+      title={collapseDisabled
+        ? "Need at least 2 messages on this node to collapse"
+        : "Concatenate every message on this node into one user message"}
+      style={collapseDisabled ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+    >
+      Collapse to one
+    </button>
+  );
+
   if (!chat) {
     // Caller (Chat page) is responsible for the "not found" empty state,
     // but if we hit a transient loading state, render a minimal shell.
@@ -233,6 +359,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           reflectionsMode={reflectionsMode}
           onExitReflections={() => setReflectionsMode(false)}
           onSaveReflection={() => void handleSaveReflection()}
+          collapseAction={collapseAction}
         />
 
         <div className="composer-wrap">
