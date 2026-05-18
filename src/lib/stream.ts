@@ -41,9 +41,13 @@ export async function streamMessage(params: StreamParams): Promise<void> {
           {
             role: "system",
             content:
-              "You are a helpful assistant in cogninode, a tree-shaped AI chat. " +
-              "The user is working in a branch of a larger conversation. " +
-              "Be precise and concise. Avoid preamble.",
+              "You are a helpful, expert AI assistant. Answer the user's " +
+              "request directly and substantively — do not ask the user to " +
+              "restate or clarify their question unless it is genuinely " +
+              "ambiguous; make reasonable assumptions and proceed. Use " +
+              "markdown formatting (headings, lists, tables, fenced code " +
+              "blocks) when it improves clarity. Be thorough when the " +
+              "question is broad and concise when it is narrow.",
           },
           ...params.messages,
         ],
