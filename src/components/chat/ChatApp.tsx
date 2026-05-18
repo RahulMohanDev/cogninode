@@ -2,12 +2,16 @@
 // The chat shell: sidebar + stream + composer + overlays/settings. Owns the
 // streaming hook so both Stream (for the tail) and Composer (for state)
 // can share it. Drives branching from selection + per-message actions.
+//
+// Also owns the `reflectionsMode` flag (⌃R) and the "save as reflection"
+// snapshot action — see spec section 11.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveQuery }        from "dexie-react-hooks";
-import { db, createBranch, type Message as DbMessage } from "../../lib/db";
+import { db, createBranch, newId, type Message as DbMessage } from "../../lib/db";
 import { useStream }           from "../../hooks/useStream";
 import { useSettings }         from "../../hooks/useSettings";
+import { findPath }            from "../../lib/path";
 import { Sidebar }             from "./Sidebar";
 import { Stream }              from "./Stream";
 import { Composer }            from "./Composer";
@@ -35,7 +39,8 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
   // Initial prefill applied once via Composer's `initialText` prop.
   const [prefill, setPrefill] = useState<string | null>(initialPrefill);
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen,     setSettingsOpen]     = useState(false);
+  const [reflectionsMode,  setReflectionsMode]  = useState(false);
   const streamRef = useRef<HTMLDivElement | null>(null);
 
   // Clear the prefill after first apply so navigating between nodes inside
@@ -48,6 +53,31 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     }
     return undefined;
   }, [prefill, chat]);
+
+  // ⌃R / ⌘R — toggle reflections mode. Guard against firing while the user
+  // is typing in an input / textarea / contenteditable (same pattern as
+  // Overlays.tsx). Browser's default for ⌘R is "reload page" so we always
+  // preventDefault when our modifier+key combo fires outside a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl) return;
+      if (e.key !== "r" && e.key !== "R") return;
+
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (
+        t.tagName === "INPUT" ||
+        t.tagName === "TEXTAREA" ||
+        t.isContentEditable
+      );
+      if (inField) return;
+
+      e.preventDefault();
+      setReflectionsMode(v => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleBranchFromSelection = async (text: string): Promise<void> => {
     if (!chat) return;
@@ -81,6 +111,43 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
   const handleBranchFromMessage = async (_msg: DbMessage, maybeQuote?: string): Promise<void> => {
     await handleBranchFromSelection(maybeQuote ?? "Branch");
   };
+
+  // Snapshot the current node's distilled path into the reflections table.
+  // Body is the messages along root → currentNodeId concatenated as markdown;
+  // title is derived from the current node's label (falling back to chat title).
+  const handleSaveReflection = useCallback(async (): Promise<void> => {
+    if (!chat) return;
+    const allNodes = await db.nodes.where("chatId").equals(chatId).toArray();
+    const ids = findPath(allNodes, currentNodeId);
+    if (ids.length === 0) return;
+    const nodeMap = new Map(allNodes.map(n => [n._id, n]));
+    const currentNode = nodeMap.get(currentNodeId);
+
+    // Collect messages along the path in order.
+    const sections: string[] = [];
+    for (const nid of ids) {
+      const msgs = await db.messages.where("nodeId").equals(nid).sortBy("createdAt");
+      for (const m of msgs) {
+        const speaker = m.role === "user" ? "**You**" : "**Assistant**";
+        sections.push(`${speaker}\n\n${m.content}`);
+      }
+    }
+    const body = sections.join("\n\n---\n\n");
+    const rawTitle =
+      (currentNode?.label && currentNode.label.trim()) ||
+      chat.title ||
+      "Reflection";
+    const title = rawTitle.length > 80 ? rawTitle.slice(0, 80) + "…" : rawTitle;
+
+    await db.reflections.put({
+      _id:       newId(),
+      chatId,
+      nodeId:    currentNodeId,
+      title,
+      body,
+      updatedAt: Date.now(),
+    });
+  }, [chat, chatId, currentNodeId]);
 
   if (!chat) {
     // Caller (Chat page) is responsible for the "not found" empty state,
@@ -116,6 +183,9 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           streamingText={streamingText}
           {...(streamError !== null ? { streamError } : {})}
           onBranchFromMessage={(msg, q) => void handleBranchFromMessage(msg, q)}
+          reflectionsMode={reflectionsMode}
+          onExitReflections={() => setReflectionsMode(false)}
+          onSaveReflection={() => void handleSaveReflection()}
         />
 
         <div className="composer-wrap">
@@ -133,10 +203,12 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
         </div>
       </div>
 
-      <SelectionPopup
-        streamRef={streamRef}
-        onBranch={(text) => void handleBranchFromSelection(text)}
-      />
+      {!reflectionsMode && (
+        <SelectionPopup
+          streamRef={streamRef}
+          onBranch={(text) => void handleBranchFromSelection(text)}
+        />
+      )}
 
       <Overlays chatId={chatId} currentNodeId={currentNodeId} />
 

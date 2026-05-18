@@ -2688,3 +2688,112 @@ a { color: inherit; text-decoration: none; }
 .qj-overlay.sm-overlay {
   align-items: flex-start;
 }
+
+/* ── reflections mode ────────────────────── */
+/* Banner — sticky at top of stream when reflections mode is on. Designed
+   to feel like a calm mode chip rather than an alert: lilac, single line
+   tagline + actions. See design/app-beta/chat-app.jsx ReflectBanner. */
+.reflect-banner {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 22px;
+  background: var(--lilac);
+  color: white;
+  font-size: 13px;
+  border-bottom: 1px solid color-mix(in oklab, var(--lilac) 60%, black);
+}
+.reflect-banner .rb-icon { width: 20px; height: 20px; flex: none; }
+.reflect-banner .rb-title { font-weight: 500; }
+.reflect-banner .rb-sub {
+  opacity: 0.78;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.reflect-banner .rb-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.reflect-banner .rb-actions button {
+  padding: 5px 12px;
+  border-radius: 7px;
+  background: color-mix(in oklab, white 14%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  border: 1px solid color-mix(in oklab, white 18%, transparent);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.reflect-banner .rb-actions button:hover {
+  background: color-mix(in oklab, white 22%, transparent);
+}
+.reflect-banner .rb-actions button.exit {
+  background: white;
+  color: var(--lilac);
+  border-color: white;
+}
+.reflect-banner .rb-actions button.exit:hover {
+  background: color-mix(in oklab, white 90%, var(--lilac));
+}
+[data-theme="dark"] .reflect-banner {
+  background: var(--lilac);
+  color: #0e0a14;
+  border-bottom-color: color-mix(in oklab, var(--lilac) 60%, black);
+}
+[data-theme="dark"] .reflect-banner .rb-actions button {
+  background: color-mix(in oklab, #0e0a14 14%, transparent);
+  color: #0e0a14;
+  border-color: color-mix(in oklab, #0e0a14 22%, transparent);
+}
+[data-theme="dark"] .reflect-banner .rb-actions button.exit {
+  background: #0e0a14;
+  color: var(--lilac);
+  border-color: #0e0a14;
+}
+
+/* Side handles — delete (and optional merge) appear next to every message
+   while reflections mode is on. Always visible, not hover-gated, per spec. */
+.reflect-handles {
+  position: absolute;
+  left: -44px;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+.msg.user .reflect-handles {
+  left: auto;
+  right: -44px;
+}
+.reflect-handles button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.reflect-handles button:hover {
+  border-color: var(--lilac);
+  color: var(--lilac);
+  background: var(--bg);
+}
+.reflect-handles button.delete:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+/* Subtle outline cue on the message envelope itself while reflecting. */
+.msg.reflecting .m-body { transition: outline-color 0.12s; }
+
