@@ -51,9 +51,16 @@ export async function streamMessage(params: StreamParams): Promise<void> {
           },
           ...params.messages,
         ],
-        stream:         true,
-        stream_options: { include_usage: true },
-        max_tokens:     4096,
+        stream:             true,
+        stream_options:     { include_usage: true },
+        // Reasoning models (DeepSeek R1, Tencent HY3, o1-style, etc) emit
+        // their chain-of-thought into delta.reasoning. Without this opt-in,
+        // some providers swallow it and the user sees an empty assistant
+        // reply that still cost tokens.
+        include_reasoning:  true,
+        // 4096 used to be the cap — way too low for reasoning models that
+        // can spend the entire budget thinking before any "answer" token.
+        max_tokens:         16384,
       }),
       signal: params.signal ?? null,
     });
@@ -86,6 +93,29 @@ export async function streamMessage(params: StreamParams): Promise<void> {
 
   let inputTokens  = 0;
   let outputTokens = 0;
+  let finishReason: string | null = null;
+  // Track whether the current run of chunks is "reasoning" vs "content" so
+  // we can wrap the reasoning portion in a markdown blockquote on the way
+  // through. Once content begins, we drop out of the blockquote.
+  let inReasoning = false;
+
+  const emitReasoning = (text: string): void => {
+    if (!inReasoning) {
+      params.onChunk("> _Thinking…_\n> ");
+      inReasoning = true;
+    }
+    // Keep the blockquote contiguous: every newline becomes "\n> ".
+    params.onChunk(text.replace(/\n/g, "\n> "));
+  };
+
+  const emitContent = (text: string): void => {
+    if (inReasoning) {
+      // Close the blockquote with a blank line so the answer starts fresh.
+      params.onChunk("\n\n");
+      inReasoning = false;
+    }
+    params.onChunk(text);
+  };
 
   const parser = createParser({
     onEvent: (event: EventSourceMessage) => {
@@ -93,11 +123,30 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       if (!raw || raw === "[DONE]") return;
       try {
         const parsed = JSON.parse(raw) as {
-          choices?: Array<{ delta?: { content?: string } }>;
-          usage?:   { prompt_tokens?: number; completion_tokens?: number };
+          choices?: Array<{
+            delta?: {
+              content?:           string | null;
+              reasoning?:         string | null;
+              reasoning_content?: string | null;
+            };
+            finish_reason?: string | null;
+          }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
         };
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) params.onChunk(delta);
+        const choice = parsed.choices?.[0];
+        const delta  = choice?.delta;
+        if (delta) {
+          // OpenRouter normalizes reasoning to `reasoning`; some upstream
+          // providers leak the original `reasoning_content`. Handle both.
+          const reasoning = delta.reasoning ?? delta.reasoning_content;
+          if (typeof reasoning === "string" && reasoning) {
+            emitReasoning(reasoning);
+          }
+          if (typeof delta.content === "string" && delta.content) {
+            emitContent(delta.content);
+          }
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
         if (parsed.usage) {
           inputTokens  = parsed.usage.prompt_tokens     ?? inputTokens;
           outputTokens = parsed.usage.completion_tokens ?? outputTokens;
@@ -129,6 +178,15 @@ export async function streamMessage(params: StreamParams): Promise<void> {
     // onDone — otherwise the last token can be lost.
     const tail = decoder.decode();
     if (tail) parser.feed(tail);
+
+    // If the model burned the entire output budget and never finished its
+    // answer, tell the user instead of leaving them confused by a half-
+    // sentence (or empty) reply.
+    if (finishReason === "length") {
+      params.onChunk(
+        "\n\n_(response hit max-tokens limit — bump the cap in src/lib/stream.ts if you need longer answers)_",
+      );
+    }
 
     params.onDone({
       inputTokens,
