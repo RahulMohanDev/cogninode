@@ -35,7 +35,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const { apiKey, clearApiKey, prefs, setPref } = useSettings();
+  const { apiKey, clearApiKey, prefs, setPref, setTheme } = useSettings();
 
   if (!open) return null;
 
@@ -75,6 +75,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <BranchModeSection
             value={prefs.branchMode}
             onChange={v => setPref("branchMode", v)}
+          />
+
+          <ThemeSection
+            value={prefs.theme}
+            onChange={mode => setTheme(mode)}
           />
 
           <CustomModelsSection
@@ -248,6 +253,53 @@ function BranchModeSection({
           name="branchMode"
           checked={value === "stay"}
           onChange={() => onChange("stay")}
+          style={{ accentColor: "var(--coral)" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Section 3b: Theme ────────────────────────────────────────────────────────
+
+function ThemeSection({
+  value,
+  onChange,
+}: {
+  value:    "light" | "dark";
+  onChange: (v: "light" | "dark") => void;
+}) {
+  return (
+    <div className="sm-section">
+      <div className="sm-section-h">
+        <h3>Theme</h3>
+        <p>Reading-by-lamplight dark, or warm cream light.</p>
+      </div>
+
+      <div className="card-row sm-card-row">
+        <div>
+          <div className="cr-title">Light</div>
+          <div className="cr-sub">Warm cream surfaces with espresso ink.</div>
+        </div>
+        <input
+          type="radio"
+          name="theme"
+          checked={value === "light"}
+          onChange={() => onChange("light")}
+          style={{ accentColor: "var(--coral)" }}
+        />
+      </div>
+
+      <div className="card-row sm-card-row">
+        <div>
+          <div className="cr-title">Dark</div>
+          <div className="cr-sub">Low-glare ink with cream type. Default.</div>
+        </div>
+        <input
+          type="radio"
+          name="theme"
+          checked={value === "dark"}
+          onChange={() => onChange("dark")}
           style={{ accentColor: "var(--coral)" }}
         />
       </div>

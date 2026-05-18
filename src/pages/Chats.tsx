@@ -2,11 +2,11 @@
 // "Grove" landing page: lists all chats as cards with a tiny tree thumb,
 // plus a starter-chip row that creates a chat seeded with a prompt.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { db, createChat, type Chat, type Node } from "../lib/db";
+import { db, createChat, deleteChat, type Chat, type Node } from "../lib/db";
 import { formatCost } from "../lib/cost";
 import { buildTree, layoutTree } from "../lib/path";
 import { Sidebar } from "../components/chat/Sidebar";
@@ -152,9 +152,40 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
     0,
   );
 
+  // Inline-confirm delete: a small trash icon shows on hover; clicking it
+  // arms a pill that auto-reverts after 4s. No window.confirm.
+  const [confirming, setConfirming] = useState(false);
+  const revertRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (revertRef.current !== null) window.clearTimeout(revertRef.current);
+    };
+  }, []);
+
+  const arm = (): void => {
+    setConfirming(true);
+    if (revertRef.current !== null) window.clearTimeout(revertRef.current);
+    revertRef.current = window.setTimeout(() => {
+      setConfirming(false);
+      revertRef.current = null;
+    }, 4000);
+  };
+
+  const cancel = (): void => {
+    if (revertRef.current !== null) window.clearTimeout(revertRef.current);
+    revertRef.current = null;
+    setConfirming(false);
+  };
+
+  const doDelete = async (): Promise<void> => {
+    cancel();
+    await deleteChat(chat._id);
+  };
+
   return (
     <div
-      className="chat-card"
+      className="chat-card has-delete"
       onClick={onOpen}
       role="button"
       tabIndex={0}
@@ -165,6 +196,19 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
         }
       }}
     >
+      <button
+        className="cc-del"
+        title="Delete chat"
+        aria-label="Delete chat"
+        onClick={(e) => { e.stopPropagation(); arm(); }}
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3 4 H13 M6 4 V3 a1 1 0 0 1 1 -1 h2 a1 1 0 0 1 1 1 V4 M5 4 v9 a1 1 0 0 0 1 1 h4 a1 1 0 0 0 1 -1 V4"
+                stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M7 7 V11 M9 7 V11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+      </button>
+
       <div className="cc-title">{chat.title}</div>
       <div className="cc-meta">
         <span>{formatCreated(chat.createdAt)}</span>
@@ -182,6 +226,18 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
       <div className="cc-tree">
         <MiniTreeThumb chatId={chat._id} />
       </div>
+
+      {confirming && (
+        <div
+          className="cc-confirm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="cp-label">Delete this chat?</span>
+          <button className="cp-yes" onClick={() => { void doDelete(); }}>yes</button>
+          <span className="cp-sep">·</span>
+          <button className="cp-no" onClick={cancel}>cancel</button>
+        </div>
+      )}
     </div>
   );
 }

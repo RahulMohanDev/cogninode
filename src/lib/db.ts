@@ -183,3 +183,203 @@ export async function buildPathMessages(
 
   return result;
 }
+
+// ── Cascade-delete helpers ─────────────────────────────────────
+// These helpers preserve referential integrity by collecting the full set
+// of node ids being removed up front, then deleting messages / reflections
+// keyed by those ids in one rw transaction. Files are only purged when
+// they're not referenced by any surviving message — uploads can be
+// re-attached across branches and we don't want to orphan a still-used
+// blob.
+
+/** Collect a node and all its descendants in a chat into an id set. */
+function collectSubtreeIds(nodes: Node[], rootId: string): Set<string> {
+  const childrenByParent = new Map<string, string[]>();
+  for (const n of nodes) {
+    if (n.parentId === null) continue;
+    const arr = childrenByParent.get(n.parentId) ?? [];
+    arr.push(n._id);
+    childrenByParent.set(n.parentId, arr);
+  }
+  const out = new Set<string>();
+  const walk = (id: string): void => {
+    if (out.has(id)) return;
+    out.add(id);
+    const kids = childrenByParent.get(id) ?? [];
+    for (const k of kids) walk(k);
+  };
+  walk(rootId);
+  return out;
+}
+
+export interface DeleteSubtreeResult {
+  nodesDeleted:    number;
+  messagesDeleted: number;
+  reflectionsDeleted: number;
+  filesDeleted:    number;
+  /** The parent node of the deleted subtree, or null when the root was deleted. */
+  parentNodeId:    string | null;
+}
+
+/**
+ * Recursively delete `nodeId` and all of its descendants in `chatId`.
+ * Removes all messages, reflections, and orphaned files in one transaction.
+ * If the chat's `currentNodeId` lived inside the deleted subtree, the chat
+ * is repointed to the parent of `nodeId` (or its root, if parent is null).
+ * Does NOT delete the chat itself even when called on the root — callers
+ * that want "delete whole chat" semantics should use `deleteChat`.
+ */
+export async function deleteNodeSubtree(
+  chatId: string,
+  nodeId: string,
+): Promise<DeleteSubtreeResult> {
+  return db.transaction(
+    "rw",
+    [db.chats, db.nodes, db.messages, db.reflections, db.files],
+    async () => {
+      const chat = await db.chats.get(chatId);
+      if (!chat) {
+        return {
+          nodesDeleted: 0, messagesDeleted: 0,
+          reflectionsDeleted: 0, filesDeleted: 0, parentNodeId: null,
+        };
+      }
+      const target = await db.nodes.get(nodeId);
+      if (!target || target.chatId !== chatId) {
+        return {
+          nodesDeleted: 0, messagesDeleted: 0,
+          reflectionsDeleted: 0, filesDeleted: 0, parentNodeId: null,
+        };
+      }
+
+      const allNodes = await db.nodes.where("chatId").equals(chatId).toArray();
+      const doomedIds = collectSubtreeIds(allNodes, nodeId);
+      const doomedArr = [...doomedIds];
+
+      // Collect file ids that *would* be orphaned by removing these messages.
+      const doomedMessages = await db.messages
+        .where("nodeId").anyOf(doomedArr)
+        .toArray();
+      const candidateFileIds = new Set<string>();
+      for (const m of doomedMessages) {
+        if (m.fileIds) for (const f of m.fileIds) candidateFileIds.add(f);
+      }
+
+      // Survivors: messages in this chat whose node is NOT in the doomed set,
+      // plus all messages in OTHER chats (cross-chat file reuse via import is
+      // possible). We only need to know which files they reference.
+      const stillUsedFileIds = new Set<string>();
+      if (candidateFileIds.size > 0) {
+        const allMsgs = await db.messages.toArray();
+        for (const m of allMsgs) {
+          if (m.chatId === chatId && doomedIds.has(m.nodeId)) continue;
+          if (!m.fileIds) continue;
+          for (const f of m.fileIds) {
+            if (candidateFileIds.has(f)) stillUsedFileIds.add(f);
+          }
+        }
+      }
+      const orphanFileIds = [...candidateFileIds].filter(f => !stillUsedFileIds.has(f));
+
+      // Reflections by node id.
+      const doomedReflections = await db.reflections
+        .where("nodeId").anyOf(doomedArr)
+        .toArray();
+
+      await db.messages.where("nodeId").anyOf(doomedArr).delete();
+      await db.reflections.where("nodeId").anyOf(doomedArr).delete();
+      await db.nodes.bulkDelete(doomedArr);
+      if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
+
+      // Repoint currentNodeId if it was inside the deleted subtree.
+      const parentNodeId: string | null = target.parentId;
+      if (doomedIds.has(chat.currentNodeId)) {
+        const repoint = parentNodeId ?? chat.rootNodeId;
+        // If we also deleted the root (shouldn't happen via this helper —
+        // deleteChat handles that — but defensively check), fall back to
+        // any surviving node.
+        if (doomedIds.has(repoint)) {
+          const survivor = allNodes.find(n => !doomedIds.has(n._id));
+          if (survivor) {
+            await db.chats.update(chatId, {
+              currentNodeId: survivor._id,
+              updatedAt:     Date.now(),
+            });
+          }
+        } else {
+          await db.chats.update(chatId, {
+            currentNodeId: repoint,
+            updatedAt:     Date.now(),
+          });
+        }
+      } else {
+        await db.chats.update(chatId, { updatedAt: Date.now() });
+      }
+
+      return {
+        nodesDeleted:       doomedArr.length,
+        messagesDeleted:    doomedMessages.length,
+        reflectionsDeleted: doomedReflections.length,
+        filesDeleted:       orphanFileIds.length,
+        parentNodeId,
+      };
+    },
+  );
+}
+
+export interface DeleteChatResult {
+  nodesDeleted:    number;
+  messagesDeleted: number;
+  reflectionsDeleted: number;
+  filesDeleted:    number;
+}
+
+/**
+ * Delete an entire chat: its row, every node, every message, every
+ * reflection, and any files orphaned by the removal. Single transaction.
+ */
+export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
+  return db.transaction(
+    "rw",
+    [db.chats, db.nodes, db.messages, db.reflections, db.files],
+    async () => {
+      const chat = await db.chats.get(chatId);
+      if (!chat) {
+        return { nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0, filesDeleted: 0 };
+      }
+
+      const nodes = await db.nodes.where("chatId").equals(chatId).toArray();
+      const messages = await db.messages.where("chatId").equals(chatId).toArray();
+      const reflections = await db.reflections.where("chatId").equals(chatId).toArray();
+
+      const candidateFileIds = new Set<string>();
+      for (const m of messages) {
+        if (m.fileIds) for (const f of m.fileIds) candidateFileIds.add(f);
+      }
+      const stillUsedFileIds = new Set<string>();
+      if (candidateFileIds.size > 0) {
+        const otherMsgs = await db.messages.where("chatId").notEqual(chatId).toArray();
+        for (const m of otherMsgs) {
+          if (!m.fileIds) continue;
+          for (const f of m.fileIds) {
+            if (candidateFileIds.has(f)) stillUsedFileIds.add(f);
+          }
+        }
+      }
+      const orphanFileIds = [...candidateFileIds].filter(f => !stillUsedFileIds.has(f));
+
+      await db.messages.where("chatId").equals(chatId).delete();
+      await db.reflections.where("chatId").equals(chatId).delete();
+      await db.nodes.where("chatId").equals(chatId).delete();
+      await db.chats.delete(chatId);
+      if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
+
+      return {
+        nodesDeleted:       nodes.length,
+        messagesDeleted:    messages.length,
+        reflectionsDeleted: reflections.length,
+        filesDeleted:       orphanFileIds.length,
+      };
+    },
+  );
+}
