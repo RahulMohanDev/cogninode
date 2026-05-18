@@ -1,6 +1,12 @@
 // src/lib/files.ts
 import { db, type StoredFile, newId } from "./db";
 
+// Bundle the pdf.js worker as a static asset via Vite's ?url import. This
+// avoids the version-drift footgun of hardcoding a CDN URL — the worker
+// stays in lockstep with the installed pdfjs-dist version, and there's no
+// network round-trip for the worker bootstrap.
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
 export function inferKind(file: File): StoredFile["kind"] {
   if (file.type.startsWith("image/"))           return "image";
   if (file.type === "application/pdf")          return "pdf";
@@ -24,15 +30,18 @@ export async function readFileContent(file: File, kind: StoredFile["kind"]): Pro
   if (kind === "pdf") {
     // Extract text with pdf.js (loaded on demand)
     const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
     const buffer = await file.arrayBuffer();
     const pdf    = await pdfjsLib.getDocument({ data: buffer }).promise;
     const pages: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page    = await pdf.getPage(i);
       const content = await page.getTextContent();
-      pages.push(content.items.map((item: any) => item.str).join(" "));
+      pages.push(
+        content.items
+          .map(item => ("str" in item ? item.str : ""))
+          .join(" "),
+      );
     }
     return pages.join("\n\n");
   }

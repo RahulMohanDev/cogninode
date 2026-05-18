@@ -59,6 +59,8 @@ export function Composer({
   const { prefs }            = useSettings();
   const [text,   setText]    = useState(() => initialText ?? loadDraft(chatId, currentNodeId));
   const [files,  setFiles]   = useState<ProcessedFile[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading,   setUploading]   = useState(false);
   const [modelId, setModelId] = useState<string>(prefs.defaultModelId);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const taRef    = useRef<HTMLTextAreaElement | null>(null);
@@ -97,18 +99,30 @@ export function Composer({
 
   const handleFiles = async (list: FileList | null): Promise<void> => {
     if (!list || list.length === 0) return;
-    for (const file of Array.from(list)) {
-      if (file.type.startsWith("image/") && file.size > 2_000_000) {
-        const ok = window.confirm(`"${file.name}" is ${(file.size / 1_000_000).toFixed(1)} MB. Attach anyway?`);
-        if (!ok) continue;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      for (const file of Array.from(list)) {
+        if (file.type.startsWith("image/") && file.size > 2_000_000) {
+          const ok = window.confirm(`"${file.name}" is ${(file.size / 1_000_000).toFixed(1)} MB. Attach anyway?`);
+          if (!ok) continue;
+        }
+        try {
+          const stored = await storeFile(file);
+          setFiles(prev => [...prev, stored]);
+          if (stored.textToAppend) {
+            setText(prev => prev + stored.textToAppend);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setUploadError(`Couldn't attach "${file.name}": ${msg}`);
+          console.error(`storeFile failed for ${file.name}:`, err);
+        }
       }
-      const stored = await storeFile(file);
-      setFiles(prev => [...prev, stored]);
-      if (stored.textToAppend) {
-        setText(prev => prev + stored.textToAppend);
-      }
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const removeFile = (fileId: string): void => {
@@ -156,7 +170,7 @@ export function Composer({
         </span>
       )}
 
-      {files.length > 0 && (
+      {(files.length > 0 || uploading || uploadError) && (
         <div className="files-row">
           {files.map(f => (
             <span key={f.fileId} className="file-chip">
@@ -171,6 +185,31 @@ export function Composer({
               </button>
             </span>
           ))}
+          {uploading && (
+            <span className="file-chip" style={{ opacity: 0.7 }}>
+              <span className="fc-icon img">…</span>
+              uploading…
+            </span>
+          )}
+          {uploadError && (
+            <span
+              className="file-chip"
+              style={{
+                background: "color-mix(in oklab, var(--coral) 14%, var(--bg-3))",
+                borderColor: "color-mix(in oklab, var(--coral) 40%, var(--line))",
+                color: "var(--coral)",
+              }}
+              title={uploadError}
+            >
+              <span className="fc-icon" style={{ background: "var(--coral)", color: "white" }}>!</span>
+              {uploadError}
+              <button className="fc-x" onClick={() => setUploadError(null)} title="Dismiss">
+                <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </span>
+          )}
         </div>
       )}
 
