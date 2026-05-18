@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cogninode — billing & credits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+<script>
+  // Apply persisted theme BEFORE first paint to avoid a flash.
+  // Default to 'dark' on first visit so the new theme is visible;
+  // user choice (light/dark) is then persisted in localStorage.
+  (function () {
+    try {
+      var saved = localStorage.getItem('cogninode_theme');
+      var theme = saved || 'dark';
+      if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel">
+const { Sidebar, ThemeToggle, ME, MODELS, PLANS, TOPUPS, calculateCredits, initStore, fmt } = window;
+
+const USAGE_BY_MODEL = [
+  { id: "flash",  credits: 86, messages: 43 },
+  { id: "dsv3",   credits: 52, messages: 26 },
+  { id: "4omini", credits: 39, messages: 13 },
+  { id: "dsr1",   credits: 28, messages:  7 },
+  { id: "llama",  credits: 19, messages: 19 },
+];
+
+const INVOICES = [
+  { date: "May  1, 2026", desc: "Sapling · monthly",     amount: "₹149.00", status: "paid" },
+  { date: "Apr  1, 2026", desc: "Sapling · monthly",     amount: "₹149.00", status: "paid" },
+  { date: "Mar  9, 2026", desc: "Top-up · 1000 credits", amount: "₹ 99.00", status: "paid" },
+  { date: "Mar  1, 2026", desc: "Sapling · monthly",     amount: "₹149.00", status: "paid" },
+  { date: "Feb  1, 2026", desc: "Sapling · monthly",     amount: "₹149.00", status: "paid" },
+];
+
+const PlanCard = ({ p }) => {
+  const isCurrent = p.id === ME.plan;
+  return (
+    <div className={`plan-card ${isCurrent ? "current" : ""}`}>
+      {p.badge && <span className="pill">{p.badge}</span>}
+      <div className="plan-name">{p.name}</div>
+      <div className="plan-price">{p.price}<span className="per"> {p.per}</span></div>
+      <div className="plan-credits">{fmt(p.credits)} credits / month</div>
+      <ul>
+        {p.features.map((f, i) => (
+          <li key={i}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8 L7 12 L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {f}
+          </li>
+        ))}
+      </ul>
+      <button className="plan-cta">{isCurrent ? "Current plan" : `Switch to ${p.name}`}</button>
+    </div>
+  );
+};
+
+const TRACK_META = {
+  student:      { label: "Students",                       sublabel: ".edu / .ac.in" },
+  professional: { label: "Developers & knowledge workers", sublabel: "all models, full history" },
+};
+
+const BillingPage = () => {
+  const [store] = React.useState(() => initStore());
+  const [track, setTrack] = React.useState(ME.track || "student");
+  const used = ME.creditsUsed;
+  const total = ME.creditsTotal;
+  const pct = Math.min(100, (used / total) * 100);
+  const remaining = total - used;
+
+  const handleSelectChat = (id) => { window.location.href = `chat.html?id=${id}`; };
+  const handleSelectNode = (cid, nid) => { window.location.href = `chat.html?id=${cid}&node=${nid}`; };
+
+  const activePlans = PLANS[track];
+
+  // For the usage breakdown bar widths
+  const maxUsageCr = Math.max(...USAGE_BY_MODEL.map(x => x.credits));
+
+  return (
+    <div className="shell">
+      <Sidebar
+        store={store}
+        activeChatId={null}
+        onNewChat={() => { window.location.href = "chat.html"; }}
+        onSelectChat={handleSelectChat}
+        onSelectNode={handleSelectNode}
+      />
+      <div className="main">
+        <div className="page">
+          <div className="page-head">
+            <span className="eyebrow"><span className="dot"></span>Billing & credits</span>
+            <h1>Pay for what you <em>think</em>.</h1>
+            <p>1 credit ≈ ₹0.08. We only charge for the path you're standing on — branch to keep messages short.</p>
+          </div>
+
+          <div className="page-body">
+
+            {/* Current usage */}
+            <div className="section" style={{ borderTop: "none", paddingTop: 0 }}>
+              <div style={{
+                background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 18, padding: 28,
+                display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, alignItems: "center",
+              }}>
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-3)", marginBottom: 8 }}>
+                    May 2026 · day 14 of 31
+                  </div>
+                  <div className="usage-stat">
+                    {fmt(remaining)}<span className="small"> credits left</span>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <div className="usage-bar"><span style={{ width: `${pct}%` }}></span></div>
+                    <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-3)" }}>
+                      {fmt(used)} of {fmt(total)} credits used · resets in 17 days
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <button className="btn-primary coral">
+                    Top up credits
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3 V13 M3 8 H13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  </button>
+                  <button className="btn-outline">Manage payment method</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Plans — two-track */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Plans</h2>
+                  <p>Built for India. Pick the track that fits.</p>
+                </div>
+              </div>
+
+              <div className="track-toggle" role="tablist" aria-label="Plan track">
+                {Object.entries(TRACK_META).map(([key, t]) => (
+                  <button
+                    key={key}
+                    role="tab"
+                    aria-selected={track === key}
+                    className={`track-tab ${track === key ? "active" : ""}`}
+                    onClick={() => setTrack(key)}
+                  >
+                    <span className="track-label">{t.label}</span>
+                    <span className="track-sub">{t.sublabel}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="plan-grid two">
+                {activePlans.map(p => <PlanCard key={p.id} p={p}/>)}
+              </div>
+
+              {/* Top-ups */}
+              <div className="topup-card">
+                <div className="topup-head">
+                  <div>
+                    <div className="topup-title">One-time top-ups</div>
+                    <div className="topup-sub">Run out before the month resets? Add credits, no plan change.</div>
+                  </div>
+                </div>
+                <div className="topup-grid">
+                  {TOPUPS.map(t => (
+                    <button key={t.label} className="topup-tile">
+                      <span className="topup-tag">top-up</span>
+                      <span className="topup-price">{t.label}</span>
+                      <span className="topup-credits">{fmt(t.credits)} credits</span>
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 12, fontFamily: "var(--mono)", letterSpacing: "0.04em" }}>
+                  Top-ups cost slightly more per credit than a subscription.
+                </p>
+              </div>
+            </div>
+
+            {/* Credit rates */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>What does a credit cost?</h2>
+                  <p>Each row shows the credit cost of a standard 1,200 in + 600 out message.</p>
+                </div>
+              </div>
+              <div style={{
+                background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 14,
+                padding: 6, display: "grid", gap: 2,
+              }}>
+                {MODELS.map(m => (
+                  <div key={m.id} style={{
+                    display: "grid", gridTemplateColumns: "auto 1fr auto auto", alignItems: "center",
+                    gap: 14, padding: "12px 14px", background: "var(--bg-3)", borderRadius: 10,
+                  }}>
+                    <span style={{
+                      width: 30, height: 30, borderRadius: "50%", background: m.color, color: "white",
+                      display: "grid", placeItems: "center", fontFamily: "var(--mono)", fontWeight: 700, fontSize: 11, letterSpacing: "-0.04em",
+                    }}>{m.initials}</span>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{m.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-3)", fontFamily: "var(--mono)", letterSpacing: "0.02em" }}>
+                        {m.vendor.toLowerCase()} · {m.tag} · tier {m.tier}
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-3)" }}>
+                      per message
+                    </div>
+                    <div style={{
+                      fontFamily: "var(--display)", fontWeight: 600, fontSize: 22,
+                      letterSpacing: "-0.02em", color: "var(--ink)",
+                      display: "flex", alignItems: "baseline", gap: 6,
+                    }}>
+                      {calculateCredits(1200, 600, m)} <span style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500, fontFamily: "var(--mono)" }}>cr at 1,200+600 tok</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 14, lineHeight: 1.6 }}>
+                1 credit ≈ ₹0.08. Every message is charged based on the exact tokens used: your message length
+                + the path you're standing on + the model's output. Shorter paths cost fewer credits —
+                branching resets your path and immediately lowers the cost of your next message.
+              </p>
+            </div>
+
+            {/* Usage breakdown */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>This month's usage</h2>
+                  <p>By model.</p>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {USAGE_BY_MODEL.map(u => {
+                  const m = MODELS.find(x => x.id === u.id);
+                  if (!m) return null;
+                  const barPct = (u.credits / maxUsageCr) * 100;
+                  return (
+                    <div key={u.id} style={{ display: "grid", gridTemplateColumns: "200px 1fr 110px", alignItems: "center", gap: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{
+                          width: 22, height: 22, borderRadius: "50%", background: m.color, color: "white",
+                          display: "grid", placeItems: "center", fontFamily: "var(--mono)", fontWeight: 700, fontSize: 9, letterSpacing: "-0.04em",
+                        }}>{m.initials}</span>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
+                      </div>
+                      <div style={{ height: 10, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${barPct}%`, background: m.color, borderRadius: 999 }}></div>
+                      </div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-2)", textAlign: "right" }}>
+                        {fmt(u.credits)} cr · {u.messages} msg
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Invoices */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Invoices</h2>
+                  <p>Download for your records.</p>
+                </div>
+              </div>
+              <div>
+                {INVOICES.map((inv, i) => (
+                  <div key={i} className="invoice-row">
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{inv.desc}</div>
+                      <div className="inv-date">{inv.date}</div>
+                    </div>
+                    <div className="inv-status">{inv.status}</div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--ink)" }}>{inv.amount}</div>
+                    <a href="#">Download</a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<BillingPage/>);
+</script>
+</body>
+</html>

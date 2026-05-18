@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cogninode beta — connect your key</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('cogninode_theme');
+      if ((saved || 'dark') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  })();
+</script>
+<style>
+  body { overflow: auto; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel">
+const { BigTree, Glyph, ThemeToggle, getApiKey, setApiKey } = window;
+
+const KeyGate = () => {
+  // If a key is already set, jump straight to the chat shell.
+  React.useEffect(() => {
+    if (getApiKey()) window.location.href = "chats.html";
+  }, []);
+
+  const [draft, setDraft] = React.useState("");
+  const [error, setError] = React.useState(null);
+  const [verifying, setVerifying] = React.useState(false);
+
+  const submit = (e) => {
+    e.preventDefault();
+    const k = draft.trim();
+    if (!k) { setError("Paste your OpenRouter key to continue."); return; }
+    if (!k.startsWith("sk-or-")) {
+      setError("OpenRouter keys start with sk-or-. Double-check what you pasted.");
+      return;
+    }
+    setError(null);
+    setVerifying(true);
+    // No real network in the sandbox — accept after a brief pause.
+    setTimeout(() => {
+      setApiKey(k);
+      window.dispatchEvent(new CustomEvent("cogninode:apikey-changed"));
+      window.location.href = "chats.html";
+    }, 600);
+  };
+
+  return (
+    <div className="auth-page key-gate">
+      <ThemeToggle/>
+
+      <div className="auth-side">
+        <a href="https://github.com/" target="_blank" rel="noopener noreferrer" className="auth-brand">
+          <Glyph size={22}/>
+          <span>cogninode <span className="beta-tag">beta</span></span>
+        </a>
+
+        <div className="auth-quote">
+          Think with AI,<br/>
+          <em>not</em> at it.
+        </div>
+        <p className="auth-byline">
+          Open source. Runs locally. Uses your own OpenRouter key —
+          stored in this browser, never sent anywhere except OpenRouter.
+        </p>
+
+        <div className="auth-byline gate-notes">
+          <div className="gate-note">
+            <span className="gate-note-dot" style={{ background: "var(--coral)" }}></span>
+            <span>Every chat is a tree of branched thoughts.</span>
+          </div>
+          <div className="gate-note">
+            <span className="gate-note-dot" style={{ background: "var(--teal)" }}></span>
+            <span>Switch models mid-conversation, see cost per message.</span>
+          </div>
+          <div className="gate-note">
+            <span className="gate-note-dot" style={{ background: "var(--lilac)" }}></span>
+            <span>Reflect any thread into a clean note.</span>
+          </div>
+        </div>
+
+        <div style={{ color: "var(--ink-3)" }} className="auth-tree">
+          <BigTree size={520}/>
+        </div>
+      </div>
+
+      <div className="auth-form">
+        <div className="auth-wrap">
+          <h1>Connect your <em>key.</em></h1>
+          <p className="lead">
+            Paste your OpenRouter API key below. It's stored only in this
+            browser's localStorage — never sent anywhere except OpenRouter.
+          </p>
+
+          <form onSubmit={submit}>
+            <div className="field">
+              <label>OpenRouter API key</label>
+              <input
+                type="password"
+                placeholder="sk-or-v1-..."
+                value={draft}
+                onChange={(e) => { setDraft(e.target.value); setError(null); }}
+                autoComplete="off"
+                spellCheck="false"
+                style={{ fontFamily: "var(--mono)", fontSize: 14 }}
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="gate-error">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M8 5 V9 M8 11 V11.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+                {error}
+              </div>
+            )}
+
+            <button className="btn-primary coral" type="submit" disabled={verifying}>
+              {verifying ? "Verifying…" : (
+                <>
+                  Connect
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 8 H13 M9 4 L13 8 L9 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="tos gate-tos">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ verticalAlign: "-1px", marginRight: 4 }}>
+              <rect x="3" y="7" width="10" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.4"/>
+              <path d="M5.5 7 V5 a2.5 2.5 0 0 1 5 0 V7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+            Stored locally · never leaves your browser · <a href="https://github.com/" target="_blank" rel="noopener noreferrer">open source</a>
+          </div>
+
+          <div className="foot-link">
+            Don't have a key? Get one at{" "}
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
+              openrouter.ai/keys
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ verticalAlign: "-1px", marginLeft: 2 }}>
+                <path d="M5 11 L11 5 M6 5 H11 V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<KeyGate/>);
+</script>
+</body>
+</html>

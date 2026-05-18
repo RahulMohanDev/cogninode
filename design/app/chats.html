@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cogninode — chats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('cogninode_theme');
+      if ((saved || 'dark') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel">
+const { Sidebar, ThemeToggle, MiniTreeThumb, initStore, saveStore, newId, fmt, creditsInChat } = window;
+
+const STARTERS = [
+  { label: "Brainstorm a product name", prompt: "Help me brainstorm names for a new AI-powered ", icon: "💡" },
+  { label: "Explain a concept simply", prompt: "Explain ", icon: "📖" },
+  { label: "Write code", prompt: "Write a ", icon: "⌘" },
+  { label: "Plan a trip", prompt: "Help me plan a trip to ", icon: "✈" },
+];
+
+const newChat = (store, title = "New chat") => {
+  const cid = newId("c");
+  const rid = newId("n");
+  const chat = {
+    id: cid,
+    title,
+    created: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    rootId: rid,
+    currentNodeId: rid,
+    nodes: {
+      [rid]: { id: rid, parentId: null, depth: 0, label: title, messages: [] },
+    },
+  };
+  store.chats[cid] = chat;
+  store.chatOrder = [cid, ...store.chatOrder];
+  saveStore(store);
+  return cid;
+};
+
+const ChatsPage = () => {
+  const [store, setStore] = React.useState(() => initStore());
+  const refresh = () => setStore({ ...store });
+
+  const handleNew = () => {
+    const cid = newChat(store);
+    window.location.href = `chat.html?id=${cid}`;
+  };
+
+  const handleSelectChat = (id) => { window.location.href = `chat.html?id=${id}`; };
+  const handleSelectNode = (cid, nid) => { window.location.href = `chat.html?id=${cid}&node=${nid}`; };
+
+  return (
+    <div className="shell">
+      <Sidebar
+        store={store}
+        activeChatId={null}
+        onNewChat={handleNew}
+        onSelectChat={handleSelectChat}
+        onSelectNode={handleSelectNode}
+      />
+      <div className="main">
+        <div className="page">
+          <div className="page-head">
+            <span className="eyebrow"><span className="dot"></span>All chats</span>
+            <h1>Your <em>grove</em>.</h1>
+            <p>Every chat is a tree of branched thoughts. Pick one to keep growing, or plant a new one.</p>
+          </div>
+
+          <div className="page-body">
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              {STARTERS.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const cid = newChat(store, s.label);
+                    window.location.href = `chat.html?id=${cid}&prefill=${encodeURIComponent(s.prompt)}`;
+                  }}
+                  className="btn-outline"
+                  style={{ fontSize: 13, padding: "9px 14px" }}
+                >
+                  <span style={{ fontSize: 14 }}>{s.icon}</span>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="chats-grid">
+              <div className="chat-card new" onClick={handleNew}>
+                <div className="nc-plus">+</div>
+                <div className="nc-title">New chat</div>
+                <div className="nc-sub">⌃N · start a fresh tree</div>
+              </div>
+
+              {store.chatOrder.map(id => {
+                const c = store.chats[id];
+                const nodeCount = Object.keys(c.nodes).length;
+                const credits = creditsInChat(c);
+                return (
+                  <div key={id} className="chat-card" onClick={() => handleSelectChat(id)}>
+                    <div className="cc-title">{c.title}</div>
+                    <div className="cc-meta">
+                      <span>{c.created}</span>
+                      <span style={{ opacity: 0.3 }}>·</span>
+                      <span>{nodeCount} {nodeCount === 1 ? "branch" : "branches"}</span>
+                      <span style={{ opacity: 0.3 }}>·</span>
+                      <span>{credits} cr</span>
+                    </div>
+                    <div className="cc-tree">
+                      <MiniTreeThumb chat={c}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ChatsPage/>);
+</script>
+</body>
+</html>

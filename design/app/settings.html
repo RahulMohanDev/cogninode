@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cogninode — settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="app.css" />
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('cogninode_theme');
+      if ((saved || 'dark') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel">
+const { Sidebar, ThemeToggle, ModelDot, MODELS, ME, initStore, clearStore, calculateCredits } = window;
+
+const PREF_KEY = "cogninode_prefs";
+const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } };
+const savePrefs = (p) => { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch (e) {} };
+
+const Toggle = ({ on, onChange }) => (
+  <div className={`toggle ${on ? "on" : ""}`} onClick={() => onChange(!on)}></div>
+);
+
+const ShortcutCard = ({ keys, label }) => (
+  <div className="shortcut-card">
+    <span>{label}</span>
+    <span className="keys">
+      {keys.map((k, i) => <kbd key={i}>{k}</kbd>)}
+    </span>
+  </div>
+);
+
+const SettingsPage = () => {
+  const [store] = React.useState(() => initStore());
+  const [prefs, setPrefs] = React.useState(() => ({
+    branchMode: "follow",
+    defaultModel: "flash",
+    enabledModels: { llama: true, flash: true, dsv3: true, "4omini": true, dsr1: true, haiku: true, gpt4o: true, sonnet: true },
+    dense: false,
+    sound: false,
+    autoTitle: true,
+    ...loadPrefs(),
+  }));
+
+  const update = (patch) => {
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    savePrefs(next);
+  };
+  const updateModelToggle = (id, on) => {
+    update({ enabledModels: { ...prefs.enabledModels, [id]: on } });
+  };
+
+  const handleSelectChat = (id) => { window.location.href = `chat.html?id=${id}`; };
+  const handleSelectNode = (cid, nid) => { window.location.href = `chat.html?id=${cid}&node=${nid}`; };
+
+  return (
+    <div className="shell">
+      <Sidebar
+        store={store}
+        activeChatId={null}
+        onNewChat={() => { window.location.href = "chat.html"; }}
+        onSelectChat={handleSelectChat}
+        onSelectNode={handleSelectNode}
+      />
+      <div className="main">
+        <div className="page">
+          <div className="page-head">
+            <span className="eyebrow"><span className="dot"></span>Settings</span>
+            <h1>How <em>you</em> think.</h1>
+            <p>Tune cogninode to your workflow. Everything saves locally as you go.</p>
+          </div>
+
+          <div className="page-body">
+
+            {/* Account */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Account</h2>
+                  <p>The basics.</p>
+                </div>
+              </div>
+              <div className="card-row">
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div className={`avatar ${ME.avatarColor}`} style={{ width: 48, height: 48, fontSize: 18 }}>{ME.initials}</div>
+                  <div>
+                    <div className="cr-title">{ME.name}</div>
+                    <div className="cr-sub">{ME.email}</div>
+                  </div>
+                </div>
+                <button className="btn-outline" style={{ padding: "8px 14px" }}>Edit profile</button>
+              </div>
+              <div className="card-row">
+                <div>
+                  <div className="cr-title">Workspace name</div>
+                  <div className="cr-sub">Shown in the sidebar and on shared trees.</div>
+                </div>
+                <input className="field" style={{ padding: "8px 12px", border: "1px solid var(--line)", borderRadius: 8, width: 200, background: "var(--bg-3)" }} defaultValue="My grove"/>
+              </div>
+            </div>
+
+            {/* Branch behavior */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Branching</h2>
+                  <p>What happens when you select text and branch.</p>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <label
+                  style={{
+                    cursor: "pointer",
+                    padding: 16,
+                    border: `2px solid ${prefs.branchMode === "follow" ? "var(--coral)" : "var(--line)"}`,
+                    borderRadius: 12,
+                    background: prefs.branchMode === "follow" ? "var(--coral-tint)" : "var(--bg-3)",
+                  }}
+                >
+                  <input type="radio" name="bm" checked={prefs.branchMode === "follow"} onChange={() => update({ branchMode: "follow" })} style={{ display: "none" }}/>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--coral)", marginBottom: 6 }}>
+                    Follow ↗
+                  </div>
+                  <div style={{ fontWeight: 500, marginBottom: 4 }}>Open the new branch immediately</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Best for drilling deep — context stays primed, you can always jump back with ⌃Q.</div>
+                </label>
+                <label
+                  style={{
+                    cursor: "pointer",
+                    padding: 16,
+                    border: `2px solid ${prefs.branchMode === "stay" ? "var(--ink)" : "var(--line)"}`,
+                    borderRadius: 12,
+                    background: prefs.branchMode === "stay" ? "var(--bg-2)" : "var(--bg-3)",
+                  }}
+                >
+                  <input type="radio" name="bm" checked={prefs.branchMode === "stay"} onChange={() => update({ branchMode: "stay" })} style={{ display: "none" }}/>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-3)", marginBottom: 6 }}>
+                    Stay here →
+                  </div>
+                  <div style={{ fontWeight: 500, marginBottom: 4 }}>Stay reading, branch in background</div>
+                  <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Best for note-taking — finish reading, open the branch when you're ready.</div>
+                </label>
+              </div>
+            </div>
+
+            {/* Default model */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Default model</h2>
+                  <p>Used for new messages until you change it in the composer.</p>
+                </div>
+              </div>
+              {MODELS.map(m => (
+                <div key={m.id} className="card-row" style={{ alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span className="m-dot" style={{ width: 30, height: 30, borderRadius: "50%", background: m.color, color: "white", display: "grid", placeItems: "center", fontFamily: "var(--mono)", fontWeight: 700, fontSize: 11, letterSpacing: "-0.04em" }}>
+                      {m.initials}
+                    </span>
+                    <div>
+                      <div className="cr-title">{m.name}</div>
+                      <div className="cr-sub">{m.vendor} · {m.tag}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg-2)", padding: "3px 9px", borderRadius: 999, color: "var(--ink-2)" }}>
+                      {calculateCredits(1200, 600, m)} cr / std msg
+                    </span>
+                    <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="radio"
+                        name="dm"
+                        checked={prefs.defaultModel === m.id}
+                        onChange={() => update({ defaultModel: m.id })}
+                        style={{ accentColor: "var(--coral)" }}
+                      />
+                      <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Default</span>
+                    </label>
+                    <Toggle on={!!prefs.enabledModels[m.id]} onChange={(v) => updateModelToggle(m.id, v)}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Behavior */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Behavior</h2>
+                  <p>Little choices that add up.</p>
+                </div>
+              </div>
+              <div className="card-row">
+                <div>
+                  <div className="cr-title">Dense layout</div>
+                  <div className="cr-sub">Tighter spacing in the message list.</div>
+                </div>
+                <Toggle on={prefs.dense} onChange={(v) => update({ dense: v })}/>
+              </div>
+              <div className="card-row">
+                <div>
+                  <div className="cr-title">Sound on send</div>
+                  <div className="cr-sub">A soft click when a message goes out.</div>
+                </div>
+                <Toggle on={prefs.sound} onChange={(v) => update({ sound: v })}/>
+              </div>
+              <div className="card-row">
+                <div>
+                  <div className="cr-title">Auto-name chats</div>
+                  <div className="cr-sub">Set the chat title from your first message.</div>
+                </div>
+                <Toggle on={prefs.autoTitle} onChange={(v) => update({ autoTitle: v })}/>
+              </div>
+            </div>
+
+            {/* Shortcuts */}
+            <div className="section" id="shortcuts">
+              <div className="section-h">
+                <div>
+                  <h2>Keyboard shortcuts</h2>
+                  <p>The basics — full list is one ⌃Q away.</p>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                <ShortcutCard label="Quick-jump to any node" keys={["⌃", "Q"]}/>
+                <ShortcutCard label="Search chats" keys={["⌃", "K"]}/>
+                <ShortcutCard label="New chat" keys={["⌃", "N"]}/>
+                <ShortcutCard label="Branch from selection" keys={["⌃", "B"]}/>
+                <ShortcutCard label="Toggle reflections mode" keys={["⌃", "R"]}/>
+                <ShortcutCard label="Open tree map" keys={["⌃", "T"]}/>
+                <ShortcutCard label="Move up the tree" keys={["⌃", "↑"]}/>
+                <ShortcutCard label="Move down the tree" keys={["⌃", "↓"]}/>
+                <ShortcutCard label="Send message" keys={["↵"]}/>
+                <ShortcutCard label="New line in composer" keys={["⇧", "↵"]}/>
+              </div>
+            </div>
+
+            {/* Danger */}
+            <div className="section">
+              <div className="section-h">
+                <div>
+                  <h2>Data</h2>
+                  <p>Your chats live on your device for this demo.</p>
+                </div>
+              </div>
+              <div className="card-row">
+                <div>
+                  <div className="cr-title">Reset all chats</div>
+                  <div className="cr-sub">Wipe local data and restore the seeded conversations.</div>
+                </div>
+                <button
+                  className="btn-outline"
+                  style={{ padding: "8px 14px", borderColor: "#e35d4d", color: "#e35d4d" }}
+                  onClick={() => {
+                    if (confirm("Reset all local chats to the seeded set?")) {
+                      clearStore();
+                      window.location.reload();
+                    }
+                  }}
+                >Reset</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<SettingsPage/>);
+</script>
+</body>
+</html>
