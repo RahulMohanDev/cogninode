@@ -2944,3 +2944,328 @@ a { color: inherit; text-decoration: none; }
 }
 .composer .new-branch-btn svg { flex: 0 0 auto; }
 
+/* ── markdown + rich editor ───────────── */
+/* Styles for assistant + user message bodies rendered through react-markdown,
+   and for the Tiptap-based rich-text editor that swaps in when a message is
+   being edited (hover pencil OR reflections mode). All colours route through
+   the existing CSS variables so dark mode (data-theme="dark") inherits
+   automatically. */
+
+/* The .md wrapper exists so we can scope a tighter set of rules under it
+   without clobbering the existing .m-body defaults. The body's own .m-body
+   rules above still apply (margins, font size, code background) — these
+   rules layer the missing primitives on top. */
+.m-body .md { display: contents; }
+.m-body .md > :first-child { margin-top: 0; }
+.m-body .md > :last-child  { margin-bottom: 0; }
+
+/* Headings — sized for a chat context (no 2em browser default). The h3 rule
+   above already handles h3 via `.m-body h3`; we override per level here for
+   parity. h1 is intentionally only modestly larger than body text. */
+.m-body .md h1,
+.m-body .md h2,
+.m-body .md h3,
+.m-body .md h4,
+.m-body .md h5,
+.m-body .md h6 {
+  font-family: var(--display, inherit);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--ink);
+  margin: 18px 0 6px;
+}
+.m-body .md h1 { font-size: 22px; }
+.m-body .md h2 { font-size: 19px; }
+.m-body .md h3 { font-size: 17px; }
+.m-body .md h4 { font-size: 15px; color: var(--ink-2); }
+.m-body .md h5 { font-size: 13px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; }
+.m-body .md h6 { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* Lists: ordered list parity with the existing .m-body ul. Nested lists tighten up. */
+.m-body .md ol { margin: 6px 0 10px; padding-left: 24px; }
+.m-body .md li { margin: 3px 0; }
+.m-body .md li > p { margin: 0; }
+.m-body .md ul ul,
+.m-body .md ol ol,
+.m-body .md ul ol,
+.m-body .md ol ul { margin: 2px 0 2px; }
+
+/* GFM task lists — the [x] checkboxes that remark-gfm produces. */
+.m-body .md input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--coral);
+  vertical-align: -1px;
+}
+.m-body .md li.task-list-item { list-style: none; margin-left: -18px; }
+
+/* Blockquote: lilac left rule, slightly muted text. */
+.m-body .md blockquote {
+  margin: 8px 0 12px;
+  padding: 4px 12px;
+  border-left: 3px solid var(--lilac);
+  color: var(--ink-2);
+  background: color-mix(in oklab, var(--lilac) 6%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.m-body .md blockquote > :first-child { margin-top: 0; }
+.m-body .md blockquote > :last-child  { margin-bottom: 0; }
+
+/* Horizontal rule. */
+.m-body .md hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 16px 0;
+}
+
+/* Links — react-markdown's anchor component already sets target=_blank;
+   here we just give them a coral underline to match the design vocabulary. */
+.m-body .md a {
+  color: var(--coral);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.m-body .md a:hover { color: var(--ink); text-decoration-color: var(--ink); }
+
+/* User messages have an inverted (dark) bubble — flip text/link colours so
+   they're readable on top of var(--ink). */
+.msg.user .m-body .md h1,
+.msg.user .m-body .md h2,
+.msg.user .m-body .md h3,
+.msg.user .m-body .md h4 { color: var(--bg); }
+.msg.user .m-body .md h5,
+.msg.user .m-body .md h6 { color: color-mix(in oklab, var(--bg) 80%, transparent); }
+.msg.user .m-body .md blockquote {
+  border-left-color: color-mix(in oklab, var(--bg) 70%, transparent);
+  color: color-mix(in oklab, var(--bg) 80%, transparent);
+  background: color-mix(in oklab, var(--bg) 8%, transparent);
+}
+.msg.user .m-body .md a { color: var(--coral-soft); }
+.msg.user .m-body .md a:hover { color: var(--bg); text-decoration-color: var(--bg); }
+.msg.user .m-body .md hr { border-top-color: color-mix(in oklab, var(--bg) 25%, transparent); }
+
+/* GFM tables. */
+.m-body .md table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+  width: auto;
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+.m-body .md thead { background: var(--bg-2); }
+.m-body .md th,
+.m-body .md td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.m-body .md th {
+  font-weight: 600;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.m-body .md tr:nth-child(even) td { background: color-mix(in oklab, var(--bg-2) 35%, transparent); }
+.msg.user .m-body .md th { color: color-mix(in oklab, var(--bg) 90%, transparent); }
+.msg.user .m-body .md th,
+.msg.user .m-body .md td { border-color: color-mix(in oklab, var(--bg) 25%, transparent); }
+.msg.user .m-body .md thead { background: color-mix(in oklab, var(--bg) 12%, transparent); }
+.msg.user .m-body .md tr:nth-child(even) td { background: color-mix(in oklab, var(--bg) 6%, transparent); }
+
+/* Strikethrough (GFM). */
+.m-body .md del { color: var(--ink-3); }
+
+/* User-bubble code: the existing .m-body code defaults to bg-2 which becomes
+   nearly invisible on var(--ink). Override to a translucent wash. */
+.msg.user .m-body code {
+  background: color-mix(in oklab, var(--bg) 20%, transparent);
+  color: var(--bg);
+}
+.msg.user .m-body .md a code { color: inherit; }
+
+/* ── Rich-text editor (Tiptap) ──────────────────────────────────── */
+/* `.rte-shell` wraps the editor; `.rte-toolbar` is the formatting bar;
+   `.rte-content` is the ProseMirror contenteditable. The `.rte-shell-inverted`
+   modifier is used inside user bubbles (dark background). */
+
+.rte-shell {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid var(--lilac);
+  background: var(--bg-3);
+  overflow: hidden;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--lilac) 14%, transparent);
+}
+.rte-shell.rte-loading {
+  padding: 14px 16px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+}
+.rte-shell-inverted {
+  background: var(--ink);
+  border-color: color-mix(in oklab, var(--bg) 55%, var(--lilac));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--lilac) 22%, transparent);
+}
+
+.rte-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: var(--bg-tint);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.rte-shell-inverted .rte-toolbar {
+  background: color-mix(in oklab, var(--ink) 70%, var(--bg-2));
+  border-bottom-color: color-mix(in oklab, var(--bg) 18%, transparent);
+}
+.rte-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: transparent;
+  transition: background 0.12s, color 0.12s;
+}
+.rte-btn:hover { background: var(--bg-2); color: var(--ink); }
+.rte-btn.active {
+  background: var(--lilac);
+  color: white;
+}
+.rte-shell-inverted .rte-btn { color: color-mix(in oklab, var(--bg) 75%, transparent); }
+.rte-shell-inverted .rte-btn:hover {
+  background: color-mix(in oklab, var(--bg) 12%, transparent);
+  color: var(--bg);
+}
+.rte-shell-inverted .rte-btn.active { background: var(--lilac); color: white; }
+.rte-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--line);
+}
+.rte-shell-inverted .rte-sep {
+  background: color-mix(in oklab, var(--bg) 22%, transparent);
+}
+.rte-spacer { flex: 1 1 auto; }
+.rte-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  padding: 0 6px;
+}
+.rte-shell-inverted .rte-hint {
+  color: color-mix(in oklab, var(--bg) 55%, transparent);
+}
+
+/* Content area — apply the same typographic rules as .md but scoped to the
+   editor's contenteditable. ProseMirror needs a stable focus outline strategy:
+   we suppress the default and let the shell border carry the focus signal. */
+.rte-content {
+  padding: 10px 14px;
+  min-height: 80px;
+  max-height: 60vh;
+  overflow-y: auto;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.rte-inverted { color: var(--bg); }
+
+/* Prose primitives inside the editor — mirror .md but live under .rte-content
+   so we don't leak styles into the read-mode body. */
+.rte-content p { margin: 0 0 8px; }
+.rte-content p:last-child { margin-bottom: 0; }
+.rte-content h1,
+.rte-content h2,
+.rte-content h3,
+.rte-content h4 {
+  font-family: var(--display, inherit);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 12px 0 6px;
+}
+.rte-content h1 { font-size: 22px; }
+.rte-content h2 { font-size: 19px; }
+.rte-content h3 { font-size: 17px; }
+.rte-content h4 { font-size: 15px; }
+.rte-content ul,
+.rte-content ol { margin: 4px 0 8px; padding-left: 22px; }
+.rte-content li { margin: 2px 0; }
+.rte-content li > p { margin: 0; }
+.rte-content blockquote {
+  margin: 6px 0 10px;
+  padding: 4px 12px;
+  border-left: 3px solid var(--lilac);
+  color: var(--ink-2);
+  background: color-mix(in oklab, var(--lilac) 8%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.rte-inverted blockquote {
+  border-left-color: color-mix(in oklab, var(--bg) 70%, transparent);
+  color: color-mix(in oklab, var(--bg) 80%, transparent);
+  background: color-mix(in oklab, var(--bg) 8%, transparent);
+}
+.rte-content code {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--bg-2);
+  color: var(--ink);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.rte-inverted code {
+  background: color-mix(in oklab, var(--bg) 18%, transparent);
+  color: var(--bg);
+}
+.rte-content pre {
+  background: #1a1814;
+  color: #f6f1e6;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.rte-content pre code { background: transparent; color: inherit; padding: 0; }
+.rte-content a {
+  color: var(--coral);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rte-inverted a { color: var(--coral-soft); }
+.rte-content hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 12px 0;
+}
+.rte-inverted hr { border-top-color: color-mix(in oklab, var(--bg) 22%, transparent); }
+
+/* ProseMirror placeholder + selection visuals. */
+.rte-content .ProseMirror-focused { outline: none; }
+.rte-content ::selection { background: color-mix(in oklab, var(--lilac) 30%, transparent); }
+.rte-inverted ::selection { background: color-mix(in oklab, var(--bg) 30%, transparent); color: var(--bg); }
+
