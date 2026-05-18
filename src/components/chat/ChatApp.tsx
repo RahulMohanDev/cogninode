@@ -55,22 +55,27 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     const label     = text.length > 60 ? text.slice(0, 60) + "…" : text;
     const parent    = await db.nodes.get(currentNodeId);
     if (!parent) return;
-    const newId = await createBranch({
-      chatId,
-      parentId: currentNodeId,
-      depth:    parent.depth + 1,
-      label,
+    // Wrap createBranch + optional revert in one outer transaction so the
+    // Dexie live-query observers see a single committed state. createBranch's
+    // inner transaction joins this one, avoiding a brief flicker where
+    // currentNodeId jumps to the new node and then back when in "stay" mode.
+    const stayMode = prefs.branchMode === "stay";
+    const stayNodeId = currentNodeId;
+    await db.transaction("rw", db.nodes, db.chats, async () => {
+      await createBranch({
+        chatId,
+        parentId: stayNodeId,
+        depth:    parent.depth + 1,
+        label,
+      });
+      if (stayMode) {
+        await db.chats.update(chatId, { currentNodeId: stayNodeId });
+        // we still surface the quote; user can navigate to the branch later
+      }
     });
-    // createBranch always points currentNodeId at the new node. If the user
-    // prefers "stay" mode, revert.
-    if (prefs.branchMode === "stay") {
-      await db.chats.update(chatId, { currentNodeId });
-      // we still surface the quote; user can navigate to the branch later
-    }
     setQuote(truncated);
     // No further action — the Composer picks up the new currentNodeId
     // reactively via `chat.currentNodeId`.
-    void newId;
   };
 
   const handleBranchFromMessage = async (_msg: DbMessage, maybeQuote?: string): Promise<void> => {
