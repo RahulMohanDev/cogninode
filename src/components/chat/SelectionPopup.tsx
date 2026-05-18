@@ -1,0 +1,96 @@
+// src/components/chat/SelectionPopup.tsx
+// Floating popup that appears when the user selects text inside the
+// chat stream. Offers a "Branch from selection" action which creates
+// a new node and routes the composer to it (with the selection as a quote).
+
+import { useEffect, useState, type RefObject } from "react";
+
+export interface SelectionInfo {
+  text: string;
+  rect: { top: number; left: number; width: number; height: number };
+}
+
+export interface SelectionPopupProps {
+  streamRef: RefObject<HTMLElement | null>;
+  onBranch:  (selectionText: string) => void;
+}
+
+export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
+  const [sel, setSel] = useState<SelectionInfo | null>(null);
+
+  useEffect(() => {
+    const handler = (): void => {
+      // Run on the next frame so selection has settled.
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+          setSel(null);
+          return;
+        }
+        const text = selection.toString().trim();
+        if (text.length < 3) { setSel(null); return; }
+
+        // Only fire if the selection started inside the stream container.
+        const container = streamRef.current;
+        if (!container) { setSel(null); return; }
+        let node: globalThis.Node | null = selection.anchorNode;
+        let inside = false;
+        while (node) {
+          if (node === container) { inside = true; break; }
+          node = node.parentNode;
+        }
+        if (!inside) { setSel(null); return; }
+
+        const range = selection.getRangeAt(0);
+        const rect  = range.getBoundingClientRect();
+        setSel({
+          text,
+          rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        });
+      }, 1);
+    };
+
+    document.addEventListener("mouseup", handler);
+    document.addEventListener("keyup",   handler);
+    return () => {
+      document.removeEventListener("mouseup", handler);
+      document.removeEventListener("keyup",   handler);
+    };
+  }, [streamRef]);
+
+  if (!sel) return null;
+
+  const top  = Math.max(70, sel.rect.top - 50);
+  const left = Math.max(10, sel.rect.left + sel.rect.width / 2 - 90);
+
+  const close = (): void => {
+    setSel(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  return (
+    <div className="sel-pop" style={{ top, left }}>
+      <button
+        className="primary"
+        onClick={() => { onBranch(sel.text); close(); }}
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <circle cx="4"  cy="3"  r="1.6" fill="currentColor" />
+          <circle cx="12" cy="3"  r="1.6" fill="currentColor" />
+          <circle cx="8"  cy="13" r="1.6" fill="currentColor" />
+          <path d="M4 4.5 V8 H12 V4.5 M8 8 V11.5" stroke="currentColor"
+                strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+        Branch from selection
+      </button>
+      <span className="sep" />
+      <button onClick={close} title="Close">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+          <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+export default SelectionPopup;
