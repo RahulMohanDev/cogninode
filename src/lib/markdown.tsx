@@ -25,6 +25,51 @@ import StarterKit                     from "@tiptap/starter-kit";
 import { Markdown }                   from "tiptap-markdown";
 import type { Editor }                from "@tiptap/core";
 
+// ── Code-block syntax highlighting (editor side) ──────────────────
+// StarterKit ships a plain `codeBlock` extension with no syntax colouring.
+// We swap it for `@tiptap/extension-code-block-lowlight` so fenced blocks
+// stay highlighted *while you edit them*, matching the rendered surface.
+// Grammars are pulled from `highlight.js/lib/languages/*` and registered on
+// a single lowlight instance. We deliberately register a curated set so the
+// markdown chunk doesn't balloon — every grammar imported here lands inside
+// this lazy chunk (markdown-*.js), not the eager `index-*.js`.
+import { CodeBlockLowlight }  from "@tiptap/extension-code-block-lowlight";
+import { createLowlight }     from "lowlight";
+
+import bash       from "highlight.js/lib/languages/bash";
+import c          from "highlight.js/lib/languages/c";
+import cpp        from "highlight.js/lib/languages/cpp";
+import csharp     from "highlight.js/lib/languages/csharp";
+import css        from "highlight.js/lib/languages/css";
+import go         from "highlight.js/lib/languages/go";
+import java       from "highlight.js/lib/languages/java";
+import javascript from "highlight.js/lib/languages/javascript";
+import json       from "highlight.js/lib/languages/json";
+import kotlin     from "highlight.js/lib/languages/kotlin";
+import markdown   from "highlight.js/lib/languages/markdown";
+import php        from "highlight.js/lib/languages/php";
+import python     from "highlight.js/lib/languages/python";
+import ruby       from "highlight.js/lib/languages/ruby";
+import rust       from "highlight.js/lib/languages/rust";
+import scala      from "highlight.js/lib/languages/scala";
+import shell      from "highlight.js/lib/languages/shell";
+import sql        from "highlight.js/lib/languages/sql";
+import swift      from "highlight.js/lib/languages/swift";
+import typescript from "highlight.js/lib/languages/typescript";
+import xml        from "highlight.js/lib/languages/xml";   // alias: html
+import yaml       from "highlight.js/lib/languages/yaml";
+
+// highlight.js grammar functions auto-expose their aliases when registered;
+// `typescript` covers `ts`/`tsx`, `javascript` covers `js`/`jsx`, `xml`
+// covers `html`, `shell` covers `sh`, etc. We pass the canonical name only.
+const lowlight = createLowlight();
+lowlight.register({
+  bash,       c,        cpp,      csharp,   css,      go,
+  java,       javascript, json,   kotlin,   markdown, php,
+  python,     ruby,     rust,     scala,    shell,    sql,
+  swift,      typescript, xml,    yaml,
+});
+
 // ── Tiptap editor ─────────────────────────────────────────────────
 
 export interface RichEditorProps {
@@ -127,8 +172,13 @@ export function RichEditor({
           autolink:    true,
           HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
         },
-        // Code-block highlighting we explicitly skip (keeps bundle small).
-        codeBlock: { HTMLAttributes: { class: "code-block" } },
+        // Disable StarterKit's plain code-block — we add the lowlight variant
+        // below so editing surfaces match the rendered (shiki) ones.
+        codeBlock: false,
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+        HTMLAttributes: { class: "code-block" },
       }),
       Markdown.configure({
         html:                false, // <-- strip raw HTML on parse

@@ -3405,3 +3405,286 @@ a { color: inherit; text-decoration: none; }
     opacity: 0.85;
   }
 }
+
+/* ── code blocks ─────────────────────────────────────────────────── */
+/* GitHub-style code block: outer card with a 32px header (language label
+   on the left, copy button on the right) and a syntax-highlighted body.
+   The rendered surface (.m-body .md, streamed by streamdown) uses shiki —
+   each token span carries inline `--sdm-c` (light) and `--shiki-dark`
+   (dark) custom properties; we switch which one wins via `html[data-theme]`
+   so theme changes are pure-CSS, no re-render.
+   The editor surface (.ProseMirror, Tiptap + lowlight) uses highlight.js
+   class names (`.hljs-keyword` etc) which we scope under `.ProseMirror`
+   below so they don't leak into the rendered surface. */
+
+/* Outer card — applies to streamdown-rendered blocks AND the Tiptap node. */
+.m-body .md [data-streamdown="code-block"],
+.ProseMirror pre.code-block {
+  position: relative;            /* anchor for the copy-button overlay */
+  margin: 10px 0;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  overflow: hidden;              /* keep header corners clipped */
+}
+
+/* Reset streamdown's inline style override (it sets contain-intrinsic-size
+   which is fine, but it also sets a Tailwind-ish `my-4` outside our control;
+   not an issue since we restate margin above). */
+
+/* ── header bar ─────────────────────────────────────────── */
+.m-body .md [data-streamdown="code-block-header"] {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.m-body .md [data-streamdown="code-block-header"] span {
+  /* Streamdown puts the language label in a child span; show "code" when
+     no fence language was specified (data-language="" → empty span). */
+  font-family: var(--mono);
+}
+.m-body .md [data-streamdown="code-block-header"] span:empty::before {
+  content: "code";
+}
+
+/* ── copy-button overlay ───────────────────────────────── */
+/* Streamdown renders the copy button inside a wrapper styled as
+   `pointer-events-none sticky top-2 -mt-10 flex justify-end`. Without
+   Tailwind those classes are no-ops, so the wrapper sits in normal flow.
+   We absolutely position the inner `code-block-actions` group on top of
+   the header instead. */
+.m-body .md [data-streamdown="code-block"]
+  > div:has(> [data-streamdown="code-block-actions"]) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  pointer-events: none;
+}
+.m-body .md [data-streamdown="code-block-actions"] {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.m-body .md [data-streamdown="code-block-copy-button"] {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  border: 1px solid transparent;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  cursor: pointer;
+}
+.m-body .md [data-streamdown="code-block-copy-button"]:hover {
+  background: var(--bg-2);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.m-body .md [data-streamdown="code-block-copy-button"]:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 1px;
+}
+.m-body .md [data-streamdown="code-block-copy-button"] svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── body ───────────────────────────────────────────────── */
+.m-body .md [data-streamdown="code-block-body"] {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  overflow-x: auto;
+}
+/* Neutralise the legacy `.m-body pre` defaults (line ~612) inside our card —
+   the card now owns the background, border, and padding. */
+.m-body .md [data-streamdown="code-block-body"] pre {
+  background: transparent;
+  color: var(--ink);
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.m-body .md [data-streamdown="code-block-body"] pre code {
+  background: transparent;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* Shiki dual-theme switch.
+   Streamdown emits each token as:
+     <span style="--sdm-c: <light-color>; --shiki-dark: <dark-color>">…</span>
+   with Tailwind utilities `text-[var(--sdm-c,inherit)]` +
+   `dark:text-[var(--shiki-dark,var(--sdm-c,inherit))]` that we don't compile
+   (no Tailwind here). We do the same with hand-rolled CSS instead. */
+.m-body .md [data-streamdown="code-block-body"] pre code span {
+  color: var(--sdm-c, inherit);
+}
+[data-theme="dark"] .m-body .md [data-streamdown="code-block-body"] pre code span {
+  color: var(--shiki-dark, var(--sdm-c, inherit));
+}
+/* Inline token background (rare — e.g. diff markers in shiki themes). */
+.m-body .md [data-streamdown="code-block-body"] pre code span[style*="--sdm-tbg"] {
+  background-color: var(--sdm-tbg, transparent);
+}
+[data-theme="dark"] .m-body .md [data-streamdown="code-block-body"] pre code span[style*="--shiki-dark-bg"] {
+  background-color: var(--shiki-dark-bg, var(--sdm-tbg, transparent));
+}
+
+/* In user bubbles (cream-on-ink), force the card to a darker tone so the
+   header reads as part of the bubble rather than a floating cream chip. */
+.msg.user .m-body .md [data-streamdown="code-block"] {
+  background: color-mix(in oklab, var(--bg) 12%, transparent);
+  border-color: color-mix(in oklab, var(--bg) 22%, transparent);
+}
+.msg.user .m-body .md [data-streamdown="code-block-header"] {
+  background: color-mix(in oklab, var(--bg) 8%, transparent);
+  border-bottom-color: color-mix(in oklab, var(--bg) 22%, transparent);
+  color: color-mix(in oklab, var(--bg) 75%, transparent);
+}
+.msg.user .m-body .md [data-streamdown="code-block-copy-button"] {
+  color: color-mix(in oklab, var(--bg) 70%, transparent);
+}
+.msg.user .m-body .md [data-streamdown="code-block-copy-button"]:hover {
+  background: color-mix(in oklab, var(--bg) 16%, transparent);
+  color: var(--bg);
+  border-color: color-mix(in oklab, var(--bg) 24%, transparent);
+}
+
+/* ── editor (Tiptap + lowlight) ─────────────────────────── */
+/* Match the rendered card's body styling. No header bar inside the editor
+   (the user already knows they're editing); just the same monospace,
+   highlighted body on the same card surface. */
+.ProseMirror pre.code-block {
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre;
+  overflow-x: auto;
+}
+.ProseMirror pre.code-block code {
+  background: transparent;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* Highlight.js token palette — scoped under `.ProseMirror pre.code-block`
+   so it never leaks into the shiki-rendered `.m-body .md` surface. Colours
+   copied verbatim from `highlight.js/styles/github.css`. */
+.ProseMirror pre.code-block .hljs-doctag,
+.ProseMirror pre.code-block .hljs-keyword,
+.ProseMirror pre.code-block .hljs-meta .hljs-keyword,
+.ProseMirror pre.code-block .hljs-template-tag,
+.ProseMirror pre.code-block .hljs-template-variable,
+.ProseMirror pre.code-block .hljs-type,
+.ProseMirror pre.code-block .hljs-variable.language_ { color: #d73a49; }
+.ProseMirror pre.code-block .hljs-title,
+.ProseMirror pre.code-block .hljs-title.class_,
+.ProseMirror pre.code-block .hljs-title.class_.inherited__,
+.ProseMirror pre.code-block .hljs-title.function_ { color: #6f42c1; }
+.ProseMirror pre.code-block .hljs-attr,
+.ProseMirror pre.code-block .hljs-attribute,
+.ProseMirror pre.code-block .hljs-literal,
+.ProseMirror pre.code-block .hljs-meta,
+.ProseMirror pre.code-block .hljs-number,
+.ProseMirror pre.code-block .hljs-operator,
+.ProseMirror pre.code-block .hljs-variable,
+.ProseMirror pre.code-block .hljs-selector-attr,
+.ProseMirror pre.code-block .hljs-selector-class,
+.ProseMirror pre.code-block .hljs-selector-id { color: #005cc5; }
+.ProseMirror pre.code-block .hljs-regexp,
+.ProseMirror pre.code-block .hljs-string,
+.ProseMirror pre.code-block .hljs-meta .hljs-string { color: #032f62; }
+.ProseMirror pre.code-block .hljs-built_in,
+.ProseMirror pre.code-block .hljs-symbol { color: #e36209; }
+.ProseMirror pre.code-block .hljs-comment,
+.ProseMirror pre.code-block .hljs-code,
+.ProseMirror pre.code-block .hljs-formula { color: #6a737d; }
+.ProseMirror pre.code-block .hljs-name,
+.ProseMirror pre.code-block .hljs-quote,
+.ProseMirror pre.code-block .hljs-selector-tag,
+.ProseMirror pre.code-block .hljs-selector-pseudo { color: #22863a; }
+.ProseMirror pre.code-block .hljs-subst { color: #24292e; }
+.ProseMirror pre.code-block .hljs-section { color: #005cc5; font-weight: 600; }
+.ProseMirror pre.code-block .hljs-bullet  { color: #735c0f; }
+.ProseMirror pre.code-block .hljs-emphasis { color: #24292e; font-style: italic; }
+.ProseMirror pre.code-block .hljs-strong   { color: #24292e; font-weight: 600; }
+.ProseMirror pre.code-block .hljs-addition {
+  color: #22863a;
+  background-color: #f0fff4;
+}
+.ProseMirror pre.code-block .hljs-deletion {
+  color: #b31d28;
+  background-color: #ffeef0;
+}
+
+/* Dark theme token palette — github-dark.css, same scope. */
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-doctag,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-keyword,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-meta .hljs-keyword,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-template-tag,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-template-variable,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-type,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-variable.language_ { color: #ff7b72; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-title,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-title.class_,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-title.class_.inherited__,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-title.function_ { color: #d2a8ff; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-attr,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-attribute,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-literal,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-meta,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-number,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-operator,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-variable,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-selector-attr,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-selector-class,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-selector-id { color: #79c0ff; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-regexp,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-string,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-meta .hljs-string { color: #a5d6ff; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-built_in,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-symbol { color: #ffa657; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-comment,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-code,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-formula { color: #8b949e; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-name,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-quote,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-selector-tag,
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-selector-pseudo { color: #7ee787; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-subst { color: #c9d1d9; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-section { color: #1f6feb; font-weight: 600; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-bullet  { color: #f2cc60; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-emphasis { color: #c9d1d9; font-style: italic; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-strong   { color: #c9d1d9; font-weight: 600; }
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-addition {
+  color: #aff5b4;
+  background-color: #033a16;
+}
+[data-theme="dark"] .ProseMirror pre.code-block .hljs-deletion {
+  color: #ffdcd7;
+  background-color: #67060c;
+}
