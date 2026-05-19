@@ -1,5 +1,6 @@
 // src/lib/db.ts
 import Dexie, { type EntityTable } from "dexie";
+import { abortNodes }              from "./streamAborts";
 
 // ── Local types ────────────────────────────────────────────────
 
@@ -280,6 +281,12 @@ export async function deleteNodeSubtree(
       const doomedIds = collectSubtreeIds(allNodes, nodeId);
       const doomedArr = [...doomedIds];
 
+      // Abort any in-flight streams for nodes about to be wiped. Done
+      // inside the transaction (right after we know the doomed set) so
+      // the cascade-delete is atomic w.r.t. the stream-state cleanup
+      // that follows when StreamsProvider sees the abort.
+      abortNodes(doomedArr);
+
       // Collect file ids that *would* be orphaned by removing these messages.
       const doomedMessages = await db.messages
         .where("nodeId").anyOf(doomedArr)
@@ -373,6 +380,9 @@ export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
       }
 
       const nodes = await db.nodes.where("chatId").equals(chatId).toArray();
+      // Abort any in-flight streams for nodes in this chat before we
+      // delete their backing records.
+      abortNodes(nodes.map(n => n._id));
       const messages = await db.messages.where("chatId").equals(chatId).toArray();
       const reflections = await db.reflections.where("chatId").equals(chatId).toArray();
 

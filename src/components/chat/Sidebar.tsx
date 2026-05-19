@@ -12,6 +12,7 @@ import {
 import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
 import { useSettings }                  from "../../hooks/useSettings";
+import { useActiveStreams }             from "../../hooks/StreamsProvider";
 
 export interface SidebarProps {
   activeChatId:   string | null;
@@ -102,6 +103,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const { prefs, setTheme } = useSettings();
+  const activeStreams = useActiveStreams();
 
   const chats = useLiveQuery(
     () => db.chats.orderBy("updatedAt").reverse().toArray(),
@@ -337,6 +339,13 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                           )}
                           <span className="b-dot" />
                           <span className="b-label">{row.node.label || "(no label)"}</span>
+                          {activeStreams.has(row.node._id) && (
+                            <span
+                              className="b-stream-pulse"
+                              aria-label="streaming"
+                              title="Streaming…"
+                            />
+                          )}
                           <button
                             className="row-del row-del-branch"
                             title={isRoot ? "Delete chat" : "Delete branch"}

@@ -3380,3 +3380,28 @@ a { color: inherit; text-decoration: none; }
   0%, 100% { opacity: 0.55; }
   50%      { opacity: 1; }
 }
+
+/* ============ Sidebar stream pulse ============ */
+/* Tiny lilac dot rendered next to a branch row when its node is
+   currently producing tokens. Per-row only — no global indicator. */
+.branch-row .b-stream-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lilac);
+  flex: none;
+  align-self: center;
+  margin-left: 4px;
+  box-shadow: 0 0 0 0 var(--lilac);
+  animation: streamPulse 1.4s ease-out infinite;
+}
+@keyframes streamPulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--lilac) 65%, transparent); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .branch-row .b-stream-pulse {
+    animation: none;
+    opacity: 0.85;
+  }
+}
