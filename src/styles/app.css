@@ -3535,16 +3535,28 @@ a { color: inherit; text-decoration: none; }
   white-space: inherit;
 }
 
+/* Streamdown emits one `<span>` per source line inside `<code>`, each
+   wrapping the highlighted token spans for that line. Crucially it does
+   NOT write a `\n` character between line spans and only attaches a
+   `display:block` className when `lineNumbers=true` — so with our
+   `lineNumbers={false}` setup every line collapses onto the same visual
+   row. Force the per-line wrappers to render as blocks so newlines are
+   preserved regardless of the highlighter's state. */
+.m-body .md [data-streamdown="code-block-body"] pre code > span {
+  display: block;
+}
+
 /* Shiki dual-theme switch.
-   Streamdown emits each token as:
-     <span style="--sdm-c: <light-color>; --shiki-dark: <dark-color>">…</span>
-   with Tailwind utilities `text-[var(--sdm-c,inherit)]` +
-   `dark:text-[var(--shiki-dark,var(--sdm-c,inherit))]` that we don't compile
-   (no Tailwind here). We do the same with hand-rolled CSS instead. */
-.m-body .md [data-streamdown="code-block-body"] pre code span {
+   Each token sub-span inside the line wrapper carries inline
+   `style="color:<light>; --shiki-dark:<dark>"` (set by our plugin in
+   MarkdownBody.tsx; analogous to what shiki itself emits). We swap the
+   active colour based on the document's `data-theme`. The selectors
+   target the inner highlighted spans only (not the per-line wrappers,
+   which inherit). */
+.m-body .md [data-streamdown="code-block-body"] pre code span span {
   color: var(--sdm-c, inherit);
 }
-[data-theme="dark"] .m-body .md [data-streamdown="code-block-body"] pre code span {
+[data-theme="dark"] .m-body .md [data-streamdown="code-block-body"] pre code span span {
   color: var(--shiki-dark, var(--sdm-c, inherit));
 }
 /* Inline token background (rare — e.g. diff markers in shiki themes). */
