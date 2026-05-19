@@ -20,7 +20,7 @@
 // download button (we only want copy), and disable table/mermaid controls
 // since the rest of the app doesn't expose them.
 
-import { Streamdown, type Components, type ControlsConfig } from "streamdown";
+import { Streamdown, type Components, type ControlsConfig, type ThemeInput } from "streamdown";
 
 const components: Components = {
   a: ({ node: _node, href, children, ...rest }) => (
@@ -43,6 +43,12 @@ const controls: ControlsConfig = {
   mermaid: false,
 };
 
+// Dual-theme shiki output: every token span gets both a --sdm-c (light) and
+// a --shiki-dark (dark) CSS variable, and app.css picks the right one based
+// on html[data-theme]. Without this prop, shiki doesn't tokenise at all and
+// code blocks render as plain monospace text.
+const shikiTheme: [ThemeInput, ThemeInput] = ["github-light", "github-dark"];
+
 export function MarkdownBody({ text }: { text: string }) {
   if (!text) return null;
   return (
@@ -50,6 +56,7 @@ export function MarkdownBody({ text }: { text: string }) {
       <Streamdown
         components={components}
         controls={controls}
+        shikiTheme={shikiTheme}
         lineNumbers={false}
       >
         {text}
