@@ -175,7 +175,8 @@ export async function buildPathMessages(
         const nonImages = files.filter(f => f.kind !== "image");
 
         // Build the text portion: file context first (so the question reads
-        // naturally after the attached material), then the user's text.
+        // naturally after the attached material), then the branch quote (if
+        // any), then the user's typed text.
         const textChunks: string[] = [];
         for (const file of nonImages) {
           if (file.kind === "pdf") {
@@ -186,6 +187,12 @@ export async function buildPathMessages(
           } else {
             textChunks.push(`<file name="${file.name}">\n${file.content}\n</file>`);
           }
+        }
+        if (msg.quote) {
+          const quoted = msg.quote.split("\n").map(l => `> ${l}`).join("\n");
+          textChunks.push(
+            `> Context — branched from this excerpt of the prior reply:\n${quoted}`,
+          );
         }
         if (msg.content) textChunks.push(msg.content);
         const textContent = textChunks.join("\n\n");
@@ -200,6 +207,16 @@ export async function buildPathMessages(
           }
           result.push({ role: "user", content: parts });
         }
+      } else if (msg.role === "user" && msg.quote) {
+        // User message with a branch quote but no file attachments: prepend
+        // the quote block so the model sees what the follow-up refers to.
+        const quoted = msg.quote.split("\n").map(l => `> ${l}`).join("\n");
+        const quoteBlock =
+          `> Context — branched from this excerpt of the prior reply:\n${quoted}`;
+        const textContent = msg.content
+          ? `${quoteBlock}\n\n${msg.content}`
+          : quoteBlock;
+        result.push({ role: "user", content: textContent });
       } else {
         result.push({ role: msg.role, content: msg.content });
       }
