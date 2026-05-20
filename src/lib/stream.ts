@@ -13,6 +13,14 @@ export type StreamEvent =
   | { type: "done";   usage: { inputTokens: number; outputTokens: number; costUsd: number } }
   | { type: "error";  message: string; status?: number };
 
+/** A web-search source surfaced by OpenRouter's `web` plugin as a
+ *  `url_citation` annotation on the assistant message. */
+export interface Citation {
+  url:      string;
+  title?:   string;
+  content?: string;
+}
+
 interface StreamParams {
   apiKey:       string;
   openRouterId: string;        // e.g. "anthropic/claude-sonnet-4.5"
@@ -22,10 +30,16 @@ interface StreamParams {
    *  OpenAI o1-style, etc). Separate from onChunk so the UI can render
    *  them in a distinct collapsible "Thinking" panel. */
   onReasoning?: (text: string) => void;
+  /** Fires once after the stream completes when the `web` plugin returned
+   *  any citations — deduplicated by url. */
+  onCitations?: (citations: Citation[]) => void;
   onDone:       (usage: Extract<StreamEvent, { type: "done" }>["usage"]) => void;
   onError:      (msg: string, status?: number) => void;
   signal?:      AbortSignal;
   model:        ModelDef;      // for cost calculation post-stream
+  /** When true, attach OpenRouter's `web` plugin so the model can run a
+   *  paid web search for this request. */
+  webSearch?:   boolean;
 }
 
 export async function streamMessage(params: StreamParams): Promise<void> {
@@ -65,6 +79,13 @@ export async function streamMessage(params: StreamParams): Promise<void> {
         // 4096 used to be the cap — way too low for reasoning models that
         // can spend the entire budget thinking before any "answer" token.
         max_tokens:         16384,
+        // OpenRouter's `web` plugin runs a paid web search for this request
+        // (~$0.02 at 5 results) and streams back `url_citation` annotations.
+        // We use the plugin rather than the `:online` model suffix so model
+        // ids stay clean.
+        ...(params.webSearch
+          ? { plugins: [{ id: "web", max_results: 5 }] }
+          : {}),
       }),
       signal: params.signal ?? null,
     });
@@ -99,6 +120,11 @@ export async function streamMessage(params: StreamParams): Promise<void> {
   let outputTokens = 0;
   let finishReason: string | null = null;
 
+  // url_citation annotations from the `web` plugin. They arrive across one
+  // or more deltas (usually near the end of the stream) — accumulate and
+  // dedupe by url so the last write per url wins.
+  const citations = new Map<string, Citation>();
+
   const parser = createParser({
     onEvent: (event: EventSourceMessage) => {
       const raw = event.data;
@@ -110,6 +136,14 @@ export async function streamMessage(params: StreamParams): Promise<void> {
               content?:           string | null;
               reasoning?:         string | null;
               reasoning_content?: string | null;
+              annotations?:       Array<{
+                type?:         string;
+                url_citation?: {
+                  url?:     string;
+                  title?:   string;
+                  content?: string;
+                };
+              }>;
             };
             finish_reason?: string | null;
           }>;
@@ -126,6 +160,17 @@ export async function streamMessage(params: StreamParams): Promise<void> {
           }
           if (typeof delta.content === "string" && delta.content) {
             params.onChunk(delta.content);
+          }
+          if (delta.annotations) {
+            for (const ann of delta.annotations) {
+              const cit = ann.url_citation;
+              const url = cit?.url;
+              if (!url) continue;
+              const entry: Citation = { url };
+              if (cit.title)   entry.title   = cit.title;
+              if (cit.content) entry.content = cit.content;
+              citations.set(url, entry);
+            }
           }
         }
         if (choice?.finish_reason) finishReason = choice.finish_reason;
@@ -168,6 +213,10 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       params.onChunk(
         "\n\n_(response hit max-tokens limit — bump the cap in src/lib/stream.ts if you need longer answers)_",
       );
+    }
+
+    if (citations.size > 0 && params.onCitations) {
+      params.onCitations([...citations.values()]);
     }
 
     params.onDone({

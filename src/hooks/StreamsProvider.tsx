@@ -16,7 +16,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo,
   useRef, useSyncExternalStore, type ReactNode,
 } from "react";
-import { streamMessage }                  from "../lib/stream";
+import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db }          from "../lib/db";
 import { getModel }                       from "../lib/cost";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
@@ -40,6 +40,9 @@ export interface SendParams {
   composerText: string;
   quote?:       string;
   fileIds?:     string[];
+  /** Run an OpenRouter web search for this message. Captured at send time
+   *  so the per-message toggle value sticks to this specific stream. */
+  webSearch?:   boolean;
 }
 
 // Derive a chat/root-node title from the user's first message. Drops any
@@ -263,6 +266,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
 
         let fullContent   = "";
         let fullReasoning = "";
+        let citations: Citation[] = [];
 
         await streamMessage({
           apiKey: apiKeyRef.current,
@@ -270,6 +274,9 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           messages: pathMessages,
           model,
           signal: controller.signal,
+          webSearch: params.webSearch ?? false,
+
+          onCitations: (list) => { citations = list; },
 
           onChunk: (text) => {
             fullContent += text;
@@ -301,6 +308,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
               role:         "assistant",
               content:      fullContent,
               ...(fullReasoning ? { reasoning: fullReasoning } : {}),
+              ...(citations.length ? { citations } : {}),
               modelId:      params.modelId,
               costUsd,
               inputTokens,

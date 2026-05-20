@@ -14,6 +14,7 @@ export interface ComposerSendParams {
   composerText: string;
   quote?:       string;
   fileIds?:     string[];
+  webSearch?:   boolean;
 }
 
 export interface ComposerProps {
@@ -44,6 +45,20 @@ function saveDraft(chatId: string, nodeId: string, value: string): void {
   } catch { /* ignore */ }
 }
 
+// Web-search toggle is sticky across messages — persisted globally, not
+// per (chatId, nodeId), so the user's choice survives navigation and sends.
+const WEB_SEARCH_KEY = "cogninode_web_search";
+
+function loadWebSearch(): boolean {
+  try { return localStorage.getItem(WEB_SEARCH_KEY) === "1"; }
+  catch { return false; }
+}
+
+function saveWebSearch(on: boolean): void {
+  try { localStorage.setItem(WEB_SEARCH_KEY, on ? "1" : "0"); }
+  catch { /* ignore */ }
+}
+
 export function Composer({
   chatId,
   currentNodeId,
@@ -63,6 +78,7 @@ export function Composer({
   const [uploading,   setUploading]   = useState(false);
   const [modelId, setModelId] = useState<string>(prefs.defaultModelId);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [webSearch, setWebSearch] = useState<boolean>(loadWebSearch);
   const taRef    = useRef<HTMLTextAreaElement | null>(null);
   const fileRef  = useRef<HTMLInputElement | null>(null);
 
@@ -126,6 +142,14 @@ export function Composer({
     setFiles(prev => prev.filter(f => f.fileId !== fileId));
   };
 
+  const toggleWebSearch = (): void => {
+    setWebSearch(prev => {
+      const next = !prev;
+      saveWebSearch(next);
+      return next;
+    });
+  };
+
   const handleSend = (): void => {
     const composerText = text.trim();
     if (!composerText && files.length === 0) return;
@@ -141,6 +165,7 @@ export function Composer({
       composerText,
       ...(quote !== undefined ? { quote } : {}),
       ...(fileIds.length ? { fileIds } : {}),
+      ...(webSearch ? { webSearch: true } : {}),
     });
   };
 
@@ -325,6 +350,20 @@ export function Composer({
             </button>
           )}
         </div>
+
+        <button
+          className={`tool web-toggle ${webSearch ? "active" : ""}`}
+          type="button"
+          onClick={toggleWebSearch}
+          title="Web search — runs a paid OpenRouter web search for this message"
+          aria-pressed={webSearch}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M2 8 H14 M8 2 C5 4.5 5 11.5 8 14 M8 2 C11 4.5 11 11.5 8 14"
+                  stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+          </svg>
+        </button>
 
         {streamState === "streaming" ? (
           <button

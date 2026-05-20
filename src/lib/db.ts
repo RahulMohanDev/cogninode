@@ -1,6 +1,10 @@
 // src/lib/db.ts
 import Dexie, { type EntityTable } from "dexie";
 import { abortNodes }              from "./streamAborts";
+import type { Citation }           from "./stream";
+
+// Re-export so message consumers can pull the Citation shape from `db`.
+export type { Citation };
 
 // ── Local types ────────────────────────────────────────────────
 
@@ -36,6 +40,7 @@ export interface Message {
   pathDepth?:   number;        // path length at send time
   quote?:       string;        // text that triggered this branch
   fileIds?:     string[];      // references to files table
+  citations?:   Citation[];    // web-search sources (non-indexed, no migration)
   createdAt:    number;
 }
 

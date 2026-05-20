@@ -82,6 +82,36 @@ function FileChips({ fileIds }: { fileIds: string[] }) {
   );
 }
 
+// ── sources list ──────────────────────────────────────────────────
+// Numbered list of web-search citations captured from OpenRouter's `web`
+// plugin. Rendered below the answer body when the message has citations.
+
+function hostnameOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); }
+  catch { return url; }
+}
+
+function Sources({ citations }: { citations: NonNullable<DbMessage["citations"]> }) {
+  return (
+    <div className="msg-sources">
+      <div className="ms-label">Sources</div>
+      <ol className="ms-list">
+        {citations.map((c, i) => {
+          const host = hostnameOf(c.url);
+          return (
+            <li key={`${c.url}-${i}`}>
+              <a href={c.url} target="_blank" rel="noopener noreferrer">
+                {c.title || host}
+              </a>
+              <span className="ms-host">{host}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 // ── merge helper ──────────────────────────────────────────────────
 // Collapse `current` into `prev` (same role, same node). prev keeps its
 // _id, createdAt, modelId, pathDepth; usage fields sum when both are
@@ -318,6 +348,10 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
           </div>
         ) : (
           <MarkdownBody text={message.content} />
+        )}
+
+        {isAssistant && message.citations && message.citations.length > 0 && (
+          <Sources citations={message.citations} />
         )}
 
         {message.fileIds && message.fileIds.length > 0 && (
