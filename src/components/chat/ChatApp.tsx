@@ -12,6 +12,7 @@ import { db, createBranch, newId, type Message as DbMessage, type Node as DbNode
 import { useStream }           from "../../hooks/useStream";
 import { useSettings }         from "../../hooks/useSettings";
 import { findPath }            from "../../lib/path";
+import { recordNodeVisit }     from "../../lib/nodeHistory";
 import { Sidebar }             from "./Sidebar";
 import { Stream }              from "./Stream";
 import { Composer }            from "./Composer";
@@ -29,6 +30,16 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const currentNodeId = chat?.currentNodeId ?? chat?.rootNodeId ?? "";
+
+  // Record the active branch as most-recently-visited whenever it changes —
+  // feeds QuickJump's node MRU ("Alt+Tab") ordering. Every way the branch
+  // changes (sidebar, branch creation, TreeMap, breadcrumb, QuickJump) funnels
+  // through `db.chats.update(chatId, { currentNodeId })`, so this single effect
+  // captures them all. Skip the empty-string fallback emitted while the chat
+  // record is still loading.
+  useEffect(() => {
+    if (currentNodeId) recordNodeVisit(currentNodeId);
+  }, [currentNodeId]);
 
   // Live: all nodes for the chat — needed for the TopBar breadcrumb.
   const nodes = useLiveQuery<DbNode[], DbNode[]>(
