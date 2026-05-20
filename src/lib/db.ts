@@ -149,6 +149,23 @@ export async function renameChat(chatId: string, title: string): Promise<void> {
   });
 }
 
+// Rename a branch node. Updates the node's label. If the node is a chat's
+// ROOT node, the chat title is the same concept — keep them in sync by
+// updating the chat title too (mirror of renameChat).
+export async function renameNode(nodeId: string, label: string): Promise<void> {
+  const trimmed = label.trim();
+  if (!trimmed) return;
+  await db.transaction("rw", db.nodes, db.chats, async () => {
+    const node = await db.nodes.get(nodeId);
+    if (!node) return;
+    await db.nodes.update(nodeId, { label: trimmed });
+    const chat = await db.chats.get(node.chatId);
+    if (chat && chat.rootNodeId === nodeId) {
+      await db.chats.update(node.chatId, { title: trimmed, updatedAt: Date.now() });
+    }
+  });
+}
+
 // Walk DFS path from a node to root, return flat message array for prompt
 export async function buildPathMessages(
   chatId: string,

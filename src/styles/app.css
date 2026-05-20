@@ -3723,6 +3723,7 @@ a { color: inherit; text-decoration: none; }
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .chat-row:hover .row-rename,
+.branch-row:hover .row-rename,
 .row-rename:focus-visible { opacity: 0.85; }
 .row-rename:hover {
   opacity: 1;
@@ -3753,3 +3754,17 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--lilac);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--lilac) 22%, transparent);
 }
+
+/* ── branch-node rename ──────────────────── */
+/* Branch rows get the same hover pencil + inline-edit affordance as chat
+   rows. The branch row's flex layout pushes b-label to fill; the trash
+   uses .row-del-branch { margin-left: auto } to pin flush-right. With a
+   pencil added just left of the trash, the PENCIL takes margin-left:auto
+   instead (it's the first of the icon pair), and the trash falls back to
+   the plain .row-del margin-left:4px so the two icons sit flush-right
+   without overlap. */
+.row-rename-branch { margin-left: auto; }
+.branch-row .row-del-branch { margin-left: 4px; }
+
+/* The branch-row coral.active background tints the pencil like the trash. */
+.branch-row.active .row-rename { color: var(--ink); }

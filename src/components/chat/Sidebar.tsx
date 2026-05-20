@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate }                  from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
-  db, createChat, deleteChat, deleteNodeSubtree, renameChat, type Node,
+  db, createChat, deleteChat, deleteNodeSubtree, renameChat, renameNode,
+  type Node,
 } from "../../lib/db";
 import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
@@ -212,19 +213,24 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   };
 
   // ── rename state ──────────────────────────────────────────────
-  // At most one chat row is in inline-edit mode at a time. A ref flag
-  // guards against the Enter-then-blur double-commit (Enter fires
+  // At most one row (chat OR branch node) is in inline-edit mode at a
+  // time. The target is identified by {kind,id} — chat ids and node ids
+  // are both UUID strings and never collide, but the commit path differs
+  // (chat → renameChat, node → renameNode), so we track the kind. A ref
+  // flag guards against the Enter-then-blur double-commit (Enter fires
   // commit, which also blurs the input → onBlur would fire a second
   // commit). The flag is set on the first commit and cleared once the
   // row leaves edit mode.
-  const [renamingId, setRenamingId] = useState<string | null>(null);
+  type RenameTarget = { kind: "chat" | "node"; id: string };
+
+  const [renamingId, setRenamingId] = useState<RenameTarget | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const committedRef = useRef(false);
 
-  const startRename = (chatId: string, currentTitle: string): void => {
+  const startRename = (target: RenameTarget, currentLabel: string): void => {
     committedRef.current = false;
-    setRenameDraft(currentTitle);
-    setRenamingId(chatId);
+    setRenameDraft(currentLabel);
+    setRenamingId(target);
   };
 
   const cancelRename = (): void => {
@@ -232,12 +238,15 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     setRenamingId(null);
   };
 
-  const commitRename = async (chatId: string): Promise<void> => {
+  const commitRename = async (target: RenameTarget): Promise<void> => {
     if (committedRef.current) return;
     committedRef.current = true;
     const t = renameDraft.trim();
     setRenamingId(null);
-    if (t) await renameChat(chatId, t);
+    if (t) {
+      if (target.kind === "chat") await renameChat(target.id, t);
+      else await renameNode(target.id, t);
+    }
   };
 
   const visibleChats = useMemo(() => {
@@ -299,7 +308,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         {visibleChats.map(chat => {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
-          const isRenaming = renamingId === chat._id;
+          const isRenaming = renamingId?.kind === "chat" && renamingId.id === chat._id;
           return (
             <div key={chat._id}>
               <div
@@ -319,14 +328,14 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                       if (e.key === "Enter") {
                         e.preventDefault();
                         e.stopPropagation();
-                        void commitRename(chat._id);
+                        void commitRename({ kind: "chat", id: chat._id });
                       } else if (e.key === "Escape") {
                         e.preventDefault();
                         e.stopPropagation();
                         cancelRename();
                       }
                     }}
-                    onBlur={() => { void commitRename(chat._id); }}
+                    onBlur={() => { void commitRename({ kind: "chat", id: chat._id }); }}
                   />
                 ) : (
                   <span className="c-label">{chat.title || "Untitled"}</span>
@@ -341,7 +350,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                     aria-label="Rename chat"
                     onClick={(e) => {
                       e.stopPropagation();
-                      startRename(chat._id, chat.title || "");
+                      startRename({ kind: "chat", id: chat._id }, chat.title || "");
                     }}
                   >
                     <PencilIcon />
@@ -376,12 +385,16 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                     const rowActive = activeChat?.currentNodeId === row.node._id;
                     const isRoot    = row.node._id === activeChat?.rootNodeId;
                     const isRowPending = pending?.kind === "branch" && pending.id === row.node._id;
+                    const isRowRenaming =
+                      renamingId?.kind === "node" && renamingId.id === row.node._id;
                     return (
                       <div key={row.node._id}>
                         <div
                           className={`branch-row ${rowActive ? "active" : ""} has-delete`}
                           data-depth={Math.min(3, row.depth)}
-                          onClick={() => void handleSelectNode(row.node._id)}
+                          onClick={() => {
+                            if (!isRowRenaming) void handleSelectNode(row.node._id);
+                          }}
                         >
                           {row.lastFlags.length > 0 && (
                             <div className="b-guides">
@@ -409,25 +422,69 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                             <span className="b-chev-spacer" />
                           )}
                           <span className="b-dot" />
-                          <span className="b-label">{row.node.label || "(no label)"}</span>
-                          {activeStreams.has(row.node._id) && (
+                          {isRowRenaming ? (
+                            <input
+                              className="chat-rename-input"
+                              value={renameDraft}
+                              onChange={(e) => setRenameDraft(e.target.value)}
+                              autoFocus
+                              onFocus={(e) => e.currentTarget.select()}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void commitRename({ kind: "node", id: row.node._id });
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  cancelRename();
+                                }
+                              }}
+                              onBlur={() => {
+                                void commitRename({ kind: "node", id: row.node._id });
+                              }}
+                            />
+                          ) : (
+                            <span className="b-label">{row.node.label || "(no label)"}</span>
+                          )}
+                          {!isRowRenaming && activeStreams.has(row.node._id) && (
                             <span
                               className="b-stream-pulse"
                               aria-label="streaming"
                               title="Streaming…"
                             />
                           )}
-                          <button
-                            className="row-del row-del-branch"
-                            title={isRoot ? "Delete chat" : "Delete branch"}
-                            aria-label={isRoot ? "Delete chat" : "Delete branch"}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              armConfirm({ kind: "branch", id: row.node._id });
-                            }}
-                          >
-                            <TrashIcon />
-                          </button>
+                          {!isRowRenaming && (
+                            <button
+                              className="row-rename row-rename-branch"
+                              title={isRoot ? "Rename chat" : "Rename branch"}
+                              aria-label={isRoot ? "Rename chat" : "Rename branch"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startRename(
+                                  { kind: "node", id: row.node._id },
+                                  row.node.label || "",
+                                );
+                              }}
+                            >
+                              <PencilIcon />
+                            </button>
+                          )}
+                          {!isRowRenaming && (
+                            <button
+                              className="row-del row-del-branch"
+                              title={isRoot ? "Delete chat" : "Delete branch"}
+                              aria-label={isRoot ? "Delete chat" : "Delete branch"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                armConfirm({ kind: "branch", id: row.node._id });
+                              }}
+                            >
+                              <TrashIcon />
+                            </button>
+                          )}
                         </div>
 
                         {isRowPending && (
