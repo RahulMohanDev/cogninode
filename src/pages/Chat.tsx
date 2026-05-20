@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db }                from "../lib/db";
+import { recordChatVisit }   from "../lib/chatHistory";
 import { ChatApp }           from "../components/chat/ChatApp";
 
 export default function Chat() {
@@ -24,6 +25,13 @@ export default function Chat() {
     syncedNodeRef.current = `${chatId}:${node}`;
     void db.chats.update(chatId, { currentNodeId: node });
   }, [chatId, node]);
+
+  // Record this chat as the most-recently-visited whenever the active
+  // chatId changes — feeds QuickJump's MRU ("Alt+Tab") ordering.
+  useEffect(() => {
+    if (!chatId) return;
+    recordChatVisit(chatId);
+  }, [chatId]);
 
   // useLiveQuery returns `undefined` while pending OR when the row is missing.
   // We can't distinguish by value alone, so we use a short grace timer: if

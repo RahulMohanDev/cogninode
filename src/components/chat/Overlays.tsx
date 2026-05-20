@@ -9,6 +9,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { db, type Chat, type Node } from "../../lib/db";
 import { buildTree, layoutTree, findPath } from "../../lib/path";
+import { getChatMRU } from "../../lib/chatHistory";
 
 export interface OverlaysProps {
   chatId: string;
@@ -70,7 +71,7 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
 
   return (
     <>
-      {open === "quickjump" && <QuickJump onClose={close} />}
+      {open === "quickjump" && <QuickJump chatId={chatId} onClose={close} />}
       {open === "treemap"   && <TreeMap chatId={chatId} currentNodeId={currentNodeId} onClose={close} />}
       {open === "shortcuts" && <Shortcuts onClose={close} />}
     </>
@@ -80,65 +81,82 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
 export default Overlays;
 
 // ── QuickJump ────────────────────────────────────────────────────────────────
+// An MRU ("Alt+Tab") chat switcher. With an empty search box the chat the
+// user just switched FROM is at index 0 and pre-selected, so Ctrl+Q then
+// Enter toggles back to it. Below it: every other visited chat in
+// most-recently-visited order, then never-visited chats by updatedAt.
 
-interface QuickJumpResult {
-  chatId:    string;
-  chatTitle: string;
-  nodeId:    string;
-  label:     string;
-  depth:     number;
-  isRoot:    boolean;
+interface QuickJumpRow {
+  chat:    Chat;
+  visited: boolean;
 }
 
-function QuickJump({ onClose }: { onClose: () => void }) {
+/** Relative-time label for a past timestamp, e.g. "3m ago", "2d ago". */
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 0) return "just now";
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  const mon = Math.floor(day / 30);
+  if (mon < 12) return `${mon}mo ago`;
+  return `${Math.floor(mon / 12)}y ago`;
+}
+
+function QuickJump({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const chats = useLiveQuery<Chat[], Chat[]>(() => db.chats.toArray(), [], []);
-  const nodes = useLiveQuery<Node[], Node[]>(() => db.nodes.toArray(), [], []);
+
+  // Snapshot the MRU once when the overlay mounts — it must not reorder
+  // mid-session as Chat.tsx records the very chat we may jump to.
+  const mru = useMemo(() => getChatMRU(), []);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { setHi(0); }, [q]);
 
-  const items: QuickJumpResult[] = useMemo(() => {
+  // The ordered switcher list (current chat excluded):
+  //   1. MRU chats in most-recently-visited order — index 0 is the
+  //      just-switched-from chat, which we pre-select.
+  //   2. Never-visited chats by updatedAt descending.
+  const ordered: QuickJumpRow[] = useMemo(() => {
     const chatList = chats ?? [];
-    const nodeList = nodes ?? [];
-    const chatById = new Map(chatList.map(c => [c._id, c]));
-    const out: QuickJumpResult[] = [];
-    for (const n of nodeList) {
-      const c = chatById.get(n.chatId);
-      if (!c) continue;
-      out.push({
-        chatId:    n.chatId,
-        chatTitle: c.title,
-        nodeId:    n._id,
-        label:     n.label,
-        depth:     n.depth,
-        isRoot:    n._id === c.rootNodeId,
-      });
+    const byId = new Map(chatList.map(c => [c._id, c]));
+    const out: QuickJumpRow[] = [];
+    const seen = new Set<string>();
+
+    for (const id of mru) {
+      if (id === chatId || seen.has(id)) continue;
+      const c = byId.get(id);
+      if (!c) continue;            // deleted chat lingering in the MRU
+      seen.add(id);
+      out.push({ chat: c, visited: true });
     }
-    // Sort: chat title asc, then depth asc
-    out.sort((a, b) => {
-      const t = a.chatTitle.localeCompare(b.chatTitle);
-      if (t !== 0) return t;
-      return a.depth - b.depth;
-    });
+
+    const rest = chatList
+      .filter(c => c._id !== chatId && !seen.has(c._id))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    for (const c of rest) out.push({ chat: c, visited: false });
+
     return out;
-  }, [chats, nodes]);
+  }, [chats, mru, chatId]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return items.slice(0, 20);
-    return items
-      .filter(it => (it.label + " " + it.chatTitle).toLowerCase().includes(needle))
-      .slice(0, 20);
-  }, [items, q]);
+    if (!needle) return ordered;
+    return ordered.filter(r => r.chat.title.toLowerCase().includes(needle));
+  }, [ordered, q]);
 
-  const jump = useCallback(async (it: QuickJumpResult) => {
-    await db.chats.update(it.chatId, { currentNodeId: it.nodeId });
-    navigate(`/chat/${it.chatId}`);
+  const jump = useCallback((id: string) => {
+    navigate(`/chat/${id}`);
     onClose();
   }, [navigate, onClose]);
 
@@ -151,13 +169,15 @@ function QuickJump({ onClose }: { onClose: () => void }) {
       setHi(h => Math.max(0, h - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const it = filtered[hi];
-      if (it) void jump(it);
+      const row = filtered[hi];
+      if (row) jump(row.chat._id);
     } else if (e.key === "Escape") {
       e.preventDefault();
       onClose();
     }
   };
+
+  const noOtherChats = ordered.length === 0;
 
   return (
     <div className="qj-overlay" onClick={onClose}>
@@ -172,7 +192,7 @@ function QuickJump({ onClose }: { onClose: () => void }) {
             value={q}
             onChange={e => setQ(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Jump to any chat or node…"
+            placeholder="Switch to a chat…"
             spellCheck={false}
             autoComplete="off"
           />
@@ -180,22 +200,26 @@ function QuickJump({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="qj-list">
-          {filtered.length === 0 ? (
-            <div className="qj-empty">No matches</div>
+          {noOtherChats ? (
+            <div className="qj-empty">No other chats — press ⌃N to start one.</div>
+          ) : filtered.length === 0 ? (
+            <div className="qj-empty">No chats match.</div>
           ) : (
-            filtered.map((it, i) => (
+            filtered.map((row, i) => (
               <div
-                key={`${it.chatId}:${it.nodeId}`}
+                key={row.chat._id}
                 className={`qj-item${i === hi ? " hi" : ""}`}
-                data-depth={Math.min(3, it.depth)}
-                onClick={() => void jump(it)}
+                onClick={() => jump(row.chat._id)}
                 onMouseEnter={() => setHi(i)}
               >
                 <span className="qj-dot" />
-                <span className="qj-label">
-                  {it.isRoot ? it.chatTitle : `${it.chatTitle} › ${it.label}`}
+                <span className="qj-label">{row.chat.title || "Untitled chat"}</span>
+                {i === 0 && q.trim() === "" && (
+                  <span className="qj-chat">← back</span>
+                )}
+                <span className="qj-path">
+                  {row.visited ? relativeTime(row.chat.updatedAt) : "not visited"}
                 </span>
-                <span className="qj-chat">{it.isRoot ? "chat" : `L${it.depth}`}</span>
               </div>
             ))
           )}
@@ -203,10 +227,10 @@ function QuickJump({ onClose }: { onClose: () => void }) {
 
         <div className="qj-foot">
           <span><span className="qj-kbd">↑</span><span className="qj-kbd">↓</span> navigate</span>
-          <span><span className="qj-kbd">↵</span> jump</span>
+          <span><span className="qj-kbd">↵</span> switch</span>
           <span><span className="qj-kbd">esc</span> close</span>
           <span style={{ marginLeft: "auto" }}>
-            {filtered.length} of {items.length}
+            {filtered.length} of {ordered.length}
           </span>
         </div>
       </div>
