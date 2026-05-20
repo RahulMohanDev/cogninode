@@ -223,15 +223,36 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           createdAt: Date.now(),
         });
 
-        // Auto-title the chat + root node from the first user message on
-        // root. Only fires while the title is still the default placeholder,
-        // so any user-chosen title (from a starter chip) is preserved.
+        // Auto-title from the first user message on this node. A node's
+        // label should reflect the user's question, not — for branch
+        // nodes created from a text selection — a snippet of the prior
+        // reply or the "New branch" placeholder.
         const chatRecord = await db.chats.get(chatId);
-        if (chatRecord && chatRecord.title === "New chat" && nodeId === chatRecord.rootNodeId) {
-          const title = deriveTitle(params.composerText);
-          if (title) {
-            await db.chats.update(chatId, { title, updatedAt: Date.now() });
-            await db.nodes.update(chatRecord.rootNodeId, { label: title });
+        if (chatRecord) {
+          // "First user message on this node" = the message we just added
+          // is the only user-role message under this nodeId.
+          const nodeMsgs    = await db.messages.where("nodeId").equals(nodeId).toArray();
+          const userMsgs    = nodeMsgs.filter(m => m.role === "user");
+          const isFirstUser = userMsgs.length === 1;
+
+          if (isFirstUser) {
+            const title = deriveTitle(params.composerText);
+            if (title) {
+              if (nodeId === chatRecord.rootNodeId) {
+                // Root node: existing behavior — only fires while the chat
+                // title is still the default placeholder, so any user-chosen
+                // title (from a starter chip) is preserved. Updates both the
+                // chat title and the root node label together.
+                if (chatRecord.title === "New chat") {
+                  await db.chats.update(chatId, { title, updatedAt: Date.now() });
+                  await db.nodes.update(chatRecord.rootNodeId, { label: title });
+                }
+              } else {
+                // Non-root branch node: retitle from the question,
+                // overwriting the selected-quote / "New branch" placeholder.
+                await db.nodes.update(nodeId, { label: title });
+              }
+            }
           }
         }
 
