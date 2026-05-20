@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate }                  from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
-  db, createChat, deleteChat, deleteNodeSubtree, type Node,
+  db, createChat, deleteChat, deleteNodeSubtree, renameChat, type Node,
 } from "../../lib/db";
 import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
@@ -211,6 +211,35 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     await deleteNodeSubtree(activeChatId, nodeId);
   };
 
+  // ── rename state ──────────────────────────────────────────────
+  // At most one chat row is in inline-edit mode at a time. A ref flag
+  // guards against the Enter-then-blur double-commit (Enter fires
+  // commit, which also blurs the input → onBlur would fire a second
+  // commit). The flag is set on the first commit and cleared once the
+  // row leaves edit mode.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const committedRef = useRef(false);
+
+  const startRename = (chatId: string, currentTitle: string): void => {
+    committedRef.current = false;
+    setRenameDraft(currentTitle);
+    setRenamingId(chatId);
+  };
+
+  const cancelRename = (): void => {
+    committedRef.current = false;
+    setRenamingId(null);
+  };
+
+  const commitRename = async (chatId: string): Promise<void> => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    const t = renameDraft.trim();
+    setRenamingId(null);
+    if (t) await renameChat(chatId, t);
+  };
+
   const visibleChats = useMemo(() => {
     if (!chats) return [];
     if (!search.trim()) return chats;
@@ -270,25 +299,67 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         {visibleChats.map(chat => {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
+          const isRenaming = renamingId === chat._id;
           return (
             <div key={chat._id}>
               <div
                 className={`chat-row ${isActive ? "active expanded" : ""} has-delete`}
-                onClick={() => handleSelectChat(chat._id)}
+                onClick={() => { if (!isRenaming) handleSelectChat(chat._id); }}
               >
-                <span className="c-label">{chat.title || "Untitled"}</span>
-                <span className="c-count">{relativeTime(chat.updatedAt)}</span>
-                <button
-                  className="row-del"
-                  title="Delete chat"
-                  aria-label="Delete chat"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    armConfirm({ kind: "chat", id: chat._id });
-                  }}
-                >
-                  <TrashIcon />
-                </button>
+                {isRenaming ? (
+                  <input
+                    className="chat-rename-input"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void commitRename(chat._id);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        cancelRename();
+                      }
+                    }}
+                    onBlur={() => { void commitRename(chat._id); }}
+                  />
+                ) : (
+                  <span className="c-label">{chat.title || "Untitled"}</span>
+                )}
+                {!isRenaming && (
+                  <span className="c-count">{relativeTime(chat.updatedAt)}</span>
+                )}
+                {!isRenaming && (
+                  <button
+                    className="row-rename"
+                    title="Rename chat"
+                    aria-label="Rename chat"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startRename(chat._id, chat.title || "");
+                    }}
+                  >
+                    <PencilIcon />
+                  </button>
+                )}
+                {!isRenaming && (
+                  <button
+                    className="row-del"
+                    title="Delete chat"
+                    aria-label="Delete chat"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      armConfirm({ kind: "chat", id: chat._id });
+                    }}
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
               </div>
 
               {isPending && (
@@ -439,6 +510,15 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
 export default Sidebar;
 
 // ── small inline pieces ───────────────────────────────────────────
+
+function PencilIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M11 2.5 L13.5 5 M10 3.5 L3.5 10 L3 13 L6 12.5 L12.5 6"
+            stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 function TrashIcon() {
   return (

@@ -136,6 +136,19 @@ export async function createBranch(params: {
   return nodeId;
 }
 
+// Rename a chat. Updates both the chat title and its root node's label so
+// the sidebar tree, breadcrumb, and QuickJump all stay consistent.
+export async function renameChat(chatId: string, title: string): Promise<void> {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  await db.transaction("rw", db.chats, db.nodes, async () => {
+    const chat = await db.chats.get(chatId);
+    if (!chat) return;
+    await db.chats.update(chatId, { title: trimmed, updatedAt: Date.now() });
+    await db.nodes.update(chat.rootNodeId, { label: trimmed });
+  });
+}
+
 // Walk DFS path from a node to root, return flat message array for prompt
 export async function buildPathMessages(
   chatId: string,

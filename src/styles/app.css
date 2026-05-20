@@ -3704,3 +3704,52 @@ a { color: inherit; text-decoration: none; }
   color: #ffdcd7;
   background-color: #67060c;
 }
+
+/* ── chat rename ─────────────────────────── */
+/* Pencil affordance sits beside .row-del on each chat row. It fades in
+   on hover exactly like .row-del, but in a neutral/lilac hover tone —
+   coral is reserved for the destructive delete action. */
+
+.row-rename {
+  opacity: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--ink-3);
+  margin-left: 4px;
+  flex: none;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.chat-row:hover .row-rename,
+.row-rename:focus-visible { opacity: 0.85; }
+.row-rename:hover {
+  opacity: 1;
+  background: color-mix(in oklab, var(--lilac) 18%, transparent);
+  color: var(--lilac);
+}
+.chat-row.active .row-rename { color: color-mix(in oklab, var(--bg) 75%, transparent); }
+.chat-row.active .row-rename:hover {
+  background: color-mix(in oklab, var(--lilac) 30%, transparent);
+  color: var(--bg);
+}
+
+/* Inline editor that replaces the .c-label title span while renaming. */
+.chat-rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 6px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.chat-rename-input:focus {
+  border-color: var(--lilac);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--lilac) 22%, transparent);
+}
