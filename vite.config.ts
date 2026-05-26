@@ -3,6 +3,8 @@ import react            from "@vitejs/plugin-react";
 import { resolve }      from "path";
 
 export default defineConfig({
+  // Relative base so dist/index.html works under Electron's file:// loader.
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: { "@": resolve(__dirname, "src") },
