@@ -21,6 +21,8 @@ const HF_PROXY = {
 } as const;
 
 export default defineConfig({
+  // Relative base so dist/index.html works under Electron's file:// loader.
+  base: "./",
   plugins: [react(), tailwindcss()],
   test: {
     environment: "jsdom",
