@@ -32,6 +32,10 @@ export interface StreamSlotSnapshot {
   streamingText:      string;
   streamingReasoning: string;
   error:              string | null;
+  /** HTTP status that produced `error`, when the failure came from a non-OK
+   *  OpenRouter response. The UI keys its 401 ("key rejected") recovery flow
+   *  off this rather than string-matching the message. */
+  errorStatus?:       number;
   startedAt:          number;
 }
 
@@ -337,7 +341,8 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
               state: "error",
               streamingText: "",
               streamingReasoning: "",
-              error: status ? `${msg} (HTTP ${status})` : msg,
+              error: msg,
+              ...(status !== undefined ? { errorStatus: status } : {}),
             });
             unregisterAborter(nodeId);
             recomputeActive();

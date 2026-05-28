@@ -26,7 +26,7 @@ export interface ChatAppProps {
 }
 
 export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
-  const { prefs } = useSettings();
+  const { prefs, clearApiKey } = useSettings();
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const currentNodeId = chat?.currentNodeId ?? chat?.rootNodeId ?? "";
@@ -58,7 +58,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
       .filter((n): n is DbNode => !!n);
   }, [nodes, currentNodeId]);
 
-  const { state, streamingText, streamingReasoning, error: streamError, send, cancel } = useStream(chatId, currentNodeId);
+  const { state, streamingText, streamingReasoning, error: streamError, errorStatus: streamErrorStatus, send, cancel } = useStream(chatId, currentNodeId);
 
   // Branch quote — passed to Composer as a chip when branching from selection
   // or from a message's "Branch from this" action.
@@ -367,6 +367,14 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           streamingText={streamingText}
           streamingReasoning={streamingReasoning}
           {...(streamError !== null ? { streamError } : {})}
+          {...(streamErrorStatus !== undefined ? { streamErrorStatus } : {})}
+          onAuthReset={() => {
+            // Drop the dead error slot so the node is clean when we come
+            // back, then clear the key — the shared settings context flips
+            // ApiKeyGate to the setup screen immediately.
+            cancel();
+            clearApiKey();
+          }}
           onBranchFromMessage={(msg, q) => void handleBranchFromMessage(msg, q)}
           reflectionsMode={reflectionsMode}
           onExitReflections={() => setReflectionsMode(false)}

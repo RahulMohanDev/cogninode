@@ -1,5 +1,14 @@
-// src/hooks/useSettings.ts
-import { useState, useCallback } from "react";
+// src/hooks/useSettings.tsx
+// App-wide settings (OpenRouter key + prefs) held in a single React context
+// so every consumer shares one source of truth. This matters for the key:
+// when one place clears it (a 401 reset, the Settings "Remove key" button),
+// the gate — which lives in a different part of the tree — must immediately
+// re-render and show the setup screen. Independent useState copies would
+// each hold their own stale value, so the change is lifted here instead.
+import {
+  createContext, useCallback, useContext, useMemo, useState,
+  type ReactNode,
+} from "react";
 import type { CustomModel } from "../lib/cost";
 
 export type { CustomModel };
@@ -59,7 +68,22 @@ export function applyTheme(mode: ThemeMode): void {
   } catch { /* ignore */ }
 }
 
-export function useSettings() {
+export interface SettingsContextValue {
+  apiKey:      string;
+  setApiKey:   (key: string) => void;
+  clearApiKey: () => void;
+  prefs:       Prefs;
+  setPref:     <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
+  setTheme:    (mode: ThemeMode) => void;
+}
+
+const SettingsContext = createContext<SettingsContextValue | null>(null);
+
+export interface SettingsProviderProps {
+  children: ReactNode;
+}
+
+export function SettingsProvider({ children }: SettingsProviderProps) {
   const [apiKey, _setApiKey] = useState(() => localStorage.getItem(KEYS.apiKey) ?? "");
   const [prefs,  _setPrefs]  = useState<Prefs>(loadPrefs);
 
@@ -89,5 +113,21 @@ export function useSettings() {
     setPref("theme", mode);
   }, [setPref]);
 
-  return { apiKey, setApiKey, clearApiKey, prefs, setPref, setTheme };
+  const value = useMemo<SettingsContextValue>(() => ({
+    apiKey, setApiKey, clearApiKey, prefs, setPref, setTheme,
+  }), [apiKey, setApiKey, clearApiKey, prefs, setPref, setTheme]);
+
+  return (
+    <SettingsContext.Provider value={value}>
+      {children}
+    </SettingsContext.Provider>
+  );
+}
+
+export function useSettings(): SettingsContextValue {
+  const ctx = useContext(SettingsContext);
+  if (!ctx) {
+    throw new Error("useSettings must be used inside <SettingsProvider>");
+  }
+  return ctx;
 }
