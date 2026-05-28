@@ -24,6 +24,7 @@ export function useStream(chatId: string, nodeId: string) {
   const streamingText      = slot?.streamingText      ?? "";
   const streamingReasoning = slot?.streamingReasoning ?? "";
   const error              = slot?.error              ?? null;
+  const errorStatus        = slot?.errorStatus;
 
   const send = useCallback((params: SendParams) => {
     ctx.send(chatId, nodeId, params);
@@ -33,5 +34,5 @@ export function useStream(chatId: string, nodeId: string) {
     ctx.cancel(nodeId);
   }, [ctx, nodeId]);
 
-  return { state, streamingText, streamingReasoning, error, send, cancel };
+  return { state, streamingText, streamingReasoning, error, errorStatus, send, cancel };
 }

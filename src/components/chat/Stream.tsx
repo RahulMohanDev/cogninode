@@ -21,6 +21,11 @@ export interface StreamProps {
   streamingText:        string;
   streamingReasoning?:  string;
   streamError?:         string;
+  /** HTTP status behind `streamError`, when it came from a non-OK response.
+   *  A 401 swaps the generic error line for the key-rejected recovery card. */
+  streamErrorStatus?:   number;
+  /** Invoked from the 401 card: clears the rejected key and returns to setup. */
+  onAuthReset?:         () => void;
   onBranchFromMessage?: (msg: DbMessage, quote?: string) => void;
   reflectionsMode?:     boolean;
   onExitReflections?:   () => void;
@@ -38,6 +43,8 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     streamingText,
     streamingReasoning,
     streamError,
+    streamErrorStatus,
+    onAuthReset,
     onBranchFromMessage,
     reflectionsMode = false,
     onExitReflections,
@@ -138,11 +145,48 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
         )}
 
         {streamState === "error" && (
-          <div className="msg assistant">
-            <div className="m-body" style={{ color: "var(--coral)" }}>
-              <strong>Stream error:</strong> {streamError ?? "Unknown error — see browser console for details."}
+          streamErrorStatus === 401 ? (
+            <div className="msg assistant">
+              <div
+                className="m-body auth-reset-card"
+                role="alert"
+                style={{
+                  border: "1px solid var(--coral)",
+                  borderRadius: 12,
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <strong style={{ color: "var(--coral)" }}>
+                  Your API key was rejected
+                </strong>
+                <span style={{ opacity: 0.8 }}>
+                  OpenRouter refused this key (HTTP 401) — it may have been
+                  revoked or is no longer valid. Clear it and reconnect to
+                  continue.
+                </span>
+                <div>
+                  <button
+                    className="btn-primary coral"
+                    type="button"
+                    onClick={() => onAuthReset?.()}
+                  >
+                    Clear key &amp; return to setup
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="msg assistant">
+              <div className="m-body" style={{ color: "var(--coral)" }}>
+                <strong>Stream error:</strong>{" "}
+                {streamError ?? "Unknown error — see browser console for details."}
+                {streamErrorStatus !== undefined ? ` (HTTP ${streamErrorStatus})` : ""}
+              </div>
+            </div>
+          )
         )}
 
         <div ref={bottomRef} />
