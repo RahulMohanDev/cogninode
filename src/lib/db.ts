@@ -85,6 +85,23 @@ export interface MetaEntry {
   value: unknown;
 }
 
+// One embedding per searchable doc (message / reflection), keyed by the
+// search doc id ("m:<id>" / "r:<id>"). Vectors are pre-normalized so
+// cosine similarity reduces to a dot product. `textHash` detects content
+// edits that require re-embedding; `model` scopes rows to the embedding
+// model that produced them (switching models wipes + rebuilds).
+export interface SearchVector {
+  _id:       string;     // search doc id, e.g. "m:<messageId>"
+  kind:      "message" | "reflection";
+  chatId:    string;
+  nodeId:    string;
+  model:     string;     // embedding model id from EMBEDDING_MODELS
+  dims:      number;
+  vector:    ArrayBuffer; // Float32Array buffer, length === dims
+  textHash:  string;
+  updatedAt: number;
+}
+
 // ── Dexie database ─────────────────────────────────────────────
 
 export const db = new Dexie("cogninode") as Dexie & {
@@ -95,6 +112,7 @@ export const db = new Dexie("cogninode") as Dexie & {
   files:       EntityTable<StoredFile,  "_id">;
   models:      EntityTable<CatalogModel, "_id">;
   meta:        EntityTable<MetaEntry,   "key">;
+  searchVectors: EntityTable<SearchVector, "_id">;
 };
 
 db.version(1).stores({
@@ -109,6 +127,11 @@ db.version(1).stores({
 db.version(2).stores({
   models: "_id, vendor",
   meta:   "key",
+});
+
+// v3: semantic-search embeddings (cache — rebuildable from messages).
+db.version(3).stores({
+  searchVectors: "_id, model, chatId",
 });
 
 // ── Meta helpers ───────────────────────────────────────────────

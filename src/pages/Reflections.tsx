@@ -9,7 +9,7 @@
 // uses) / delete / jump-to-source-branch.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate }  from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db, type Reflection } from "../lib/db";
@@ -44,6 +44,13 @@ export default function Reflections() {
   const [selectedId, setSelectedId]     = useState<string | null>(null);
 
   useSettingsHotkey(() => setSettingsOpen(true));
+
+  // ?open=<id> deep link (from the ⌘K search palette).
+  const [searchParams] = useSearchParams();
+  const openParam = searchParams.get("open");
+  useEffect(() => {
+    if (openParam) setSelectedId(openParam);
+  }, [openParam]);
 
   // No updatedAt index on the reflections table — sort in memory. Counts
   // stay small (these are hand-curated snapshots, not messages).

@@ -26,9 +26,11 @@ import { SettingsModal }       from "../settings/SettingsModal";
 export interface ChatAppProps {
   chatId:         string;
   initialPrefill: string | null;
+  /** Message to scroll to + flash after load (search deep link). */
+  focusMessageId?: string | null;
 }
 
-export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
+export function ChatApp({ chatId, initialPrefill, focusMessageId }: ChatAppProps) {
   const { prefs, clearApiKey } = useSettings();
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
@@ -369,6 +371,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           ref={streamRef}
           chatId={chatId}
           currentNodeId={currentNodeId}
+          {...(focusMessageId ? { focusMessageId } : {})}
           streamState={state}
           streamingText={streamingText}
           streamingReasoning={streamingReasoning}

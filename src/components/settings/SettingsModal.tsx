@@ -14,6 +14,9 @@ import { exportAllChats, importFromJson } from "../../lib/export";
 import { useSettings } from "../../hooks/useSettings";
 import { useModalBehavior } from "../../hooks/useModalStack";
 import { useModels } from "../../hooks/ModelsProvider";
+import { useSearchState, semanticStatusLabel } from "../../hooks/useSearchState";
+import { searchService } from "../../lib/search/service";
+import { EMBEDDING_MODELS } from "../../lib/search/embedding/models";
 import { useToast } from "../ui/Toast";
 
 export interface SettingsModalProps {
@@ -66,6 +69,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           />
 
           <CatalogSection />
+
+          <SearchSection
+            semanticSearch={prefs.semanticSearch}
+            embeddingModelId={prefs.embeddingModelId}
+            onToggle={v => setPref("semanticSearch", v)}
+            onSelectModel={id => setPref("embeddingModelId", id)}
+          />
 
           <BranchModeSection
             value={prefs.branchMode}
@@ -306,6 +316,94 @@ function CatalogSection() {
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Section 2c: Search ───────────────────────────────────────────────────────
+// Keyword search is always on (in-memory BM25, no downloads). This section
+// controls the optional semantic layer: which embedding model runs locally,
+// and the kill switch that deletes vectors + cached weights.
+
+function SearchSection({
+  semanticSearch,
+  embeddingModelId,
+  onToggle,
+  onSelectModel,
+}: {
+  semanticSearch:   boolean;
+  embeddingModelId: string;
+  onToggle:         (v: boolean) => void;
+  onSelectModel:    (id: string) => void;
+}) {
+  const searchState = useSearchState();
+  const toast = useToast();
+
+  const disable = (): void => {
+    onToggle(false);
+    void searchService.purgeSemanticData().then(() => {
+      toast("Semantic search off — vectors and model weights deleted", { kind: "info" });
+    });
+  };
+
+  return (
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Search</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">
+          Keyword search (⌘K) is always on and instant. Semantic search runs a small
+          embedding model in your browser so results also match by <em>meaning</em>.
+        </p>
+      </div>
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Semantic search</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            {semanticSearch
+              ? <>Status: <span className="tw:font-mono tw:text-[12px]">{semanticStatusLabel(searchState)}</span>
+                  {searchState.semantic === "ready" && ` · ${searchState.vectorCount} items embedded`}
+                  {searchState.semantic === "error" && searchState.error ? ` — ${searchState.error}` : ""}</>
+              : "Off — turning it on downloads the model below in the background."}
+          </div>
+        </div>
+        {semanticSearch ? (
+          <button
+            className="tw:bg-bg-3 tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
+            onClick={disable}
+            title="Stops semantic search and deletes embeddings + downloaded model weights"
+          >
+            Turn off
+          </button>
+        ) : (
+          <button
+            className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3"
+            onClick={() => onToggle(true)}
+          >
+            Turn on
+          </button>
+        )}
+      </div>
+
+      {EMBEDDING_MODELS.map(m => (
+        <div key={m.id} className={`tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0 ${semanticSearch ? "" : "tw:opacity-50"}`}>
+          <div>
+            <div className="tw:font-medium tw:text-[14px] tw:text-ink">
+              {m.label}
+              <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.08em] tw:uppercase tw:text-ink-3 tw:ml-1"> · {m.sizeLabel}</span>
+            </div>
+            <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">{m.note}</div>
+          </div>
+          <input
+            type="radio"
+            name="embeddingModel"
+            checked={embeddingModelId === m.id}
+            disabled={!semanticSearch}
+            onChange={() => onSelectModel(m.id)}
+            style={{ accentColor: "var(--lilac)" }}
+          />
+        </div>
+      ))}
     </div>
   );
 }

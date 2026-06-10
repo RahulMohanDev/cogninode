@@ -36,6 +36,13 @@ export interface Prefs {
   /** Models starred in the picker — float to the top. Defaults to the
    *  curated set from cost.ts. */
   pinnedModelIds:  string[];
+  /** Hybrid search: keyword works always; when this is on, an embedding
+   *  model downloads in the background and upgrades retrieval to
+   *  keyword+semantic. Turning it off deletes vectors + cached weights. */
+  semanticSearch:  boolean;
+  /** Which local embedding model powers semantic search — an id from
+   *  EMBEDDING_MODELS (lib/search/embedding/models.ts). */
+  embeddingModelId: string;
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -45,6 +52,8 @@ const DEFAULT_PREFS: Prefs = {
   theme:          "dark",
   sidebarCollapsed: false,
   pinnedModelIds: DEFAULT_PINNED_MODEL_IDS,
+  semanticSearch: true,
+  embeddingModelId: "bge-small",
 };
 
 function readStoredTheme(): ThemeMode | null {

@@ -4,6 +4,7 @@ import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
 import { ModelsProvider } from "./hooks/ModelsProvider";
 import { ToastProvider } from "./components/ui/Toast";
+import { SearchOverlay } from "./components/search/SearchOverlay";
 import Chats from "./pages/Chats";
 import Chat from "./pages/Chat";
 import Reflections from "./pages/Reflections";
@@ -26,6 +27,9 @@ export default function App() {
                                 <Route path="/reflections" element={<Reflections />} />
                                 <Route path="/chat/:chatId" element={<Chat />} />
                             </Routes>
+                            {/* ⌘K palette — global so it works on every page;
+                                also bootstraps the search index + semantic layer. */}
+                            <SearchOverlay />
                         </ApiKeyGate>
                     </StreamsProvider>
                 </ModelsProvider>

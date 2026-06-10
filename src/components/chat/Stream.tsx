@@ -17,6 +17,8 @@ import { Reasoning }         from "./Reasoning";
 export interface StreamProps {
   chatId:               string;
   currentNodeId:        string;
+  /** Scroll to + flash this message once it's rendered (search deep link). */
+  focusMessageId?:      string;
   streamState:          "idle" | "streaming" | "error";
   streamingText:        string;
   streamingReasoning?:  string;
@@ -39,6 +41,7 @@ export interface StreamProps {
 export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   {
     currentNodeId,
+    focusMessageId,
     streamState,
     streamingText,
     streamingReasoning,
@@ -68,6 +71,24 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [pathMessages.length, streamingText, streamState]);
+
+  // Search deep link: once the target message is rendered, center + flash
+  // it. Runs in rAF so it lands after the bottom-scroll effect above and
+  // wins the scroll position.
+  const focusedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusMessageId || focusedRef.current === focusMessageId) return;
+    if (!pathMessages.some(m => m._id === focusMessageId)) return;
+    focusedRef.current = focusMessageId;
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-msg-id="${CSS.escape(focusMessageId)}"]`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.classList.add("search-flash");
+        setTimeout(() => el.classList.remove("search-flash"), 1600);
+      }
+    });
+  }, [focusMessageId, pathMessages]);
 
   const isEmpty = pathMessages.length === 0 && streamState !== "streaming";
 

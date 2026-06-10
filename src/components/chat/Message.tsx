@@ -265,7 +265,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
   );
 
   return (
-    <div className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""} tw:group/msg tw:flex tw:flex-col tw:gap-1.5 tw:relative ${isAssistant ? "tw:items-start" : "tw:items-end"}`}>
+    <div data-msg-id={message._id} className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""} tw:group/msg tw:flex tw:flex-col tw:gap-1.5 tw:relative ${isAssistant ? "tw:items-start" : "tw:items-end"}`}>
       {/* Reflections-mode side handle: delete + merge into previous (if eligible) */}
       {reflectionsMode && (
         <div className={`tw:absolute tw:top-0 tw:flex tw:flex-col tw:gap-1 tw:z-[2] ${isAssistant ? "tw:left-[-44px]" : "tw:left-auto tw:right-[-44px]"}`}>

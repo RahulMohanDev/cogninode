@@ -45,8 +45,8 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
       // per-overlay by useModalBehavior (topmost layer only), not here.
       if (anyModalOpen() && open === null) return;
 
-      // Cmd+K or Ctrl+Q → QuickJump
-      if (ctrl && (e.key === "q" || e.key === "Q" || e.key === "k" || e.key === "K")) {
+      // Ctrl+Q → QuickJump (⌘K belongs to the global SearchOverlay now)
+      if (ctrl && (e.key === "q" || e.key === "Q")) {
         e.preventDefault();
         setOpen(prev => (prev === "quickjump" ? null : "quickjump"));
         return;
@@ -474,8 +474,8 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
     {
       name: "Navigate",
       items: [
+        { keys: ["⌘", "K"],        label: "Search everything (messages too)" },
         { keys: ["⌃", "Q"],        label: "Quick-jump to any node" },
-        { keys: ["⌘", "K"],        label: "Quick-jump (alt)" },
         { keys: ["⌃", "T"],        label: "Open tree map" },
         { keys: ["⌃", "B"],        label: "Collapse / expand sidebar" },
         { keys: ["Esc"],           label: "Close overlay · cancel stream" },
