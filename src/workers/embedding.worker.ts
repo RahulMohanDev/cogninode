@@ -35,6 +35,18 @@ const ctx = self as unknown as {
 
 env.allowLocalModels = false;
 
+// On localhost, download model files through the Vite dev-server proxy
+// (vite.config.ts → /hf) instead of huggingface.co directly: HF's
+// cross-origin redirect to its cas-bridge storage host fails the
+// browser's CORS check from a localhost origin (AllowOriginMismatch).
+// Same-origin requests have no CORS to fail; the dev server follows the
+// redirect in Node. Deployed origins keep the direct default.
+const isLocalhost =
+  self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1";
+if (isLocalhost) {
+  env.remoteHost = `${self.location.origin}/hf`;
+}
+
 const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 const onnxEnv = (env.backends as { onnx?: { wasm?: { wasmPaths?: unknown } } }).onnx;
 if (onnxEnv?.wasm) {
