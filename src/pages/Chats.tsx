@@ -11,6 +11,7 @@ import { formatCost } from "../lib/cost";
 import { buildTree, layoutTree } from "../lib/path";
 import { Sidebar } from "../components/chat/Sidebar";
 import { SettingsModal } from "../components/settings/SettingsModal";
+import { useSettings } from "../hooks/useSettings";
 
 interface Starter {
   label:  string;
@@ -31,6 +32,7 @@ function formatCreated(ts: number): string {
 
 export default function Chats() {
   const navigate = useNavigate();
+  const { prefs } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const chats = useLiveQuery(
@@ -49,7 +51,7 @@ export default function Chats() {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell ${prefs.sidebarCollapsed ? "collapsed" : ""}`}>
       <Sidebar activeChatId={null} onOpenSettings={() => setSettingsOpen(true)} />
       <div className="main">
         <div className="page">

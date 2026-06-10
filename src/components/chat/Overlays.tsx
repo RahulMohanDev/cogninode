@@ -464,6 +464,7 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
         { keys: ["⌃", "Q"],        label: "Quick-jump to any node" },
         { keys: ["⌘", "K"],        label: "Quick-jump (alt)" },
         { keys: ["⌃", "T"],        label: "Open tree map" },
+        { keys: ["⌃", "B"],        label: "Collapse / expand sidebar" },
         { keys: ["Esc"],           label: "Close overlay · cancel stream" },
       ],
     },

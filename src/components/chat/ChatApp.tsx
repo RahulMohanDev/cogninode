@@ -330,7 +330,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     // Caller (Chat page) is responsible for the "not found" empty state,
     // but if we hit a transient loading state, render a minimal shell.
     return (
-      <div className="shell">
+      <div className={`shell ${prefs.sidebarCollapsed ? "collapsed" : ""}`}>
         <Sidebar activeChatId={chatId} onOpenSettings={() => setSettingsOpen(true)} />
         <div className="main">
           <div className="empty">
@@ -345,7 +345,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell ${prefs.sidebarCollapsed ? "collapsed" : ""}`}>
       <Sidebar
         activeChatId={chatId}
         onOpenSettings={() => setSettingsOpen(true)}

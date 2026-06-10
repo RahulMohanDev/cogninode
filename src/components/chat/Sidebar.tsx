@@ -103,8 +103,31 @@ function flattenTree(
 export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const { prefs, setTheme } = useSettings();
+  const { prefs, setTheme, setPref } = useSettings();
   const activeStreams = useActiveStreams();
+
+  // Collapsed = slim icon rail. Persisted in prefs so it survives reloads and
+  // is shared with the .shell grid (which owns the column width).
+  const isCollapsed = prefs.sidebarCollapsed;
+  const toggleCollapsed = (): void => setPref("sidebarCollapsed", !isCollapsed);
+
+  // ⌃B / ⌘B toggles the rail (VS Code's convention). Skip while typing so the
+  // composer keeps ⌘B-for-bold; mirrors the input guard in Overlays.tsx.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl || (e.key !== "b" && e.key !== "B")) return;
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (
+        t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
+      );
+      if (inField) return;
+      e.preventDefault();
+      setPref("sidebarCollapsed", !prefs.sidebarCollapsed);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [prefs.sidebarCollapsed, setPref]);
 
   const chats = useLiveQuery(
     () => db.chats.orderBy("updatedAt").reverse().toArray(),
@@ -259,19 +282,21 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const isDark = prefs.theme === "dark";
 
   return (
-    <aside className="side">
+    <aside className={`side ${isCollapsed ? "collapsed" : ""}`}>
       <div className="side-top">
         <a
           href="/"
           className="side-brand"
+          title="cogninode — all chats"
           onClick={(e) => { e.preventDefault(); navigate("/"); }}
         >
           <Glyph size={22} />
           <span>cogninode <span className="beta-tag">beta</span></span>
         </a>
         <button
-          className="icon-btn"
+          className="icon-btn side-allchats"
           title="All chats"
+          aria-label="All chats"
           onClick={() => navigate("/")}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -279,6 +304,19 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
             <rect x="9" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
             <rect x="2" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
             <rect x="9" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          </svg>
+        </button>
+        <button
+          className="icon-btn collapse-toggle"
+          onClick={toggleCollapsed}
+          title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isCollapsed}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M8.5 4 L4.5 8 L8.5 12 M12 4 L8 8 L12 12"
+                  stroke="currentColor" strokeWidth="1.5"
+                  strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       </div>
@@ -296,9 +334,9 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         />
       </div>
 
-      <button className="side-new" onClick={handleNewChat}>
+      <button className="side-new" onClick={handleNewChat} title="New chat (⌃N)">
         <span className="plus">+</span>
-        New chat
+        <span className="sn-label">New chat</span>
         <span className="kbd">⌃N</span>
       </button>
 

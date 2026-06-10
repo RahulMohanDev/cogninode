@@ -26,6 +26,10 @@ export interface Prefs {
   branchMode:      "follow" | "stay";
   customModels:    CustomModel[];
   theme:           ThemeMode;
+  /** Slim the left sidebar to an icon-only rail. Toggled via ⌃B / the rail
+   *  button; lives here (not local state) so the .shell grid in the page
+   *  shells and the .side rail share one source of truth. */
+  sidebarCollapsed: boolean;
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -33,6 +37,7 @@ const DEFAULT_PREFS: Prefs = {
   branchMode:     "follow",
   customModels:   [],
   theme:          "dark",
+  sidebarCollapsed: false,
 };
 
 function readStoredTheme(): ThemeMode | null {

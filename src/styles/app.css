@@ -62,8 +62,15 @@ a { color: inherit; text-decoration: none; }
   height: 100vh;
   height: 100dvh;
   width: 100vw;
+  transition: grid-template-columns 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .shell.solo { grid-template-columns: 1fr; }
+/* Collapsed: the sidebar becomes a slim icon rail. The grid owns the column
+   width so the animation is a single interpolation between two fixed tracks. */
+.shell.collapsed { grid-template-columns: 60px 1fr; }
+@media (prefers-reduced-motion: reduce) {
+  .shell { transition: none; }
+}
 
 /* ====== Sidebar ====== */
 .side {
@@ -73,6 +80,9 @@ a { color: inherit; text-decoration: none; }
   flex-direction: column;
   min-height: 0;
   position: relative;
+  /* Clip the full-width content while the grid track animates open/closed so
+     nothing bleeds into the main pane mid-transition. */
+  overflow: hidden;
 }
 .side-top {
   padding: 16px 16px 10px;
@@ -89,6 +99,9 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600;
   font-size: 17px;
   letter-spacing: -0.02em;
+  /* Fill the row so the all-chats + collapse buttons group at the right. */
+  flex: 1;
+  min-width: 0;
 }
 .side-brand svg { flex: none; }
 .icon-btn {
@@ -449,6 +462,54 @@ a { color: inherit; text-decoration: none; }
   color: var(--ink-3);
   flex: none;
 }
+
+/* ── Collapsible icon rail ──────────────────────────────────────────
+   When .side.collapsed (driven by prefs.sidebarCollapsed) the sidebar slims
+   to a 60px rail: search, the chat list, and all text labels hide, leaving
+   only the core icon affordances stacked and centered. The width itself is
+   animated by the .shell grid track. */
+
+/* Chevron points "«" (collapse) when open; flips to "»" when collapsed so the
+   one glyph reads as expand. */
+.collapse-toggle svg { transition: transform 0.2s ease; }
+.side.collapsed .collapse-toggle svg { transform: scaleX(-1); }
+
+.side.collapsed .side-top {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 0 10px;
+}
+.side.collapsed .collapse-toggle { order: -1; }   /* expand button at the top */
+.side.collapsed .side-brand { flex: none; justify-content: center; }
+.side.collapsed .side-brand span { display: none; }
+
+.side.collapsed .side-search,
+.side.collapsed .side-section-h,
+.side.collapsed .side-list { display: none; }
+
+/* New-chat collapses to a centered "+" square. */
+.side.collapsed .side-new {
+  margin: 2px auto 8px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  justify-content: center;
+}
+.side.collapsed .side-new .sn-label,
+.side.collapsed .side-new .kbd { display: none; }
+
+/* Footer drops the identity block, stacks its two icon buttons, and pins to
+   the bottom (the chat list — normally the flex spacer — is hidden). */
+.side.collapsed .side-foot {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+  margin-top: auto;
+}
+.side.collapsed .side-foot .avatar,
+.side.collapsed .side-foot .who { display: none; }
 
 /* ====== Main pane ====== */
 .main {
