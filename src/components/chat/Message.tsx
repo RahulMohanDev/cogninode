@@ -48,7 +48,7 @@ function FileChips({ fileIds }: { fileIds: string[] }) {
   if (!files || files.length === 0) return null;
 
   return (
-    <div className="files-row" style={{ padding: 0, marginTop: 6 }}>
+    <div className="tw:flex tw:flex-wrap tw:gap-1.5 tw:p-0 tw:mt-1.5">
       {files.map(file => {
         if (file.kind === "image") {
           return (
@@ -70,8 +70,8 @@ function FileChips({ fileIds }: { fileIds: string[] }) {
           file.kind === "pdf"  ? "PDF" :
           file.kind === "code" ? "<>"  : "FILE";
         return (
-          <span key={file._id} className="file-chip">
-            <span className={`fc-icon ${file.kind === "code" ? "code" : file.kind === "pdf" ? "pdf" : "img"}`}>
+          <span key={file._id} className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1 tw:pr-2.5 tw:pl-1.5 tw:bg-bg-2 tw:border tw:border-line tw:rounded-[999px] tw:text-[12px] tw:text-ink">
+            <span className={`tw:w-[22px] tw:h-[22px] tw:rounded-[5px] tw:grid tw:place-items-center tw:font-mono tw:text-[9px] tw:font-bold tw:text-white tw:tracking-[-0.02em] ${file.kind === "code" ? "tw:bg-[#2c2c2c] tw:dark:bg-[#4a4135]" : file.kind === "pdf" ? "tw:bg-[#e35d4d]" : "tw:bg-teal"}`}>
               {iconLabel}
             </span>
             {file.name}
