@@ -18,7 +18,7 @@ import {
 } from "react";
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db }          from "../lib/db";
-import { getModel }                       from "../lib/cost";
+import { resolveModelSync }               from "../lib/models";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
 import { useSettings }                    from "./useSettings";
 
@@ -161,7 +161,10 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
     const existing = slotsRef.current.get(nodeId);
     if (existing && existing.snapshot.state === "streaming") return;
 
-    const model = getModel(params.modelId, prefsRef.current.customModels);
+    // Resolves through the live catalog mirror (custom → catalog → legacy
+    // slug map), so even historical ids keep working. undefined only when
+    // the id is genuinely unknown — e.g. a model OpenRouter removed.
+    const model = resolveModelSync(params.modelId, prefsRef.current.customModels);
     if (!model) {
       // Create an error-state slot so the failure surfaces in the UI.
       const errSubs = existing?.subscribers ?? new Set<() => void>();
@@ -176,7 +179,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           chatId, nodeId, modelId: params.modelId,
           state: "error",
           streamingText: "", streamingReasoning: "",
-          error: `Unknown model id: ${params.modelId}`,
+          error: `Unknown model "${params.modelId}" — it may have been removed from OpenRouter. Pick another model and resend.`,
           startedAt: Date.now(),
         },
         subscribers: errSubs,

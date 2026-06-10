@@ -234,6 +234,29 @@
 
 /* ====== Quick-jump (Ctrl+Q) ====== */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ====== Search deep-link flash ====== */
+/* Applied transiently by Stream.tsx when ⌘K jumps to a message. */
+.search-flash {
+  animation: searchFlash 1.5s ease-out;
+  border-radius: 12px;
+}
+@keyframes searchFlash {
+  0% {
+    background: color-mix(in oklab, var(--butter) 38%, transparent);
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--butter) 38%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+/* Matched terms inside the deep-linked message (CSS Custom Highlight API,
+   registered by lib/domHighlight.ts). */
+::highlight(cogninode-search) {
+  background-color: color-mix(in oklab, var(--butter) 60%, transparent);
+  color: var(--ink);
+}
 /* ====== Loading dots ====== */
 .thinking {
   display: inline-flex; gap: 4px; padding: 6px 0;

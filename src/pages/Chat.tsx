@@ -15,6 +15,8 @@ export default function Chat() {
   const [search] = useSearchParams();
   const node    = search.get("node");
   const prefill = search.get("prefill");
+  const focusMessageId = search.get("msg");   // deep link from search
+  const focusQuery     = search.get("q");     // terms to highlight there
 
   // Sync the optional ?node= query into Dexie's currentNodeId, once per chatId.
   const syncedNodeRef = useRef<string | null>(null);
@@ -68,5 +70,5 @@ export default function Chat() {
     );
   }
 
-  return <ChatApp chatId={chatId} initialPrefill={prefill} />;
+  return <ChatApp chatId={chatId} initialPrefill={prefill} focusMessageId={focusMessageId} focusQuery={focusQuery} />;
 }

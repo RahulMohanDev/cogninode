@@ -3,10 +3,11 @@
 // (chatId, nodeId) in localStorage. The streaming hook is owned by ChatApp;
 // Composer just consumes send/cancel/state via props.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCostEstimate }      from "../../hooks/useCostEstimate";
 import { useSettings }          from "../../hooks/useSettings";
-import { getAllModels, formatEstimate, type ModelDef } from "../../lib/cost";
+import { useModels }            from "../../hooks/ModelsProvider";
+import { formatEstimate, formatPerM, type ModelDef } from "../../lib/cost";
 import { storeFile, type ProcessedFile }               from "../../lib/files";
 
 export interface ComposerSendParams {
@@ -81,12 +82,15 @@ export function Composer({
   onCreateBlankBranch,
 }: ComposerProps) {
   const { prefs }            = useSettings();
+  const { models, resolve, pinnedIds, togglePinned, catalogCount } = useModels();
   const [text,   setText]    = useState(() => initialText ?? loadDraft(chatId, currentNodeId));
   const [files,  setFiles]   = useState<ProcessedFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading,   setUploading]   = useState(false);
   const [modelId, setModelId] = useState<string>(prefs.defaultModelId);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
+  const [freeOnly,   setFreeOnly]   = useState(false);
   const [webSearch, setWebSearch] = useState<boolean>(loadWebSearch);
   const taRef    = useRef<HTMLTextAreaElement | null>(null);
   const fileRef  = useRef<HTMLInputElement | null>(null);
@@ -110,10 +114,38 @@ export function Composer({
     ta.style.height = Math.min(200, ta.scrollHeight) + "px";
   }, [text]);
 
-  // Resolve model object.
-  const allModels = getAllModels(prefs.customModels);
-  const model: ModelDef = allModels.find(m => m.id === modelId) ?? allModels[0]!;
+  // Resolve model object — selected id, falling back to the user default,
+  // then the first available model (the list is never empty: the fallback
+  // snapshot backs it before the live catalog loads).
+  const model: ModelDef = resolve(modelId) ?? resolve(prefs.defaultModelId) ?? models[0]!;
   const initials = model.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2);
+
+  // Picker rows: search filters the whole catalog flat; otherwise pinned
+  // models float in their own section above the full vendor-sorted list.
+  const SEARCH_CAP = 60;
+  const picker = useMemo(() => {
+    const isFree = (m: ModelDef) => m.inputPricePerM === 0 && m.outputPricePerM === 0;
+    let list = freeOnly ? models.filter(isFree) : models;
+    const q = modelQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(m =>
+        m.name.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
+        m.vendor.toLowerCase().includes(q));
+      return { pinned: [] as ModelDef[], rest: list.slice(0, SEARCH_CAP), overflow: Math.max(0, list.length - SEARCH_CAP) };
+    }
+    const pinnedSet = new Set(pinnedIds);
+    return {
+      pinned:   list.filter(m => pinnedSet.has(m.id)),
+      rest:     list.filter(m => !pinnedSet.has(m.id)),
+      overflow: 0,
+    };
+  }, [models, modelQuery, freeOnly, pinnedIds]);
+
+  const closePicker = (): void => {
+    setModelPickerOpen(false);
+    setModelQuery("");
+  };
 
   // Cost pill — colour band per spec section 8.
   const estCost = useCostEstimate(text, currentNodeId, chatId, model.id);
@@ -271,67 +303,117 @@ export function Composer({
             onChange={(e) => void handleFiles(e.target.files)}
           />
 
-          <button
-            className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-[5px] tw:pr-[9px] tw:pl-1.5 tw:rounded-[8px] tw:border tw:border-line tw:bg-bg-3 tw:text-[12px] tw:text-ink tw:relative tw:hover:border-ink-3"
-            type="button"
-            onClick={() => setModelPickerOpen(v => !v)}
-          >
-            <span className="tw:w-4 tw:h-4 tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[8px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>{initials}</span>
-            <span>{model.name.split(" ").slice(0, 2).join(" ")}</span>
-            <svg className="tw:w-2 tw:h-2 tw:opacity-50" viewBox="0 0 10 10">
-              <path d="M2 4 L5 7 L8 4" stroke="currentColor" strokeWidth="1.4" fill="none"
-                    strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <div className="tw:relative">
+            <button
+              className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-[5px] tw:pr-[9px] tw:pl-1.5 tw:rounded-[8px] tw:border tw:border-line tw:bg-bg-3 tw:text-[12px] tw:text-ink tw:hover:border-ink-3"
+              type="button"
+              onClick={() => (modelPickerOpen ? closePicker() : setModelPickerOpen(true))}
+              aria-expanded={modelPickerOpen}
+              title={`${model.name} — ${model.vendor} · ${model.tag}`}
+            >
+              <span className="tw:w-4 tw:h-4 tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[8px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>{initials}</span>
+              <span>{model.name.split(" ").slice(0, 2).join(" ")}</span>
+              <svg className="tw:w-2 tw:h-2 tw:opacity-50" viewBox="0 0 10 10">
+                <path d="M2 4 L5 7 L8 4" stroke="currentColor" strokeWidth="1.4" fill="none"
+                      strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
             {modelPickerOpen && (
               <>
                 <div
                   style={{ position: "fixed", inset: 0, zIndex: 29 }}
-                  onClick={(e) => { e.stopPropagation(); setModelPickerOpen(false); }}
+                  onClick={closePicker}
                 />
-                <div className="tw:absolute tw:bottom-[calc(100%+6px)] tw:left-0 tw:bg-bg-3 tw:border tw:border-line tw:rounded-[12px] tw:p-1.5 tw:min-w-[270px] tw:shadow-3 tw:z-30 tw:animate-[popUp_0.15s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={(e) => e.stopPropagation()}>
-                  {allModels.map(m => {
-                    const mInitials = m.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2);
-                    const isFree = m.inputPricePerM === 0 && m.outputPricePerM === 0;
-                    return (
-                      <div
+                <div className="tw:absolute tw:bottom-[calc(100%+6px)] tw:left-0 tw:w-[360px] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[12px] tw:shadow-3 tw:z-30 tw:overflow-hidden tw:animate-[popUp_0.15s_cubic-bezier(0.34,1.56,0.64,1)]">
+                  <div className="tw:flex tw:items-center tw:gap-2 tw:py-2 tw:px-2.5 tw:border-b tw:border-line">
+                    <svg className="tw:text-ink-3 tw:flex-none" width="13" height="13" viewBox="0 0 16 16" fill="none">
+                      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+                      <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    </svg>
+                    <input
+                      className="tw:flex-1 tw:min-w-0 tw:border-none tw:bg-transparent tw:outline-none tw:text-[13px] tw:text-ink tw:placeholder:text-ink-3"
+                      value={modelQuery}
+                      onChange={e => setModelQuery(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          closePicker();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const first = picker.pinned[0] ?? picker.rest[0];
+                          if (first) { setModelId(first.id); closePicker(); }
+                        }
+                      }}
+                      placeholder={`Search ${catalogCount > 0 ? catalogCount : models.length} models…`}
+                      autoFocus
+                      spellCheck={false}
+                    />
+                    <button
+                      className={`tw:font-mono tw:text-[10px] tw:py-0.5 tw:px-2 tw:rounded-[999px] tw:border tw:flex-none tw:transition-[background-color,color,border-color] tw:duration-[120ms] tw:ease-[ease] ${freeOnly ? "tw:bg-teal-tint tw:text-teal tw:border-teal" : "tw:bg-bg-2 tw:text-ink-3 tw:border-line tw:hover:text-ink"}`}
+                      type="button"
+                      onClick={() => setFreeOnly(v => !v)}
+                      aria-pressed={freeOnly}
+                      title="Show free models only"
+                    >
+                      free
+                    </button>
+                  </div>
+
+                  <div className="tw:max-h-[340px] tw:overflow-y-auto tw:p-1.5 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
+                    {picker.pinned.length > 0 && (
+                      <div className="tw:font-mono tw:text-[9px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-1 tw:px-2.5 tw:pb-1">Pinned</div>
+                    )}
+                    {picker.pinned.map(m => (
+                      <PickerRow
                         key={m.id}
-                        className={`tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:rounded-[8px] tw:text-[13px] tw:text-ink tw:cursor-pointer ${m.id === model.id ? "tw:bg-butter-tint" : "tw:hover:bg-bg-2"}`}
-                        onClick={() => { setModelId(m.id); setModelPickerOpen(false); }}
-                      >
-                        <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:flex-none" style={{ background: "var(--ink-2)" }}>{mInitials}</span>
-                        <div className="tw:flex-1 tw:flex tw:flex-col tw:gap-px">
-                          <span className="tw:font-medium">{m.name}</span>
-                          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3">{m.vendor.toLowerCase()} · {m.tag}</span>
-                        </div>
-                        <span className={`tw:font-mono tw:text-[11px] tw:py-0.5 tw:px-[7px] tw:rounded-[999px] ${m.id === model.id ? "tw:bg-butter" : "tw:bg-bg-2"} ${isFree ? "tw:text-teal" : m.id === model.id ? "tw:text-ink" : "tw:text-ink-2"}`}>
-                          {isFree ? "free" : `$${m.inputPricePerM.toFixed(2)}/M`}
-                        </span>
-                      </div>
-                    );
-                  })}
+                        m={m}
+                        selected={m.id === model.id}
+                        pinned
+                        onSelect={() => { setModelId(m.id); closePicker(); }}
+                        onTogglePin={() => togglePinned(m.id)}
+                      />
+                    ))}
+                    {picker.pinned.length > 0 && picker.rest.length > 0 && (
+                      <div className="tw:font-mono tw:text-[9px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-2.5 tw:pb-1 tw:border-t tw:border-line-2 tw:mt-1.5">All models</div>
+                    )}
+                    {picker.rest.map(m => (
+                      <PickerRow
+                        key={m.id}
+                        m={m}
+                        selected={m.id === model.id}
+                        pinned={pinnedIds.includes(m.id)}
+                        onSelect={() => { setModelId(m.id); closePicker(); }}
+                        onTogglePin={() => togglePinned(m.id)}
+                      />
+                    ))}
+                    {picker.overflow > 0 && (
+                      <div className="tw:py-2 tw:px-2.5 tw:text-[11px] tw:text-ink-3 tw:text-center">+{picker.overflow} more — keep typing to narrow</div>
+                    )}
+                    {picker.pinned.length === 0 && picker.rest.length === 0 && (
+                      <div className="tw:py-5 tw:px-2.5 tw:text-[12px] tw:text-ink-3 tw:text-center">No models match.</div>
+                    )}
+                  </div>
+
                   {onOpenSettings && (
-                    <>
-                      <div className="tw:h-px tw:bg-line tw:my-1.5 tw:mx-1" />
-                      <div
-                        className="tw:group/addrow tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:text-ink-3 tw:hover:text-ink tw:hover:bg-bg-2"
-                        onClick={() => { setModelPickerOpen(false); onOpenSettings(); }}
-                      >
-                        <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:flex-none tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:bg-bg-2 tw:border tw:border-dashed tw:border-line tw:text-ink-3 tw:group-hover/addrow:border-coral tw:group-hover/addrow:text-coral">
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                            <path d="M8 3 V13 M3 8 H13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                          </svg>
-                        </span>
-                        <div className="tw:flex-1 tw:flex tw:flex-col tw:gap-px">
-                          <span className="tw:font-medium">Add custom model</span>
-                          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3">any openrouter model string</span>
-                        </div>
-                      </div>
-                    </>
+                    <div
+                      className="tw:group/addrow tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:text-[13px] tw:cursor-pointer tw:text-ink-3 tw:border-t tw:border-line tw:hover:text-ink tw:hover:bg-bg-2"
+                      onClick={() => { closePicker(); onOpenSettings(); }}
+                    >
+                      <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:flex-none tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:bg-bg-2 tw:border tw:border-dashed tw:border-line tw:text-ink-3 tw:group-hover/addrow:border-coral tw:group-hover/addrow:text-coral">
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                          <path d="M8 3 V13 M3 8 H13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                      <span className="tw:font-medium">Add custom model</span>
+                      <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:ml-auto">any openrouter id</span>
+                    </div>
                   )}
                 </div>
               </>
             )}
-          </button>
+          </div>
 
           <span className={`tw:font-mono tw:text-[11px] tw:font-medium tw:tracking-[0.04em] tw:py-[3px] tw:px-[9px] tw:rounded-[999px] tw:transition-[background-color,color] tw:duration-200 tw:ease-[ease] ${PILL[pillClass]}`} title={`Estimated cost on ${model.name}`}>
             {formatEstimate(estCost)}
@@ -402,3 +484,49 @@ export function Composer({
 }
 
 export default Composer;
+
+// ── picker row ────────────────────────────────────────────────────
+
+interface PickerRowProps {
+  m:           ModelDef;
+  selected:    boolean;
+  pinned:      boolean;
+  onSelect:    () => void;
+  onTogglePin: () => void;
+}
+
+function PickerRow({ m, selected, pinned, onSelect, onTogglePin }: PickerRowProps) {
+  const mInitials = m.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2);
+  const isFree = m.inputPricePerM === 0 && m.outputPricePerM === 0;
+  return (
+    <div
+      className={`tw:group/row tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:rounded-[8px] tw:text-[13px] tw:text-ink tw:cursor-pointer ${selected ? "tw:bg-butter-tint tw:dark:bg-[color-mix(in_oklab,var(--butter)_14%,transparent)]" : "tw:hover:bg-bg-2"}`}
+      onClick={onSelect}
+    >
+      <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:flex-none" style={{ background: "var(--ink-2)" }}>{mInitials}</span>
+      <div className="tw:flex-1 tw:min-w-0 tw:flex tw:flex-col tw:gap-px">
+        <span className="tw:font-medium tw:truncate">{m.name}</span>
+        <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:truncate">{m.vendor.toLowerCase()}{m.tag ? ` · ${m.tag}` : ""}</span>
+      </div>
+      <span
+        className={`tw:font-mono tw:text-[10px] tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:flex-none ${selected ? "tw:bg-butter" : "tw:bg-bg-2"} ${isFree ? "tw:text-teal" : selected ? "tw:text-ink" : "tw:text-ink-2"}`}
+        title="input / output, USD per 1M tokens"
+      >
+        {isFree ? "free" : `${formatPerM(m.inputPricePerM)} / ${formatPerM(m.outputPricePerM)}`}
+      </span>
+      <button
+        className={`tw:w-[22px] tw:h-[22px] tw:grid tw:place-items-center tw:rounded-[5px] tw:flex-none tw:transition-[color,opacity] tw:duration-[120ms] tw:ease-[ease] ${pinned ? "tw:text-butter" : "tw:text-ink-4 tw:opacity-0 tw:group-hover/row:opacity-100 tw:hover:text-ink"}`}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
+        title={pinned ? "Unpin" : "Pin to top"}
+        aria-label={pinned ? `Unpin ${m.name}` : `Pin ${m.name}`}
+        aria-pressed={pinned}
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill={pinned ? "currentColor" : "none"} aria-hidden="true">
+          <path d="M8 2 L9.8 5.6 L13.8 6.2 L10.9 9 L11.6 13 L8 11.1 L4.4 13 L5.1 9 L2.2 6.2 L6.2 5.6 Z"
+                stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </div>
+  );
+}

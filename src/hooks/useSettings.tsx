@@ -9,7 +9,10 @@ import {
   createContext, useCallback, useContext, useMemo, useState,
   type ReactNode,
 } from "react";
-import type { CustomModel } from "../lib/cost";
+import {
+  DEFAULT_MODEL_ID, DEFAULT_PINNED_MODEL_IDS, type CustomModel,
+} from "../lib/cost";
+import { LEGACY_MODEL_IDS } from "../lib/models";
 
 export type { CustomModel };
 
@@ -30,14 +33,27 @@ export interface Prefs {
    *  button; lives here (not local state) so the .shell grid in the page
    *  shells and the .side rail share one source of truth. */
   sidebarCollapsed: boolean;
+  /** Models starred in the picker — float to the top. Defaults to the
+   *  curated set from cost.ts. */
+  pinnedModelIds:  string[];
+  /** Hybrid search: keyword works always; when this is on, an embedding
+   *  model downloads in the background and upgrades retrieval to
+   *  keyword+semantic. Turning it off deletes vectors + cached weights. */
+  semanticSearch:  boolean;
+  /** Which local embedding model powers semantic search — an id from
+   *  EMBEDDING_MODELS (lib/search/embedding/models.ts). */
+  embeddingModelId: string;
 }
 
 const DEFAULT_PREFS: Prefs = {
-  defaultModelId: "flash",
+  defaultModelId: DEFAULT_MODEL_ID,
   branchMode:     "follow",
   customModels:   [],
   theme:          "dark",
   sidebarCollapsed: false,
+  pinnedModelIds: DEFAULT_PINNED_MODEL_IDS,
+  semanticSearch: true,
+  embeddingModelId: "bge-small",
 };
 
 function readStoredTheme(): ThemeMode | null {
@@ -58,11 +74,18 @@ function loadPrefs(): Prefs {
   // Theme has its own dedicated localStorage key (consumed by the pre-paint
   // bootstrap in index.html) — that takes precedence over a stale prefs blob.
   const themeFromKey = readStoredTheme();
-  return {
+  const merged: Prefs = {
     ...DEFAULT_PREFS,
     ...stored,
     ...(themeFromKey ? { theme: themeFromKey } : {}),
   };
+  // Migrate pre-catalog prefs: old builtin slugs ("flash") → OpenRouter ids.
+  const legacyDefault = LEGACY_MODEL_IDS[merged.defaultModelId];
+  if (legacyDefault) merged.defaultModelId = legacyDefault;
+  if (!Array.isArray(merged.pinnedModelIds)) {
+    merged.pinnedModelIds = DEFAULT_PINNED_MODEL_IDS;
+  }
+  return merged;
 }
 
 /** Apply a theme to the document and persist it. Safe to call before React mounts. */

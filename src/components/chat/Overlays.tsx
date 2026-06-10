@@ -3,13 +3,17 @@
 // Self-managed: installs a single global keydown listener and renders three modal
 // overlays gated by local state. Consumer is ChatApp.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db, type Chat, type Node } from "../../lib/db";
-import { buildTree, layoutTree, findPath } from "../../lib/path";
 import { getNodeMRU } from "../../lib/nodeHistory";
+import { anyModalOpen, useModalBehavior } from "../../hooks/useModalStack";
+import { searchService } from "../../lib/search/service";
+
+// React Flow (and its stylesheet) load on the first ⌃T, not at boot.
+const ChatTreeFlow = lazy(() => import("../graph/ChatTreeFlow"));
 
 export interface OverlaysProps {
   chatId: string;
@@ -36,10 +40,16 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
         t.tagName === "TEXTAREA" ||
         t.isContentEditable
       );
-      if (inField && !ctrl && e.key !== "Escape") return;
+      if (inField && !ctrl) return;
 
-      // Cmd+K or Ctrl+Q → QuickJump
-      if (ctrl && (e.key === "q" || e.key === "Q" || e.key === "k" || e.key === "K")) {
+      // Stand down while a foreign modal (Settings, save dialog, …) is on
+      // top — toggling an overlay underneath it is never what the user
+      // meant. Our own overlays still toggle/swap freely. Esc is handled
+      // per-overlay by useModalBehavior (topmost layer only), not here.
+      if (anyModalOpen() && open === null) return;
+
+      // Ctrl+Q → QuickJump (⌘K belongs to the global SearchOverlay now)
+      if (ctrl && (e.key === "q" || e.key === "Q")) {
         e.preventDefault();
         setOpen(prev => (prev === "quickjump" ? null : "quickjump"));
         return;
@@ -54,13 +64,6 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
       if (ctrl && (e.key === "/" || e.key === "?")) {
         e.preventDefault();
         setOpen(prev => (prev === "shortcuts" ? null : "shortcuts"));
-        return;
-      }
-      // Esc → close any open overlay (and stop propagation so it doesn't also cancel a stream)
-      if (e.key === "Escape" && open !== null) {
-        e.preventDefault();
-        e.stopPropagation();
-        setOpen(null);
         return;
       }
     };
@@ -81,10 +84,8 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
 export default Overlays;
 
 
-// depth → accent colour maps (root, L1, L2, L3+)
+// depth → accent colour map (root, L1, L2, L3+)
 const QJ_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
-const TN_BORDER = ["tw:border-coral", "tw:border-teal", "tw:border-lilac", "tw:border-butter"];
-const TN_DOT = QJ_DOT;
 
 // ── QuickJump ────────────────────────────────────────────────────────────────
 // An MRU ("Alt+Tab") branch (node) switcher spanning every chat. With an empty
@@ -98,6 +99,9 @@ interface QuickJumpRow {
   chat:    Chat;
   visited: boolean;
   isRoot:  boolean;
+  /** Matched-content excerpt when the hit came from a message/reflection
+   *  on this branch (index-backed search), not from its label. */
+  snippet?: string;
 }
 
 /** Relative-time label for a past timestamp, e.g. "3m ago", "2d ago". */
@@ -130,6 +134,10 @@ function QuickJump({
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Esc-to-close (topmost layer only), focus restore, Tab containment.
+  useModalBehavior(true, onClose, panelRef);
 
   const nodes = useLiveQuery<Node[], Node[]>(() => db.nodes.toArray(), [], []);
   const chats = useLiveQuery<Chat[], Chat[]>(() => db.chats.toArray(), [], []);
@@ -180,14 +188,57 @@ function QuickJump({
     return out;
   }, [nodes, chats, mru, currentNodeId]);
 
+  // Typed queries go through the search service so branches match on their
+  // MESSAGE CONTENT (BM25 + semantic once ready), not just labels/titles.
+  // Hits collapse to one row per branch, ranked, with a matched-text
+  // excerpt. Substring filtering covers the debounce gap.
+  const mruSet = useMemo(() => new Set(mru), [mru]);
+  const [serviceRows, setServiceRows] = useState<{ q: string; rows: QuickJumpRow[] } | null>(null);
+  useEffect(() => {
+    const needle = q.trim();
+    if (!needle) {
+      setServiceRows(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void searchService.search(needle, 60).then(res => {
+        if (cancelled) return;
+        const nodeById = new Map((nodes ?? []).map(n => [n._id, n]));
+        const chatById = new Map((chats ?? []).map(c => [c._id, c]));
+        const rows: QuickJumpRow[] = [];
+        const seen = new Set<string>();
+        for (const h of res.hits) {
+          if (h.nodeId === currentNodeId || seen.has(h.nodeId)) continue;
+          const node = nodeById.get(h.nodeId);
+          const chat = chatById.get(h.chatId);
+          if (!node || !chat) continue;
+          seen.add(h.nodeId);
+          const fromContent = h.kind === "message" || h.kind === "reflection";
+          rows.push({
+            node,
+            chat,
+            visited: mruSet.has(node._id),
+            isRoot:  chat.rootNodeId === node._id,
+            ...(fromContent && h.snippet?.text ? { snippet: h.snippet.text } : {}),
+          });
+        }
+        setServiceRows({ q: needle, rows });
+      });
+    }, 140);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q, nodes, chats, currentNodeId, mruSet]);
+
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = q.trim();
     if (!needle) return ordered;
+    if (serviceRows && serviceRows.q === needle) return serviceRows.rows;
+    const lower = needle.toLowerCase();
     return ordered.filter(r =>
-      r.node.label.toLowerCase().includes(needle) ||
-      r.chat.title.toLowerCase().includes(needle),
+      r.node.label.toLowerCase().includes(lower) ||
+      r.chat.title.toLowerCase().includes(lower),
     );
-  }, [ordered, q]);
+  }, [ordered, q, serviceRows]);
 
   const jump = useCallback(async (row: QuickJumpRow) => {
     await db.chats.update(row.node.chatId, { currentNodeId: row.node._id });
@@ -206,17 +257,15 @@ function QuickJump({
       e.preventDefault();
       const row = filtered[hi];
       if (row) void jump(row);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
+    // Escape is handled by useModalBehavior at the window level.
   };
 
   const noOtherNodes = ordered.length === 0;
 
   return (
     <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
-      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Quick jump" className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
         <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
@@ -251,15 +300,20 @@ function QuickJump({
                   onMouseEnter={() => setHi(i)}
                 >
                   <span className={`tw:w-[9px] tw:h-[9px] tw:rounded-[50%] tw:flex-none ${QJ_DOT[Math.min(3, row.node.depth)]}`} />
-                  <span className="tw:flex-1">
-                    {row.isRoot ? (
-                      title
-                    ) : (
-                      <>
-                        {title}
-                        <span style={{ color: "var(--ink-3)", margin: "0 6px" }}>›</span>
-                        {row.node.label || "branch"}
-                      </>
+                  <span className="tw:flex-1 tw:min-w-0 tw:flex tw:flex-col tw:gap-px">
+                    <span className="tw:truncate">
+                      {row.isRoot ? (
+                        title
+                      ) : (
+                        <>
+                          {title}
+                          <span style={{ color: "var(--ink-3)", margin: "0 6px" }}>›</span>
+                          {row.node.label || "branch"}
+                        </>
+                      )}
+                    </span>
+                    {row.snippet && (
+                      <span className="tw:text-[11.5px] tw:text-ink-3 tw:truncate">{row.snippet}</span>
                     )}
                   </span>
                   {row.isRoot && <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">root</span>}
@@ -280,7 +334,9 @@ function QuickJump({
           <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">↵</span> jump</span>
           <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">esc</span> close</span>
           <span className="tw:ml-auto">
-            {filtered.length} of {ordered.length}
+            {q.trim()
+              ? `${filtered.length} match${filtered.length === 1 ? "" : "es"}`
+              : `${filtered.length} of ${ordered.length}`}
           </span>
         </div>
       </div>
@@ -299,54 +355,14 @@ function TreeMap({
   currentNodeId: string;
   onClose:       () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useModalBehavior(true, onClose, rootRef);
+
   const chat  = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const nodes = useLiveQuery<Node[], Node[]>(
     () => db.nodes.where("chatId").equals(chatId).toArray(),
     [chatId],
     [],
-  );
-
-  const { points, edges, maxX, maxY } = useMemo(() => {
-    const list = nodes ?? [];
-    const roots = buildTree(list);
-    const laid = layoutTree(roots);
-    const pmap = new Map(laid.map(p => [p.nodeId, p]));
-    const edgeList: Array<{ from: string; to: string }> = [];
-    for (const n of list) {
-      if (n.parentId && pmap.has(n.parentId)) {
-        edgeList.push({ from: n.parentId, to: n._id });
-      }
-    }
-    const mx = laid.reduce((m, p) => Math.max(m, p.x), 0);
-    const my = laid.reduce((m, p) => Math.max(m, p.y), 0);
-    return { points: laid, edges: edgeList, maxX: mx, maxY: my };
-  }, [nodes]);
-
-  const ancestors = useMemo(() => {
-    const list = nodes ?? [];
-    return new Set(findPath(list, currentNodeId));
-  }, [nodes, currentNodeId]);
-
-  // SVG canvas dimensions — generous so big trees scroll naturally.
-  const W = Math.max(700, (maxX + 1) * 240);
-  const H = Math.max(420, (maxY + 1) * 160);
-
-  const xpx = useCallback((x: number) => {
-    if (maxX === 0) return W / 2;
-    return 130 + (x / maxX) * (W - 260);
-  }, [maxX, W]);
-  const ypx = useCallback((y: number) => {
-    if (maxY === 0) return H / 2;
-    return 80 + (y / maxY) * (H - 160);
-  }, [maxY, H]);
-
-  const pointById = useMemo(
-    () => new Map(points.map(p => [p.nodeId, p])),
-    [points],
-  );
-  const nodeById = useMemo(
-    () => new Map((nodes ?? []).map(n => [n._id, n])),
-    [nodes],
   );
 
   const pick = useCallback(async (nodeId: string) => {
@@ -355,7 +371,7 @@ function TreeMap({
   }, [chatId, onClose]);
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--bg)_96%,white)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_88%,black)] tw:z-[150] tw:flex tw:flex-col tw:animate-[fadeIn_0.18s_ease-out]" onClick={onClose}>
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-label="Tree map" className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--bg)_96%,white)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_88%,black)] tw:z-[150] tw:flex tw:flex-col tw:animate-[fadeIn_0.18s_ease-out]" onClick={onClose}>
       <div className="tw:flex tw:items-center tw:gap-4 tw:py-[18px] tw:px-7 tw:border-b tw:border-line tw:bg-bg-3" onClick={e => e.stopPropagation()}>
         <button className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink" onClick={onClose} title="Close (Esc)">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -368,7 +384,7 @@ function TreeMap({
             marginLeft: 10, fontFamily: "var(--mono)", fontSize: 11,
             color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase",
           }}>
-            {points.length} node{points.length === 1 ? "" : "s"}
+            {nodes.length} node{nodes.length === 1 ? "" : "s"}
           </span>
         </div>
         <div style={{
@@ -383,60 +399,19 @@ function TreeMap({
       </div>
 
       <div className="tw:flex-1 tw:relative tw:overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div style={{ width: "100%", height: "100%", overflow: "auto" }}>
-          <div className="tw:relative" style={{ width: W, height: H, margin: "20px auto" }}>
-            <svg className="tw:absolute tw:inset-0 tw:w-full tw:h-full" viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
-              {edges.map(({ from, to }) => {
-                const a = pointById.get(from);
-                const b = pointById.get(to);
-                if (!a || !b) return null;
-                const ax = xpx(a.x), ay = ypx(a.y);
-                const bx = xpx(b.x), by = ypx(b.y);
-                const my = (ay + by) / 2;
-                const onPath = ancestors.has(from) && ancestors.has(to);
-                return (
-                  <path
-                    key={`${from}-${to}`}
-                    d={`M ${ax} ${ay} C ${ax} ${my}, ${bx} ${my}, ${bx} ${by}`}
-                    stroke={onPath ? "var(--coral)" : "var(--line)"}
-                    strokeWidth={onPath ? 2.5 : 2}
-                    fill="none"
-                  />
-                );
-              })}
-            </svg>
-
-            {points.map(p => {
-              const n = nodeById.get(p.nodeId);
-              if (!n) return null;
-              const depth = Math.min(3, n.depth);
-              const isCurrent  = n._id === currentNodeId;
-              const isOnPath   = ancestors.has(n._id);
-              const label      = n.label || (n.parentId === null ? "root" : `branch L${n.depth}`);
-              const eyebrow    = n.parentId === null ? "root" : `branch L${n.depth}`;
-              return (
-                <div
-                  key={n._id}
-                  className={`tw:absolute tw:[transform:translate(-50%,-50%)] tw:w-[220px] tw:border-2 tw:rounded-[12px] tw:py-3 tw:px-3.5 tw:text-[13px] tw:cursor-pointer tw:transition-[transform,border-color,box-shadow] tw:duration-150 tw:ease-[ease] tw:z-[2] tw:hover:[transform:translate(-50%,-50%)_translateY(-2px)] tw:hover:shadow-2 ${TN_BORDER[depth]} ${isCurrent ? "tw:bg-ink tw:text-bg tw:shadow-[0_12px_28px_-8px_rgba(22,20,19,0.4)]" : "tw:bg-bg-3 tw:shadow-1"}`}
-                  style={{
-                    left:  xpx(p.x),
-                    top:   ypx(p.y),
-                    ...(isOnPath && !isCurrent
-                      ? { borderColor: "var(--coral)", boxShadow: "0 8px 22px -8px rgba(0,0,0,0.28)" }
-                      : {}),
-                  }}
-                  onClick={() => void pick(n._id)}
-                >
-                  <div className={`tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:mb-1 tw:flex tw:items-center tw:gap-[5px] ${isCurrent ? "tw:text-[color-mix(in_oklab,var(--bg)_70%,transparent)]" : "tw:text-ink-3"}`}>
-                    <span className={`tw:w-[7px] tw:h-[7px] tw:rounded-[50%] ${TN_DOT[depth]}`} />
-                    {eyebrow}
-                  </div>
-                  <div className="tw:font-display tw:font-semibold tw:text-[14px] tw:tracking-[-0.01em] tw:leading-[1.2] tw:text-balance">{truncate(label, 60)}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <Suspense
+          fallback={
+            <div className="tw:h-full tw:grid tw:place-items-center tw:text-ink-3 tw:text-[13px]">
+              Loading tree…
+            </div>
+          }
+        >
+          <ChatTreeFlow
+            dbNodes={nodes}
+            currentNodeId={currentNodeId}
+            onPick={(nodeId) => void pick(nodeId)}
+          />
+        </Suspense>
       </div>
     </div>
   );
@@ -451,23 +426,21 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s;
-  return s.slice(0, n - 1) + "…";
-}
-
 // ── Shortcuts cheat sheet ────────────────────────────────────────────────────
 
 interface ShortcutItem { keys: string[]; label: string }
 interface ShortcutGroup { name: string; items: ShortcutItem[] }
 
 function Shortcuts({ onClose }: { onClose: () => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalBehavior(true, onClose, panelRef);
+
   const groups: ShortcutGroup[] = [
     {
       name: "Navigate",
       items: [
+        { keys: ["⌘", "K"],        label: "Search everything (messages too)" },
         { keys: ["⌃", "Q"],        label: "Quick-jump to any node" },
-        { keys: ["⌘", "K"],        label: "Quick-jump (alt)" },
         { keys: ["⌃", "T"],        label: "Open tree map" },
         { keys: ["⌃", "B"],        label: "Collapse / expand sidebar" },
         { keys: ["Esc"],           label: "Close overlay · cancel stream" },
@@ -498,7 +471,7 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
-      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
         <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none" style={{ padding: "16px 22px" }}>
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" style={{ color: "var(--ink)" }}>
             <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />

@@ -16,8 +16,8 @@ import {
 } from "react";
 import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
-import { formatCost, getModel } from "../../lib/cost";
-import { useSettings }      from "../../hooks/useSettings";
+import { formatCost }       from "../../lib/cost";
+import { useModels }        from "../../hooks/ModelsProvider";
 import { MarkdownBody }     from "./MarkdownBody";
 import { Reasoning }        from "./Reasoning";
 
@@ -156,14 +156,14 @@ async function mergeIntoPrev(prev: DbMessage, current: DbMessage): Promise<void>
 // ── main message ──────────────────────────────────────────────────
 
 export function Message({ message, onBranch, reflectionsMode = false, prevMessage }: MessageProps) {
-  const { prefs } = useSettings();
+  const { resolve } = useModels();
   const [editing,    setEditing]    = useState(false);
   const [draft,      setDraft]      = useState(message.content);
   const [confirming, setConfirming] = useState(false);
 
   const isAssistant = message.role === "assistant";
   const model = isAssistant && message.modelId
-    ? getModel(message.modelId, prefs.customModels)
+    ? resolve(message.modelId)
     : undefined;
 
   const initials = model
@@ -265,7 +265,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
   );
 
   return (
-    <div className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""} tw:group/msg tw:flex tw:flex-col tw:gap-1.5 tw:relative ${isAssistant ? "tw:items-start" : "tw:items-end"}`}>
+    <div data-msg-id={message._id} className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""} tw:group/msg tw:flex tw:flex-col tw:gap-1.5 tw:relative ${isAssistant ? "tw:items-start" : "tw:items-end"}`}>
       {/* Reflections-mode side handle: delete + merge into previous (if eligible) */}
       {reflectionsMode && (
         <div className={`tw:absolute tw:top-0 tw:flex tw:flex-col tw:gap-1 tw:z-[2] ${isAssistant ? "tw:left-[-44px]" : "tw:left-auto tw:right-[-44px]"}`}>

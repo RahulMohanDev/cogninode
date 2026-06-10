@@ -4,7 +4,7 @@
 // other consumers (Chats page) keep compiling.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate }                  from "react-router-dom";
+import { useLocation, useNavigate }     from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
   db, createChat, deleteChat, deleteNodeSubtree, renameChat, renameNode,
@@ -14,6 +14,9 @@ import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
 import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
+import { anyModalOpen }                 from "../../hooks/useModalStack";
+import { useSearchState }               from "../../hooks/useSearchState";
+import { searchService, type ResolvedHit } from "../../lib/search/service";
 
 export interface SidebarProps {
   activeChatId:   string | null;
@@ -118,9 +121,12 @@ const DEPTH_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
 
 export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [search, setSearch] = useState("");
   const { prefs, setTheme, setPref } = useSettings();
   const activeStreams = useActiveStreams();
+  const onReflectionsPage = location.pathname.startsWith("/reflections");
+  const onGraphsPage      = location.pathname.startsWith("/graphs");
 
   // Collapsed = slim icon rail. Persisted in prefs so it survives reloads and
   // is shared with the .shell grid (which owns the column width).
@@ -144,6 +150,25 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [prefs.sidebarCollapsed, setPref]);
+
+  // ⌃N / ⌘N — new chat, as advertised in the shortcuts sheet. Skipped while
+  // typing or while a modal is on top (spawning a chat under a dialog is
+  // never intended).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl || (e.key !== "n" && e.key !== "N")) return;
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (
+        t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
+      );
+      if (inField || anyModalOpen()) return;
+      e.preventDefault();
+      void createChat("New chat").then(id => navigate(`/chat/${id}`));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
 
   const chats = useLiveQuery(
     () => db.chats.orderBy("updatedAt").reverse().toArray(),
@@ -174,7 +199,13 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
 
   const branchRows = useMemo(() => {
     if (!activeChatId) return [];
-    return flattenTree(buildTree(activeNodes), collapsed);
+    // Skip the root row: its label mirrors the chat title (renameChat keeps
+    // them in sync), so rendering it added a duplicate line + one useless
+    // nesting level. The root's children ARE the top-level branches;
+    // clicking the active chat row selects the root.
+    const roots = buildTree(activeNodes);
+    const topLevel = roots.flatMap(r => r.children);
+    return flattenTree(topLevel, collapsed);
   }, [activeChatId, activeNodes, collapsed]);
 
   const toggleNode = (nodeId: string): void => {
@@ -193,6 +224,12 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   };
 
   const handleSelectChat = (chatId: string): void => {
+    // Re-clicking the ACTIVE chat returns to the root branch — the role the
+    // removed duplicate root row used to play.
+    if (chatId === activeChatId && activeChat) {
+      void handleSelectNode(activeChat.rootNodeId);
+      return;
+    }
     navigate(`/chat/${chatId}`);
   };
 
@@ -288,12 +325,71 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     }
   };
 
+  // Chat filtering goes through the search service, so matches come from
+  // full message bodies and reflections (and meaning, once the semantic
+  // layer is up) — not just title substrings. Results are relevance-ranked.
+  const [ranked, setRanked] = useState<{
+    q: string;
+    chatIds: string[];
+    byChat: Map<string, ResolvedHit[]>;
+  } | null>(null);
+  useEffect(() => {
+    const needle = search.trim();
+    if (!needle) {
+      setRanked(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void searchService.search(needle, 60).then(res => {
+        if (cancelled) return;
+        const chatIds: string[] = [];
+        const byChat = new Map<string, ResolvedHit[]>();
+        for (const h of res.hits) {
+          if (!chatIds.includes(h.chatId)) chatIds.push(h.chatId);
+          // Chat-title hits rank the chat but get no preview row — the
+          // chat row right above already shows that title (a preview
+          // repeating it read as a broken duplicate).
+          if (h.kind === "chat") continue;
+          const arr = byChat.get(h.chatId) ?? [];
+          // Up to 3 match previews per chat keep the list scannable.
+          if (arr.length < 3) arr.push(h);
+          byChat.set(h.chatId, arr);
+        }
+        setRanked({ q: needle, chatIds, byChat });
+      });
+    }, 150);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [search]);
+
+  // Open a search preview at its exact location: the branch, and for
+  // message hits the exact message — scrolled to, flashed, and with the
+  // matched terms highlighted (the ?q= param drives the term highlight).
+  const openSearchHit = (h: ResolvedHit): void => {
+    const params = new URLSearchParams({ node: h.nodeId });
+    if (h.kind === "message") {
+      params.set("msg", h.rawId);
+      const needle = search.trim();
+      if (needle) params.set("q", needle);
+    }
+    navigate(`/chat/${h.chatId}?${params.toString()}`);
+  };
+
   const visibleChats = useMemo(() => {
     if (!chats) return [];
-    if (!search.trim()) return chats;
-    const q = search.trim().toLowerCase();
+    const needle = search.trim();
+    if (!needle) return chats;
+    // Ranked results once the (debounced) service answer for THIS query is
+    // in; title-substring fallback while typing.
+    if (ranked && ranked.q === needle) {
+      const byId = new Map(chats.map(c => [c._id, c]));
+      return ranked.chatIds
+        .map(id => byId.get(id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined);
+    }
+    const q = needle.toLowerCase();
     return chats.filter(c => c.title.toLowerCase().includes(q));
-  }, [chats, search]);
+  }, [chats, search, ranked]);
 
   const isDark = prefs.theme === "dark";
 
@@ -323,6 +419,32 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           </svg>
         </button>
         <button
+          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onReflectionsPage ? "tw:bg-lilac-tint tw:text-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+          title="Reflections"
+          aria-label="Reflections"
+          aria-current={onReflectionsPage ? "page" : undefined}
+          onClick={() => navigate("/reflections")}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          </svg>
+        </button>
+        <button
+          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onGraphsPage ? "tw:bg-teal-tint tw:text-teal tw:dark:bg-[color-mix(in_oklab,var(--teal)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+          title="Knowledge graphs"
+          aria-label="Knowledge graphs"
+          aria-current={onGraphsPage ? "page" : undefined}
+          onClick={() => navigate("/graphs")}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+        </button>
+        <button
           className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink ${isCollapsed ? "tw:-order-1" : ""}`}
           onClick={toggleCollapsed}
           title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
@@ -343,12 +465,25 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
         <input
-          className="tw:w-full tw:py-[9px] tw:pr-3 tw:pl-[34px] tw:border tw:border-line tw:bg-bg-3 tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
+          className="tw:w-full tw:py-[9px] tw:pr-8 tw:pl-[34px] tw:border tw:border-line tw:bg-bg-3 tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
           type="text"
           placeholder="Search chats…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {search && (
+          <button
+            className="tw:absolute tw:right-[7px] tw:top-1/2 tw:[transform:translateY(-50%)] tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-[50%] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink"
+            onClick={() => setSearch("")}
+            title="Clear search"
+            aria-label="Clear search"
+            type="button"
+          >
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <button className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`} onClick={handleNewChat} title="New chat (⌃N)">
@@ -364,6 +499,10 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
           const isRenaming = renamingId?.kind === "chat" && renamingId.id === chat._id;
+          const hitPreviews =
+            search.trim() && ranked && ranked.q === search.trim()
+              ? ranked.byChat.get(chat._id)
+              : undefined;
           return (
             <div key={chat._id}>
               <div
@@ -434,7 +573,31 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                 />
               )}
 
-              {isActive && branchRows.length > 0 && (
+              {/* While searching: matched-text previews under the chat —
+                  click lands on the exact branch/message. */}
+              {hitPreviews && hitPreviews.length > 0 && (
+                <div className="tw:mt-0.5 tw:mb-1.5 tw:ml-[22px] tw:flex tw:flex-col">
+                  {hitPreviews.map(h => (
+                    <button
+                      key={h.docId}
+                      className="tw:flex tw:items-start tw:gap-1.5 tw:text-left tw:py-1 tw:px-2 tw:rounded-[6px] tw:text-[11.5px] tw:text-ink-3 tw:cursor-pointer tw:hover:bg-bg-2 tw:hover:text-ink"
+                      onClick={(e) => { e.stopPropagation(); openSearchHit(h); }}
+                      title={h.snippet?.text || h.title}
+                      type="button"
+                    >
+                      <svg className="tw:flex-none tw:mt-[2px] tw:opacity-70" width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.8" />
+                        <path d="M10.5 10.5 L14 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                      <span className="tw:flex-1 tw:min-w-0 tw:truncate">
+                        {h.snippet?.text || h.title || "match"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {isActive && !search.trim() && branchRows.length > 0 && (
                 <div className="tw:mt-0.5 tw:mb-1.5 tw:ml-[22px] tw:flex tw:flex-col tw:gap-0">
                   {branchRows.map(row => {
                     const rowActive = activeChat?.currentNodeId === row.node._id;
@@ -446,7 +609,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                       <div key={row.node._id}>
                         <div
                           className={`tw:group/row tw:flex tw:items-stretch tw:gap-1.5 tw:pl-0 tw:pr-2 tw:min-h-[26px] tw:rounded-[6px] tw:text-[12px] tw:cursor-pointer tw:relative ${rowActive ? "tw:bg-coral-tint tw:text-ink tw:font-medium" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-                          data-depth={Math.min(3, row.depth)}
+                          data-depth={Math.min(3, row.node.depth)}
                           onClick={() => {
                             if (!isRowRenaming) void handleSelectNode(row.node._id);
                           }}
@@ -476,7 +639,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                           ) : (
                             <span className="tw:w-4 tw:flex-none" />
                           )}
-                          <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none tw:self-center ${DEPTH_DOT[Math.min(3, row.depth)]}`} />
+                          <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none tw:self-center ${DEPTH_DOT[Math.min(3, row.node.depth)]}`} />
                           {isRowRenaming ? (
                             <input
                               className="tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink tw:bg-bg tw:border tw:border-line tw:rounded-[5px] tw:px-1.5 tw:py-0.5 tw:outline-none tw:transition-[border-color,box-shadow] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac tw:focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--lilac)_22%,transparent)]"
@@ -572,15 +735,18 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         )}
       </div>
 
+      <SearchStatusStrip collapsed={isCollapsed} onOpenSettings={onOpenSettings} />
+
       <div className={`tw:border-t tw:border-line tw:flex tw:items-center tw:relative ${isCollapsed ? "tw:flex-col tw:gap-1 tw:py-2.5 tw:px-0 tw:mt-auto" : "tw:gap-2.5 tw:p-3"}`}>
         <div className={`tw:w-[34px] tw:h-[34px] tw:rounded-[50%] tw:text-bg tw:grid tw:place-items-center tw:font-display tw:font-semibold tw:text-[14px] tw:flex-none tw:bg-bg-2 tw:border tw:border-line tw:dark:bg-bg-3 ${isCollapsed ? "tw:hidden" : ""}`} title="cogninode beta">
           <Glyph size={20} color="var(--ink)" accent="var(--coral)" />
         </div>
         <div className={`tw:flex-1 tw:min-w-0 tw:flex tw:flex-col ${isCollapsed ? "tw:hidden" : ""}`}>
           <span className="tw:text-[13px] tw:font-medium tw:text-ink tw:truncate">cogninode</span>
-          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:flex tw:items-center tw:gap-1">
-            <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%]" style={{ background: "var(--teal)" }} />
+          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:flex tw:items-center tw:gap-1 tw:min-w-0">
+            <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none" style={{ background: "var(--teal)" }} />
             local
+            <SearchStatusChip />
           </span>
         </div>
         <button
@@ -622,6 +788,96 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
 export default Sidebar;
 
 // ── small inline pieces ───────────────────────────────────────────
+
+// Quiet "hybrid" badge once semantic search is READY — short enough to
+// never truncate in the cramped footer line. While the model downloads /
+// indexes (or fails), the full-width SearchStatusStrip above the footer
+// takes over.
+function SearchStatusChip() {
+  const s = useSearchState();
+  const { prefs } = useSettings();
+  if (!prefs.semanticSearch || s.semantic !== "ready") return null;
+  return (
+    <span
+      className="tw:inline-flex tw:items-center tw:gap-1 tw:flex-none tw:font-mono tw:text-[10px] tw:text-ink-3"
+      title={`Hybrid search ready · ${s.vectorCount} items embedded`}
+    >
+      <span aria-hidden="true">·</span>
+      <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none" style={{ background: "var(--teal)" }} />
+      hybrid
+    </span>
+  );
+}
+
+// Full-width status strip pinned above the footer while the semantic layer
+// is busy (download / indexing, with a progress bar) or broken (with an
+// inline retry). Hidden when ready/off so it costs no space at rest.
+function SearchStatusStrip({ collapsed, onOpenSettings }: { collapsed: boolean; onOpenSettings: () => void }) {
+  const s = useSearchState();
+  const { prefs } = useSettings();
+  if (!prefs.semanticSearch) return null;
+
+  const active = s.semantic === "starting" || s.semantic === "downloading" || s.semantic === "indexing";
+  const failed = s.semantic === "error";
+  if (!active && !failed) return null;
+
+  const label =
+    s.semantic === "starting"    ? "semantic search: preparing…" :
+    s.semantic === "downloading" ? `downloading model · ${s.downloadPct}%` :
+    s.semantic === "indexing"    ? `indexing messages · ${s.indexed}/${s.indexTotal}` :
+    "semantic search failed";
+
+  if (collapsed) {
+    return (
+      <div className="tw:grid tw:place-items-center tw:py-1.5" title={failed ? (s.error ?? label) : label}>
+        <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] ${failed ? "tw:bg-coral" : "tw:bg-butter tw:animate-pulse"}`} />
+      </div>
+    );
+  }
+
+  const pct =
+    s.semantic === "downloading" ? s.downloadPct :
+    s.semantic === "indexing" && s.indexTotal > 0
+      ? Math.round((s.indexed / s.indexTotal) * 100)
+      : null;
+  const barColor = s.semantic === "downloading" ? "var(--lilac)" : "var(--butter)";
+
+  return (
+    <div className="tw:mx-3 tw:mb-2 tw:py-2 tw:px-2.5 tw:rounded-[10px] tw:border tw:border-line tw:bg-bg-3 tw:flex tw:flex-col tw:gap-1.5">
+      <div className="tw:flex tw:items-center tw:gap-1.5 tw:font-mono tw:text-[10px] tw:min-w-0">
+        <span
+          className={`tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none ${!failed ? "tw:animate-pulse" : ""}`}
+          style={{ background: failed ? "var(--coral)" : barColor }}
+        />
+        <button
+          className={`tw:truncate tw:p-0 tw:text-left ${failed ? "tw:text-coral tw:cursor-pointer tw:hover:underline" : "tw:text-ink-2 tw:cursor-default"}`}
+          onClick={failed ? onOpenSettings : undefined}
+          title={failed ? `${s.error ?? label} — click for Settings` : label}
+          type="button"
+        >
+          {label}
+        </button>
+        {failed && (
+          <button
+            className="tw:ml-auto tw:flex-none tw:text-ink-2 tw:underline tw:p-0 tw:hover:text-ink"
+            onClick={() => void searchService.retrySemantic()}
+            type="button"
+          >
+            retry
+          </button>
+        )}
+      </div>
+      {pct !== null && (
+        <div className="tw:h-1 tw:rounded-[999px] tw:bg-bg-2 tw:overflow-hidden">
+          <div
+            className="tw:h-full tw:rounded-[999px] tw:transition-[width] tw:duration-300 tw:ease-out"
+            style={{ width: `${pct}%`, background: barColor }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PencilIcon() {
   return (

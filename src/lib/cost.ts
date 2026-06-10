@@ -1,7 +1,15 @@
 // src/lib/cost.ts
+// Cost math + display formatting, and the OFFLINE FALLBACK model list.
+//
+// The app's model catalog is live: fetched from OpenRouter's public
+// GET /api/v1/models and cached in Dexie (see lib/models.ts). The fallback
+// list below exists only so the app works on first load without network —
+// it's a snapshot of 8 popular catalog entries. Ids ARE OpenRouter ids, so
+// fallback and live records mix freely and message history stays resolvable
+// either way. Prices verified against the live API on 2026-06-10.
 
 export interface ModelDef {
-  id:              string;
+  id:              string;   // OpenRouter model id (legacy slugs resolve via LEGACY_MODEL_IDS)
   name:            string;
   openRouterId:    string;
   inputPricePerM:  number;   // USD per million input tokens
@@ -14,43 +22,38 @@ export interface CustomModel extends ModelDef {
   isCustom: true;
 }
 
-// Model IDs verified against OpenRouter /api/v1/models. Pricing in USD per
-// million tokens, also from OpenRouter (as of the last verification run).
-export const BUILTIN_MODELS: ModelDef[] = [
-  { id: "llama",  name: "Llama 3.3 70B",     vendor: "Meta",      tag: "free",
-    openRouterId: "meta-llama/llama-3.3-70b-instruct:free",
-    inputPricePerM: 0,     outputPricePerM: 0     },
-  { id: "flash",  name: "Gemini Flash 2.0",  vendor: "Google",    tag: "budget · fast",
-    openRouterId: "google/gemini-2.0-flash-001",
-    inputPricePerM: 0.10,  outputPricePerM: 0.40  },
-  { id: "dsv3",   name: "DeepSeek V3",       vendor: "DeepSeek",  tag: "budget · strong",
-    openRouterId: "deepseek/deepseek-chat",
-    inputPricePerM: 0.32,  outputPricePerM: 0.89  },
-  { id: "4omini", name: "GPT-4o Mini",       vendor: "OpenAI",    tag: "value",
-    openRouterId: "openai/gpt-4o-mini",
-    inputPricePerM: 0.165, outputPricePerM: 0.66  },
-  { id: "dsr1",   name: "DeepSeek R1",       vendor: "DeepSeek",  tag: "reasoning",
-    openRouterId: "deepseek/deepseek-r1",
-    inputPricePerM: 0.605, outputPricePerM: 2.41  },
-  { id: "haiku",  name: "Claude Haiku 4.5",  vendor: "Anthropic", tag: "mid",
-    openRouterId: "anthropic/claude-haiku-4.5",
-    inputPricePerM: 1.00,  outputPricePerM: 5.00  },
-  { id: "gpt4o",  name: "GPT-4o",            vendor: "OpenAI",    tag: "premium",
-    openRouterId: "openai/gpt-4o",
-    inputPricePerM: 2.75,  outputPricePerM: 11.00 },
-  { id: "sonnet", name: "Claude Sonnet 4.5", vendor: "Anthropic", tag: "premium",
-    openRouterId: "anthropic/claude-sonnet-4.5",
-    inputPricePerM: 3.00,  outputPricePerM: 15.00 },
+export const FALLBACK_MODELS: ModelDef[] = [
+  { id: "meta-llama/llama-3.3-70b-instruct:free", openRouterId: "meta-llama/llama-3.3-70b-instruct:free",
+    name: "Llama 3.3 70B",      vendor: "Meta",      tag: "free",
+    inputPricePerM: 0,    outputPricePerM: 0     },
+  { id: "google/gemini-3.1-flash-lite", openRouterId: "google/gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash Lite", vendor: "Google", tag: "budget · fast",
+    inputPricePerM: 0.25, outputPricePerM: 1.50  },
+  { id: "deepseek/deepseek-chat", openRouterId: "deepseek/deepseek-chat",
+    name: "DeepSeek V3",        vendor: "DeepSeek",  tag: "budget · strong",
+    inputPricePerM: 0.20, outputPricePerM: 0.80  },
+  { id: "openai/gpt-4o-mini", openRouterId: "openai/gpt-4o-mini",
+    name: "GPT-4o Mini",        vendor: "OpenAI",    tag: "value",
+    inputPricePerM: 0.15, outputPricePerM: 0.60  },
+  { id: "deepseek/deepseek-r1", openRouterId: "deepseek/deepseek-r1",
+    name: "DeepSeek R1",        vendor: "DeepSeek",  tag: "reasoning",
+    inputPricePerM: 0.70, outputPricePerM: 2.50  },
+  { id: "anthropic/claude-haiku-4.5", openRouterId: "anthropic/claude-haiku-4.5",
+    name: "Claude Haiku 4.5",   vendor: "Anthropic", tag: "mid",
+    inputPricePerM: 1.00, outputPricePerM: 5.00  },
+  { id: "openai/gpt-4o", openRouterId: "openai/gpt-4o",
+    name: "GPT-4o",             vendor: "OpenAI",    tag: "premium",
+    inputPricePerM: 2.50, outputPricePerM: 10.00 },
+  { id: "anthropic/claude-sonnet-4.5", openRouterId: "anthropic/claude-sonnet-4.5",
+    name: "Claude Sonnet 4.5",  vendor: "Anthropic", tag: "premium",
+    inputPricePerM: 3.00, outputPricePerM: 15.00 },
 ];
 
-// Merged list including user-added custom models from localStorage prefs
-export function getAllModels(customModels: CustomModel[] = []): ModelDef[] {
-  return [...BUILTIN_MODELS, ...customModels];
-}
+/** Default model for fresh installs — the budget-fast slot. */
+export const DEFAULT_MODEL_ID = "google/gemini-3.1-flash-lite";
 
-export function getModel(id: string, customModels: CustomModel[] = []): ModelDef | undefined {
-  return getAllModels(customModels).find(m => m.id === id);
-}
+/** Default pinned set: the curated 8 float to the top of the picker. */
+export const DEFAULT_PINNED_MODEL_IDS: string[] = FALLBACK_MODELS.map(m => m.id);
 
 // ── Cost calculation ───────────────────────────────────────────
 
@@ -89,4 +92,11 @@ export function formatCost(costUsd: number): string {
 // In the composer: "~$0.0023" or "~free"
 export function formatEstimate(costUsd: number): string {
   return costUsd === 0 ? "~free" : `~${formatCost(costUsd)}`;
+}
+
+/** Compact per-M price for picker rows: 0.25 → "$0.25", 10 → "$10". */
+export function formatPerM(usdPerM: number): string {
+  if (usdPerM === 0) return "free";
+  const s = usdPerM < 1 ? usdPerM.toFixed(2) : usdPerM.toFixed(usdPerM % 1 === 0 ? 0 : 2);
+  return `$${s}`;
 }
