@@ -288,6 +288,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     >
       <span>Collapse {currentNodeMessages ?? 0} messages into one?</span>
       <button
+        className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]"
         onClick={() => { void handleCollapseToOne(); setCollapseConfirm(false); }}
         style={{
           padding: "2px 8px",
@@ -300,6 +301,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
         yes
       </button>
       <button
+        className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]"
         onClick={() => setCollapseConfirm(false)}
         style={{
           padding: "2px 8px",
@@ -314,6 +316,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     </span>
   ) : (
     <button
+      className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]"
       type="button"
       onClick={() => setCollapseConfirm(true)}
       disabled={collapseDisabled}
@@ -330,12 +333,12 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     // Caller (Chat page) is responsible for the "not found" empty state,
     // but if we hit a transient loading state, render a minimal shell.
     return (
-      <div className={`shell ${prefs.sidebarCollapsed ? "collapsed" : ""}`}>
+      <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
         <Sidebar activeChatId={chatId} onOpenSettings={() => setSettingsOpen(true)} />
-        <div className="main">
-          <div className="empty">
-            <div className="empty-inner">
-              <p>Loading…</p>
+        <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
+          <div className="tw:flex-1 tw:grid tw:place-items-center tw:py-[60px] tw:px-8 tw:text-ink-3">
+            <div className="tw:text-center tw:max-w-[520px]">
+              <p className="tw:text-[16px] tw:text-ink-2 tw:mt-0 tw:mb-6">Loading…</p>
             </div>
           </div>
         </div>
@@ -345,13 +348,13 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
   }
 
   return (
-    <div className={`shell ${prefs.sidebarCollapsed ? "collapsed" : ""}`}>
+    <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
       <Sidebar
         activeChatId={chatId}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
-      <div className="main">
+      <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
         <TopBar
           title={chat.title}
           breadcrumb={breadcrumb}
@@ -382,7 +385,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           collapseAction={collapseAction}
         />
 
-        <div className="composer-wrap">
+        <div className="tw:absolute tw:bottom-0 tw:left-0 tw:right-0 tw:pt-3.5 tw:px-8 tw:pb-[18px] tw:bg-[linear-gradient(to_top,var(--bg-3)_60%,transparent)] tw:pointer-events-none">
           <Composer
             chatId={chatId}
             currentNodeId={currentNodeId}
@@ -424,6 +427,10 @@ export default ChatApp;
 // Overlays.tsx handles the toggle — keeps the wiring single-sourced. Reflect
 // toggles directly via the callback because ChatApp owns that state.
 
+
+// Breadcrumb chip dot colour by node depth (caps at 3+).
+const CRUMB_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
+
 interface TopBarProps {
   title:             string;
   breadcrumb:        DbNode[];      // root → currentNodeId, inclusive
@@ -444,27 +451,27 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
   const tail = breadcrumb.slice(1);
 
   return (
-    <div className="topbar">
-      <div className="crumb">
-        <span className="c-title" title={title}>{title || "—"}</span>
-        {tail.length > 0 && <span className="c-sep">/</span>}
+    <div className="tw:flex tw:items-center tw:gap-3 tw:py-3 tw:px-[22px] tw:border-b tw:border-line tw:bg-bg-3 tw:min-h-[58px]">
+      <div className="tw:flex tw:items-center tw:gap-1.5 tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink-3">
+        <span className="tw:font-display tw:font-semibold tw:text-[17px] tw:tracking-[-0.015em] tw:text-ink tw:truncate tw:max-w-[320px]" title={title}>{title || "—"}</span>
+        {tail.length > 0 && <span className="tw:text-ink-4 tw:mx-0.5">/</span>}
         {tail.map((n, i) => {
           const label = n.label.length > 22 ? n.label.slice(0, 22) + "…" : n.label;
           const last  = i === tail.length - 1;
           return (
             <span key={n._id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span className={`c-node d${Math.min(3, n.depth)}`}>
-                <span className="c-dot" />
+              <span className="tw:inline-flex tw:items-center tw:gap-[5px] tw:py-[3px] tw:px-[9px] tw:rounded-[999px] tw:bg-bg-2 tw:text-ink-2 tw:text-[12px]">
+                <span className={`tw:w-[7px] tw:h-[7px] tw:rounded-[50%] ${CRUMB_DOT[Math.min(3, n.depth)]}`} />
                 {label}
               </span>
-              {!last && <span className="c-sep">›</span>}
+              {!last && <span className="tw:text-ink-4 tw:mx-0.5">›</span>}
             </span>
           );
         })}
       </div>
 
-      <div className="topbar-actions">
-        <button className="tb-btn" type="button" onClick={openTree} title="Tree view">
+      <div className="tw:flex tw:items-center tw:gap-1.5">
+        <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-3 tw:rounded-[8px] tw:border tw:text-[13px] tw:transition-[border-color,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:hover:border-ink-3 tw:hover:text-ink" type="button" onClick={openTree} title="Tree view">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <circle cx="8"  cy="3"  r="2" stroke="currentColor" strokeWidth="1.4"/>
             <circle cx="3"  cy="13" r="2" stroke="currentColor" strokeWidth="1.4"/>
@@ -473,11 +480,11 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
                   stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
           </svg>
           Tree
-          <span className="tb-kbd">⌃T</span>
+          <span className="tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] tw:bg-bg-2 tw:text-ink-3">⌃T</span>
         </button>
 
         <button
-          className={`tb-btn ${reflectionsActive ? "lilac" : ""}`}
+          className={`tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-3 tw:rounded-[8px] tw:border tw:text-[13px] tw:transition-[border-color,background-color,color] tw:duration-[120ms] tw:ease-[ease] ${reflectionsActive ? "tw:bg-lilac tw:border-lilac tw:text-white tw:hover:bg-[#6b4cf0] tw:hover:border-[#6b4cf0]" : "tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:hover:border-ink-3 tw:hover:text-ink"}`}
           type="button"
           onClick={onToggleReflect}
           title="Reflections mode"
@@ -488,16 +495,16 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
             <path d="M5.5 7 Q8 4 10.5 7" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
           </svg>
           Reflect
-          <span className="tb-kbd">⌃R</span>
+          <span className={`tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] ${reflectionsActive ? "tw:bg-[color-mix(in_oklab,white_18%,transparent)] tw:text-[color-mix(in_oklab,white_80%,transparent)]" : "tw:bg-bg-2 tw:text-ink-3"}`}>⌃R</span>
         </button>
 
-        <button className="tb-btn" type="button" onClick={openJump} title="Quick jump">
+        <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-3 tw:rounded-[8px] tw:border tw:text-[13px] tw:transition-[border-color,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:hover:border-ink-3 tw:hover:text-ink" type="button" onClick={openJump} title="Quick jump">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <circle cx="7" cy="7" r="4" stroke="currentColor" strokeWidth="1.4"/>
             <path d="M10 10 L13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
           </svg>
           Jump
-          <span className="tb-kbd">⌃Q</span>
+          <span className="tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] tw:bg-bg-2 tw:text-ink-3">⌃Q</span>
         </button>
       </div>
     </div>

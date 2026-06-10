@@ -193,127 +193,6 @@
   position: relative;
   overflow: hidden;
 }
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 22px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-3);
-  min-height: 58px;
-}
-.crumb {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  color: var(--ink-3);
-}
-.crumb .c-title {
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: -0.015em;
-  color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 320px;
-}
-.crumb .c-sep { color: var(--ink-4); margin: 0 2px; }
-.crumb .c-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--bg-2);
-  color: var(--ink-2);
-  font-size: 12px;
-}
-.crumb .c-node .c-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--coral);
-}
-.crumb .c-node.d1 .c-dot { background: var(--teal); }
-.crumb .c-node.d2 .c-dot { background: var(--lilac); }
-.crumb .c-node.d3 .c-dot { background: var(--butter); }
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.tb-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  font-size: 13px;
-  color: var(--ink-2);
-  background: var(--bg-3);
-  transition: border-color 0.12s, background 0.12s, color 0.12s;
-}
-.tb-btn:hover { border-color: var(--ink-3); color: var(--ink); }
-.tb-btn.lilac { background: var(--lilac); border-color: var(--lilac); color: white; }
-.tb-btn.lilac:hover { background: #6b4cf0; border-color: #6b4cf0; }
-.tb-btn .tb-kbd {
-  font-family: var(--mono);
-  font-size: 10px;
-  background: var(--bg-2);
-  padding: 1px 5px;
-  border-radius: 3px;
-  color: var(--ink-3);
-}
-.tb-btn.lilac .tb-kbd { background: color-mix(in oklab, white 18%, transparent); color: color-mix(in oklab, white 80%, transparent); }
-
-/* ====== Stream / messages ====== */
-.stream {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-  padding: 32px 0 200px;
-  position: relative;
-}
-.stream-inner {
-  max-width: 780px;
-  margin: 0 auto;
-  padding: 0 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 26px;
-}
-
-.msg {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  position: relative;
-}
-.msg.user { align-items: flex-end; }
-.msg.assistant { align-items: flex-start; }
-.msg .m-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--ink-3);
-  text-transform: uppercase;
-}
-.msg .m-head .m-avatar {
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  color: white;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
 
 .m-body {
   font-size: 15px;
@@ -363,112 +242,6 @@
   letter-spacing: -0.015em;
 }
 
-.m-foot {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-3);
-  margin-top: 4px;
-}
-.m-foot .credits {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: var(--bg-2);
-  padding: 3px 8px;
-  border-radius: 999px;
-}
-.m-foot .credits .cd {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--teal);
-}
-.m-foot .m-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.msg:hover .m-foot .m-actions { opacity: 1; }
-.m-foot .m-actions button {
-  width: 26px; height: 26px;
-  display: grid; place-items: center;
-  border-radius: 5px;
-  color: var(--ink-3);
-}
-.m-foot .m-actions button:hover { background: var(--bg-2); color: var(--ink); }
-
-/* Web-search sources — numbered list under answers that used the web plugin */
-.msg-sources {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-.msg-sources .ms-label {
-  font-family: var(--mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  margin-bottom: 6px;
-}
-.msg-sources .ms-list {
-  margin: 0;
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.msg-sources .ms-list li {
-  font-size: 13px;
-  color: var(--ink-3);
-}
-.msg-sources .ms-list li a {
-  color: var(--ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--line);
-}
-.msg-sources .ms-list li a:hover {
-  color: var(--coral);
-  border-bottom-color: var(--coral);
-}
-.msg-sources .ms-host {
-  margin-left: 6px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-4);
-}
-
-/* Quote block on user messages (when branched) */
-.quote-block {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 7px 10px 7px 12px;
-  border-left: 3px solid var(--coral);
-  background: color-mix(in oklab, var(--bg) 22%, transparent);
-  border-radius: 4px 8px 8px 4px;
-  font-size: 12px;
-  line-height: 1.4;
-  margin-bottom: 8px;
-}
-.quote-block .quote-from {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.65;
-}
-.quote-block .quote-text {
-  font-style: italic;
-  font-family: var(--serif);
-  font-size: 14px;
-}
-
 /* Selection text in body, plus selection popup */
 .m-body .sel-target {
   background: var(--coral-tint);
@@ -487,14 +260,6 @@
   cursor: pointer;
 }
 
-/* ====== Composer ====== */
-.composer-wrap {
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  padding: 14px 32px 18px;
-  background: linear-gradient(to top, var(--bg-3) 60%, transparent);
-  pointer-events: none;
-}
 .composer {
   max-width: 780px;
   margin: 0 auto;
@@ -859,64 +624,6 @@
   margin: 0 3px;
 }
 
-/* ====== Empty state ====== */
-.empty {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  padding: 60px 32px;
-  color: var(--ink-3);
-}
-.empty-inner {
-  text-align: center;
-  max-width: 520px;
-}
-.empty-inner h2 {
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 38px;
-  letter-spacing: -0.025em;
-  color: var(--ink);
-  margin: 18px 0 12px;
-  line-height: 1;
-}
-.empty-inner h2 em { font-family: var(--serif); font-style: italic; color: var(--coral); font-weight: 400; }
-.empty-inner p { font-size: 16px; color: var(--ink-2); margin: 0 0 24px; }
-.empty-glyph {
-  display: inline-grid; place-items: center;
-  width: 80px; height: 80px;
-  border-radius: 24px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-}
-.empty-suggest {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-top: 16px;
-}
-.empty-suggest button {
-  text-align: left;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--bg);
-  color: var(--ink);
-  font-size: 13px;
-  line-height: 1.4;
-  transition: border-color 0.12s, background 0.12s;
-}
-.empty-suggest button:hover { border-color: var(--ink-3); background: var(--bg-2); }
-.empty-suggest button .es-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin-bottom: 4px;
-  display: block;
-}
-
 /* ====== Tree map overlay ====== */
 .tree-overlay {
   position: fixed; inset: 0;
@@ -1016,40 +723,6 @@
 .tree-node.current .tn-meta { color: color-mix(in oklab, var(--bg) 60%, transparent); }
 
 /* ====== Reflections mode ====== */
-.reflect-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 22px;
-  background: var(--lilac);
-  color: white;
-  font-size: 13px;
-}
-.reflect-banner .rb-icon {
-  width: 20px; height: 20px;
-  flex: none;
-}
-.reflect-banner .rb-title { font-weight: 500; }
-.reflect-banner .rb-sub {
-  opacity: 0.7;
-  font-family: var(--mono);
-  font-size: 11px;
-}
-.reflect-banner .rb-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-}
-.reflect-banner .rb-actions button {
-  padding: 5px 12px;
-  border-radius: 7px;
-  background: color-mix(in oklab, white 14%, transparent);
-  font-size: 12px;
-  font-weight: 500;
-  color: white;
-}
-.reflect-banner .rb-actions button.exit { background: white; color: var(--lilac); }
-
 /* ====== Shortcuts cheatsheet ====== */
 .shortcut-card {
   display: flex;
@@ -1447,13 +1120,6 @@
   letter-spacing: 0.01em;
 }
 
-/* post-send credit detail in message footer */
-.cr-detail {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-3);
-  letter-spacing: 0.02em;
-}
 
 /* ── end dynamic credit display ───────────────── */
 
@@ -1599,11 +1265,6 @@
 [data-theme="dark"] .file-chip .fc-icon.code,
 [data-theme="dark"] .upload-pop .up-icon.code { background: #4a4135; }
 
-/* Composer floats above the stream with a gradient fade. In dark the
-   gradient needs to lean into the dark bg, not the white one. */
-[data-theme="dark"] .composer-wrap {
-  background: linear-gradient(to top, var(--bg-3) 60%, transparent);
-}
 [data-theme="dark"] .composer {
   background: var(--bg-3);
   box-shadow: 0 14px 30px -18px rgba(0, 0, 0, 0.6);
@@ -1621,8 +1282,6 @@
 [data-theme="dark"] .qj { background: var(--bg-3); }
 
 /* Reflect mode banner: keep lilac legible on dark. */
-[data-theme="dark"] .reflect-banner { background: var(--lilac); color: #0e0a14; }
-[data-theme="dark"] .reflect-banner .rb-actions button.exit { color: var(--lilac); }
 
 /* Selection popup: in light it's dark ink-on-cream; in dark we keep the
    same inverted feel by flipping. */
@@ -1971,111 +1630,6 @@
 /* Make qj-overlay's flex layout actually center the modal when class is sm-overlay */
 .qj-overlay.sm-overlay {
   align-items: flex-start;
-}
-
-/* ── reflections mode ────────────────────── */
-/* Banner — sticky at top of stream when reflections mode is on. Designed
-   to feel like a calm mode chip rather than an alert: lilac, single line
-   tagline + actions. See design/app-beta/chat-app.jsx ReflectBanner. */
-.reflect-banner {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 22px;
-  background: var(--lilac);
-  color: white;
-  font-size: 13px;
-  border-bottom: 1px solid color-mix(in oklab, var(--lilac) 60%, black);
-}
-.reflect-banner .rb-icon { width: 20px; height: 20px; flex: none; }
-.reflect-banner .rb-title { font-weight: 500; }
-.reflect-banner .rb-sub {
-  opacity: 0.78;
-  font-family: var(--mono);
-  font-size: 11px;
-}
-.reflect-banner .rb-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-  flex: none;
-}
-.reflect-banner .rb-actions button {
-  padding: 5px 12px;
-  border-radius: 7px;
-  background: color-mix(in oklab, white 14%, transparent);
-  font-size: 12px;
-  font-weight: 500;
-  color: white;
-  border: 1px solid color-mix(in oklab, white 18%, transparent);
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.reflect-banner .rb-actions button:hover {
-  background: color-mix(in oklab, white 22%, transparent);
-}
-.reflect-banner .rb-actions button.exit {
-  background: white;
-  color: var(--lilac);
-  border-color: white;
-}
-.reflect-banner .rb-actions button.exit:hover {
-  background: color-mix(in oklab, white 90%, var(--lilac));
-}
-[data-theme="dark"] .reflect-banner {
-  background: var(--lilac);
-  color: #0e0a14;
-  border-bottom-color: color-mix(in oklab, var(--lilac) 60%, black);
-}
-[data-theme="dark"] .reflect-banner .rb-actions button {
-  background: color-mix(in oklab, #0e0a14 14%, transparent);
-  color: #0e0a14;
-  border-color: color-mix(in oklab, #0e0a14 22%, transparent);
-}
-[data-theme="dark"] .reflect-banner .rb-actions button.exit {
-  background: #0e0a14;
-  color: var(--lilac);
-  border-color: #0e0a14;
-}
-
-/* Side handles — delete (and optional merge) appear next to every message
-   while reflections mode is on. Always visible, not hover-gated, per spec. */
-.reflect-handles {
-  position: absolute;
-  left: -44px;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  z-index: 2;
-}
-.msg.user .reflect-handles {
-  left: auto;
-  right: -44px;
-}
-.reflect-handles button {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  color: var(--ink-3);
-  cursor: pointer;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
-}
-.reflect-handles button:hover {
-  border-color: var(--lilac);
-  color: var(--lilac);
-  background: var(--bg);
-}
-.reflect-handles button.delete:hover {
-  border-color: var(--coral);
-  color: var(--coral);
 }
 
 /* Subtle outline cue on the message envelope itself while reflecting. */
@@ -2535,70 +2089,8 @@
   border-color: color-mix(in oklab, var(--lilac) 86%, var(--ink));
 }
 
-/* ── reasoning / "thinking" panel ─────────────── */
-/* Collapsible chain-of-thought display for reasoning models. Auto-opens
-   while streaming, collapses by default when complete. Header has a tiny
-   four-pointed star that spins while the model is actively thinking. */
-
-.reasoning {
-  display: flex;
-  flex-direction: column;
-  margin: 0 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--bg-2) 60%, transparent);
-  overflow: hidden;
-}
-
-.rs-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-family: var(--mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-  transition: background 0.12s, color 0.12s;
-}
-.rs-head:hover { color: var(--ink-2); background: color-mix(in oklab, var(--lilac) 6%, transparent); }
-
-.rs-label { flex: 1; min-width: 0; }
-
-.rs-caret {
-  color: var(--ink-3);
-  transition: transform 0.18s ease;
-  flex: 0 0 auto;
-}
-.reasoning.open .rs-caret { transform: rotate(180deg); }
-
-.rs-body {
-  padding: 4px 14px 12px;
-  font-size: 13.5px;
-  color: var(--ink-2);
-  border-top: 1px solid color-mix(in oklab, var(--line) 60%, transparent);
-  background: color-mix(in oklab, var(--bg-2) 80%, transparent);
-}
 .rs-body .md > :first-child { margin-top: 8px; }
 .rs-body .md > :last-child  { margin-bottom: 0; }
-.rs-empty { color: var(--ink-3); font-style: italic; font-size: 12px; }
-
-/* Active-streaming visual: lilac border accent + brighter header. */
-.reasoning.streaming { border-color: color-mix(in oklab, var(--lilac) 50%, var(--line)); }
-.reasoning.streaming .rs-head { color: var(--ink); }
-.reasoning.streaming .rs-label::after {
-  content: "";
-  display: inline-block;
-  width: 4px;
-  margin-left: 2px;
-}
-
 /* The star itself — a small currentColor sparkle. Spins when .spin is set. */
 .rs-star {
   flex: 0 0 auto;
