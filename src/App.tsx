@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import { ApiKeyGate } from "./components/setup/ApiKeyGate";
 import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
+import { ModelsProvider } from "./hooks/ModelsProvider";
 import { ToastProvider } from "./components/ui/Toast";
 import Chats from "./pages/Chats";
 import Chat from "./pages/Chat";
@@ -17,15 +18,17 @@ export default function App() {
     return (
         <SettingsProvider>
             <ToastProvider>
-                <StreamsProvider>
-                    <ApiKeyGate>
-                        <Routes>
-                            <Route path="/" element={<Chats />} />
-                            <Route path="/reflections" element={<Reflections />} />
-                            <Route path="/chat/:chatId" element={<Chat />} />
-                        </Routes>
-                    </ApiKeyGate>
-                </StreamsProvider>
+                <ModelsProvider>
+                    <StreamsProvider>
+                        <ApiKeyGate>
+                            <Routes>
+                                <Route path="/" element={<Chats />} />
+                                <Route path="/reflections" element={<Reflections />} />
+                                <Route path="/chat/:chatId" element={<Chat />} />
+                            </Routes>
+                        </ApiKeyGate>
+                    </StreamsProvider>
+                </ModelsProvider>
             </ToastProvider>
         </SettingsProvider>
     );

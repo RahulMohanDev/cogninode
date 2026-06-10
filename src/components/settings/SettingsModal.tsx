@@ -2,12 +2,10 @@
 // Settings modal: API key, default model, branch mode, custom models CRUD,
 // data export/import/clear, and about. Returns null when closed.
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { db } from "../../lib/db";
 import {
-  BUILTIN_MODELS,
-  getAllModels,
   formatCost,
   calculateCostUsd,
   type CustomModel,
@@ -15,6 +13,8 @@ import {
 import { exportAllChats, importFromJson } from "../../lib/export";
 import { useSettings } from "../../hooks/useSettings";
 import { useModalBehavior } from "../../hooks/useModalStack";
+import { useModels } from "../../hooks/ModelsProvider";
+import { useToast } from "../ui/Toast";
 
 export interface SettingsModalProps {
   open:    boolean;
@@ -64,6 +64,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             defaultModelId={prefs.defaultModelId}
             onSelectDefault={id => setPref("defaultModelId", id)}
           />
+
+          <CatalogSection />
 
           <BranchModeSection
             value={prefs.branchMode}
@@ -148,6 +150,11 @@ function ApiKeySection({
 }
 
 // ── Section 2: Default model ─────────────────────────────────────────────────
+// With the live catalog (~340 models) a flat radio list stopped scaling:
+// the section now shows pinned models by default and searches the whole
+// catalog as you type.
+
+const MODEL_ROWS_CAP = 12;
 
 function ModelSection({
   customModels,
@@ -158,25 +165,58 @@ function ModelSection({
   defaultModelId:  string;
   onSelectDefault: (id: string) => void;
 }) {
-  const all = getAllModels(customModels);
+  const { models, resolve, pinnedIds } = useModels();
+  const [q, setQ] = useState("");
+
+  const current = resolve(defaultModelId);
+  const customIds = useMemo(() => new Set(customModels.map(c => c.id)), [customModels]);
+
+  const { rows, overflow } = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (needle) {
+      const hits = models.filter(m =>
+        m.name.toLowerCase().includes(needle) ||
+        m.id.toLowerCase().includes(needle) ||
+        m.vendor.toLowerCase().includes(needle));
+      return { rows: hits.slice(0, MODEL_ROWS_CAP), overflow: Math.max(0, hits.length - MODEL_ROWS_CAP) };
+    }
+    const pinnedSet = new Set(pinnedIds);
+    const pinned = models.filter(m => pinnedSet.has(m.id));
+    // Keep the current default visible even when it isn't pinned.
+    if (current && !pinnedSet.has(current.id)) pinned.unshift(current);
+    return { rows: pinned, overflow: 0 };
+  }, [models, q, pinnedIds, current]);
 
   return (
     <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
       <div className="tw:mb-2">
         <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Default model</h3>
-        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Used for new messages. "Std msg" ≈ 1,200 in + 600 out tokens.</p>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">
+          Used for new messages. "Std msg" ≈ 1,200 in + 600 out tokens.
+          {q.trim() === "" && " Showing pinned models — search to browse the full catalog."}
+        </p>
       </div>
-      {all.map(m => {
+
+      <input
+        className="tw:w-full tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg tw:text-ink tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3 tw:mb-1"
+        type="text"
+        placeholder="Search models by name, id, or vendor…"
+        value={q}
+        onChange={e => setQ(e.target.value)}
+        spellCheck={false}
+      />
+
+      {rows.map(m => {
         const stdCost = calculateCostUsd(1200, 600, m);
-        const isCustom = !BUILTIN_MODELS.some(b => b.id === m.id);
+        const isCustom = customIds.has(m.id);
         return (
           <div key={m.id} className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
-            <div>
-              <div className="tw:font-medium tw:text-[14px] tw:text-ink">
+            <div className="tw:min-w-0">
+              <div className="tw:font-medium tw:text-[14px] tw:text-ink tw:truncate">
                 {m.name}
                 {isCustom && <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.08em] tw:uppercase tw:text-ink-3 tw:ml-1"> · custom</span>}
               </div>
-              <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">{m.vendor || "—"} · {m.tag}</div>
+              <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5 tw:truncate">{m.vendor || "—"} · {m.tag}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <span className="tw:font-mono tw:text-[11px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px] tw:text-ink-2 tw:tracking-[0.02em]">
@@ -186,7 +226,7 @@ function ModelSection({
                 <input
                   type="radio"
                   name="defaultModel"
-                  checked={defaultModelId === m.id}
+                  checked={defaultModelId === m.id || current?.id === m.id}
                   onChange={() => onSelectDefault(m.id)}
                   style={{ accentColor: "var(--coral)" }}
                 />
@@ -202,6 +242,70 @@ function ModelSection({
           </div>
         );
       })}
+
+      {overflow > 0 && (
+        <div className="tw:py-2 tw:text-[12px] tw:text-ink-3 tw:text-center">+{overflow} more — keep typing to narrow.</div>
+      )}
+      {rows.length === 0 && (
+        <div className="tw:py-3 tw:text-[13px] tw:text-ink-3 tw:text-center tw:italic">No models match "{q}".</div>
+      )}
+    </div>
+  );
+}
+
+// ── Section 2b: Live catalog ─────────────────────────────────────────────────
+
+function catalogAge(ts: number | null): string {
+  if (!ts) return "never";
+  const min = Math.floor((Date.now() - ts) / 60_000);
+  if (min < 1)  return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24)  return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
+}
+
+function CatalogSection() {
+  const { catalogCount, fetchedAt, refreshing, refresh } = useModels();
+  const toast = useToast();
+
+  const doRefresh = async (): Promise<void> => {
+    try {
+      const { count } = await refresh();
+      toast(`Model catalog updated — ${count} models`, { kind: "success" });
+    } catch (err) {
+      toast(`Catalog refresh failed: ${(err as Error).message}`, { kind: "error" });
+    }
+  };
+
+  return (
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Model catalog</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">
+          Fetched live from OpenRouter (no key needed) and cached locally. Refreshes automatically once a day.
+        </p>
+      </div>
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">
+            {catalogCount > 0 ? `${catalogCount} models available` : "Using built-in fallback list"}
+          </div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            {catalogCount > 0
+              ? `Last updated ${catalogAge(fetchedAt)} · live pricing & context windows`
+              : "Couldn't reach OpenRouter yet — refresh to fetch the live catalog."}
+          </div>
+        </div>
+        <button
+          className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3 tw:disabled:opacity-50 tw:disabled:cursor-not-allowed"
+          onClick={() => void doRefresh()}
+          disabled={refreshing}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
     </div>
   );
 }

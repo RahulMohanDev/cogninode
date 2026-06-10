@@ -63,6 +63,28 @@ export interface StoredFile {
   createdAt: number;
 }
 
+// Cached row of the live OpenRouter model catalog (GET /api/v1/models).
+// This table is a CACHE, not user data: replaced wholesale on refresh,
+// excluded from export/import, safe to wipe.
+export interface CatalogModel {
+  _id:                 string;     // OpenRouter model id, e.g. "openai/gpt-4o-mini"
+  name:                string;     // display name without the vendor prefix
+  vendor:              string;
+  contextLength:       number;
+  promptPerM:          number;     // USD per 1M input tokens
+  completionPerM:      number;     // USD per 1M output tokens
+  inputModalities:     string[];
+  outputModalities:    string[];
+  supportedParameters: string[];
+  created:             number;     // unix seconds, from the API
+}
+
+// Tiny key→value table for app-level bookkeeping (catalog fetchedAt, …).
+export interface MetaEntry {
+  key:   string;
+  value: unknown;
+}
+
 // ── Dexie database ─────────────────────────────────────────────
 
 export const db = new Dexie("cogninode") as Dexie & {
@@ -71,6 +93,8 @@ export const db = new Dexie("cogninode") as Dexie & {
   messages:    EntityTable<Message,     "_id">;
   reflections: EntityTable<Reflection,  "_id">;
   files:       EntityTable<StoredFile,  "_id">;
+  models:      EntityTable<CatalogModel, "_id">;
+  meta:        EntityTable<MetaEntry,   "key">;
 };
 
 db.version(1).stores({
@@ -80,6 +104,23 @@ db.version(1).stores({
   reflections: "_id, nodeId, chatId",
   files:       "_id, createdAt",
 });
+
+// v2: live model catalog cache + meta bookkeeping. Existing tables carry over.
+db.version(2).stores({
+  models: "_id, vendor",
+  meta:   "key",
+});
+
+// ── Meta helpers ───────────────────────────────────────────────
+
+export async function getMeta<T>(key: string): Promise<T | undefined> {
+  const row = await db.meta.get(key);
+  return row?.value as T | undefined;
+}
+
+export async function setMeta(key: string, value: unknown): Promise<void> {
+  await db.meta.put({ key, value });
+}
 
 // ── Typed helpers ──────────────────────────────────────────────
 

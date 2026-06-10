@@ -16,8 +16,8 @@ import {
 } from "react";
 import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
-import { formatCost, getModel } from "../../lib/cost";
-import { useSettings }      from "../../hooks/useSettings";
+import { formatCost }       from "../../lib/cost";
+import { useModels }        from "../../hooks/ModelsProvider";
 import { MarkdownBody }     from "./MarkdownBody";
 import { Reasoning }        from "./Reasoning";
 
@@ -156,14 +156,14 @@ async function mergeIntoPrev(prev: DbMessage, current: DbMessage): Promise<void>
 // ── main message ──────────────────────────────────────────────────
 
 export function Message({ message, onBranch, reflectionsMode = false, prevMessage }: MessageProps) {
-  const { prefs } = useSettings();
+  const { resolve } = useModels();
   const [editing,    setEditing]    = useState(false);
   const [draft,      setDraft]      = useState(message.content);
   const [confirming, setConfirming] = useState(false);
 
   const isAssistant = message.role === "assistant";
   const model = isAssistant && message.modelId
-    ? getModel(message.modelId, prefs.customModels)
+    ? resolve(message.modelId)
     : undefined;
 
   const initials = model

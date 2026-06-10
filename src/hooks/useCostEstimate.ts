@@ -2,8 +2,8 @@
 import { useMemo }                              from "react";
 import { useLiveQuery }                         from "dexie-react-hooks";
 import { db }                                   from "../lib/db";
-import { estimateCostUsd, getModel }            from "../lib/cost";
-import { useSettings }                          from "./useSettings";
+import { estimateCostUsd }                      from "../lib/cost";
+import { useModels }                            from "./ModelsProvider";
 
 export function useCostEstimate(
   composerText: string,
@@ -11,8 +11,8 @@ export function useCostEstimate(
   chatId:       string,
   modelId:      string,
 ): number {
-  const { prefs } = useSettings();
-  const model     = getModel(modelId, prefs.customModels);
+  const { resolve } = useModels();
+  const model = resolve(modelId);
 
   // Get all nodes to build path, reactive via useLiveQuery
   const pathDepth = useLiveQuery(async () => {
