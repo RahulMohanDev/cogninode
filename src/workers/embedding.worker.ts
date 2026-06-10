@@ -89,8 +89,25 @@ function onProgress(p: { status?: string; file?: string; loaded?: number; total?
   }
 }
 
+// `navigator.gpu` existing does NOT mean WebGPU works — headless browsers
+// and machines with broken drivers expose the object but fail to produce
+// an adapter, and onnxruntime then dies at session creation. Probe for a
+// real adapter before committing to the WebGPU backend.
+async function pickDevice(): Promise<"webgpu" | "wasm"> {
+  try {
+    const gpu = (navigator as Navigator & {
+      gpu?: { requestAdapter(): Promise<unknown | null> };
+    }).gpu;
+    if (!gpu) return "wasm";
+    const adapter = await gpu.requestAdapter();
+    return adapter ? "webgpu" : "wasm";
+  } catch {
+    return "wasm";
+  }
+}
+
 async function init(id: number, hfId: string, dtype: string): Promise<void> {
-  const device = "gpu" in navigator ? "webgpu" : "wasm";
+  const device = await pickDevice();
   try {
     extractor = await pipeline("feature-extraction", hfId, {
       dtype:             dtype as never,
@@ -99,7 +116,7 @@ async function init(id: number, hfId: string, dtype: string): Promise<void> {
     }) as unknown as Extractor;
   } catch (err) {
     if (device === "webgpu") {
-      // WebGPU init can fail on driver/adapter quirks — retry on WASM.
+      // Adapter probed fine but the session still failed — retry on WASM.
       extractor = await pipeline("feature-extraction", hfId, {
         dtype:             dtype as never,
         device:            "wasm" as never,
@@ -130,11 +147,14 @@ ctx.addEventListener("message", (e: MessageEvent) => {
     } catch (err) {
       let message = err instanceof Error ? err.message : String(err);
       if (msg.type === "init") {
-        // "Failed to fetch" alone is undebuggable — name the file and the
-        // likely culprits.
-        const where = lastFile ? ` while fetching "${lastFile}"` : "";
-        message = `model download failed${where}: ${message}. ` +
-          "Check your connection (and any ad-blocker on huggingface.co), then retry from Settings → Search.";
+        // Make init failures debuggable: name the last file in flight, and
+        // only point at network/ad-blocker when the error actually looks
+        // fetch-related (backend failures used to get mislabeled).
+        const fetchy = /fetch|network|cors|404|load failed/i.test(message);
+        const where = lastFile ? ` (last file: "${lastFile}")` : "";
+        message = `model setup failed${where}: ${message}` + (fetchy
+          ? " — check your connection (and any ad-blocker on huggingface.co), then retry from Settings → Search."
+          : " — retry from Settings → Search.");
       }
       ctx.postMessage({ type: "error", id: msg.id, message });
     }

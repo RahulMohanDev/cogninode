@@ -346,6 +346,10 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         const byChat = new Map<string, ResolvedHit[]>();
         for (const h of res.hits) {
           if (!chatIds.includes(h.chatId)) chatIds.push(h.chatId);
+          // Chat-title hits rank the chat but get no preview row — the
+          // chat row right above already shows that title (a preview
+          // repeating it read as a broken duplicate).
+          if (h.kind === "chat") continue;
           const arr = byChat.get(h.chatId) ?? [];
           // Up to 3 match previews per chat keep the list scannable.
           if (arr.length < 3) arr.push(h);
