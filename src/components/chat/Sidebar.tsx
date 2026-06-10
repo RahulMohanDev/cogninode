@@ -15,6 +15,7 @@ import { Glyph }                        from "../Glyph";
 import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
 import { anyModalOpen }                 from "../../hooks/useModalStack";
+import { useSearchState }               from "../../hooks/useSearchState";
 
 export interface SidebarProps {
   activeChatId:   string | null;
@@ -612,9 +613,10 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         </div>
         <div className={`tw:flex-1 tw:min-w-0 tw:flex tw:flex-col ${isCollapsed ? "tw:hidden" : ""}`}>
           <span className="tw:text-[13px] tw:font-medium tw:text-ink tw:truncate">cogninode</span>
-          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:flex tw:items-center tw:gap-1">
-            <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%]" style={{ background: "var(--teal)" }} />
+          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:flex tw:items-center tw:gap-1 tw:min-w-0">
+            <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none" style={{ background: "var(--teal)" }} />
             local
+            <SearchStatusChip onOpenSettings={onOpenSettings} />
           </span>
         </div>
         <button
@@ -656,6 +658,40 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
 export default Sidebar;
 
 // ── small inline pieces ───────────────────────────────────────────
+
+// Persistent semantic-search status in the sidebar footer: download /
+// indexing progress while the model spins up, a quiet "hybrid" once
+// ready, and a clickable failure state that opens Settings → Search.
+function SearchStatusChip({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const s = useSearchState();
+  const { prefs } = useSettings();
+  if (!prefs.semanticSearch || s.semantic === "off") return null;
+
+  const [dot, label, pulse] =
+    s.semantic === "starting"    ? ["var(--lilac)",  "search…", true] as const :
+    s.semantic === "downloading" ? ["var(--lilac)",  `model ${s.downloadPct}%`, true] as const :
+    s.semantic === "indexing"    ? ["var(--butter)", `indexing ${s.indexed}/${s.indexTotal}`, true] as const :
+    s.semantic === "ready"       ? ["var(--teal)",   "hybrid", false] as const :
+                                   ["var(--coral)",  "search failed", false] as const;
+
+  const failed = s.semantic === "error";
+  return (
+    <button
+      className={`tw:inline-flex tw:items-center tw:gap-1 tw:min-w-0 tw:p-0 tw:font-mono tw:text-[10px] ${failed ? "tw:text-coral tw:cursor-pointer tw:hover:underline" : "tw:text-ink-3 tw:cursor-default"}`}
+      onClick={failed ? onOpenSettings : undefined}
+      title={
+        failed
+          ? `${s.error ?? "Semantic search failed"} — click to open Settings`
+          : `Semantic search: ${label} · ${s.vectorCount} items embedded`
+      }
+      type="button"
+    >
+      <span aria-hidden="true">·</span>
+      <span className={`tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none ${pulse ? "tw:animate-pulse" : ""}`} style={{ background: dot }} />
+      <span className="tw:truncate">{label}</span>
+    </button>
+  );
+}
 
 function PencilIcon() {
   return (

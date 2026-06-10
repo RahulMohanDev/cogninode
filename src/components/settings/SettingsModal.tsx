@@ -368,13 +368,24 @@ function SearchSection({
           </div>
         </div>
         {semanticSearch ? (
-          <button
-            className="tw:bg-bg-3 tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
-            onClick={disable}
-            title="Stops semantic search and deletes embeddings + downloaded model weights"
-          >
-            Turn off
-          </button>
+          <div className="tw:flex tw:gap-2">
+            {searchState.semantic === "error" && (
+              <button
+                className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3"
+                onClick={() => void searchService.retrySemantic()}
+                title="Re-attempt the model download and indexing"
+              >
+                Retry
+              </button>
+            )}
+            <button
+              className="tw:bg-bg-3 tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
+              onClick={disable}
+              title="Stops semantic search and deletes embeddings + downloaded model weights"
+            >
+              Turn off
+            </button>
+          </div>
         ) : (
           <button
             className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3"

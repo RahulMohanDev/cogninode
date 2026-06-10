@@ -90,6 +90,9 @@ class SearchService {
   /** Token invalidating in-flight semantic work after a stop/switch. */
   private semanticRun = 0;
   private bootDelayUsed = false;
+  /** Last configure() opts — replayed by retrySemantic(). */
+  private lastOpts: { semanticSearch: boolean; embeddingModelId: string } | null = null;
+  private autoRetryDone = false;
 
   private pendingUpserts = new Set<string>();  // doc ids
   private pendingRemoves = new Set<string>();
@@ -219,6 +222,7 @@ class SearchService {
    *  and model switches. */
   async configure(opts: { semanticSearch: boolean; embeddingModelId: string }): Promise<void> {
     await this.initKeyword();
+    this.lastOpts = opts;
 
     if (!opts.semanticSearch) {
       this.stopSemantic();
@@ -280,7 +284,24 @@ class SearchService {
         semantic: "error",
         error: err instanceof Error ? err.message : String(err),
       });
+      // Transient network blips are the common failure — retry once on our
+      // own after a pause; after that it's the user's Retry button.
+      if (!this.autoRetryDone) {
+        this.autoRetryDone = true;
+        setTimeout(() => {
+          if (this.state.semantic === "error") void this.retrySemantic();
+        }, 20_000);
+      }
     }
+  }
+
+  /** Tear down a failed/stuck semantic layer and start over with the same
+   *  prefs. Safe to call any time; no-op when semantic is disabled. */
+  async retrySemantic(): Promise<void> {
+    const opts = this.lastOpts;
+    if (!opts || !opts.semanticSearch) return;
+    this.stopSemantic();
+    await this.configure(opts);
   }
 
   /** Stop the semantic layer without deleting anything. */

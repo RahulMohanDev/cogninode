@@ -14,6 +14,18 @@
 
 import { pipeline, env } from "@huggingface/transformers";
 
+// Self-host the onnxruntime WASM runtime. transformers.js defaults
+// `wasmPaths` to cdn.jsdelivr.net, which adds a second remote dependency
+// (beyond the model weights on huggingface.co) that ad-blockers and flaky
+// networks love to kill with a bare "Failed to fetch". Vite bundles the
+// exact files from our own node_modules instead, so the ONLY remote fetch
+// left is the model itself. Pair selection mirrors transformers' own
+// logic: Safari gets the plain build, everything else asyncify.
+import ortAsyncifyMjs  from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
+import ortAsyncifyWasm from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
+import ortPlainMjs     from "onnxruntime-web/ort-wasm-simd-threaded.mjs?url";
+import ortPlainWasm    from "onnxruntime-web/ort-wasm-simd-threaded.wasm?url";
+
 // Typed alias for the worker global without pulling in the webworker lib
 // (which conflicts with "dom" in one tsconfig program).
 const ctx = self as unknown as {
@@ -22,6 +34,16 @@ const ctx = self as unknown as {
 };
 
 env.allowLocalModels = false;
+
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const onnxEnv = (env.backends as { onnx?: { wasm?: { wasmPaths?: unknown } } }).onnx;
+if (onnxEnv?.wasm) {
+  onnxEnv.wasm.wasmPaths = isSafari
+    ? { mjs: new URL(ortPlainMjs,     self.location.href).href,
+        wasm: new URL(ortPlainWasm,    self.location.href).href }
+    : { mjs: new URL(ortAsyncifyMjs,  self.location.href).href,
+        wasm: new URL(ortAsyncifyWasm, self.location.href).href };
+}
 
 type InMessage =
   | { type: "init"; id: number; hfId: string; dtype: string }
@@ -36,10 +58,14 @@ let extractor: Extractor | null = null;
 
 // Per-file download progress → one overall percentage. transformers.js
 // emits independent progress streams per file; we aggregate by bytes.
+// `lastFile` rides along so init failures can say WHICH fetch died
+// instead of a bare "Failed to fetch".
 const fileProgress = new Map<string, { loaded: number; total: number }>();
 let lastPct = -1;
+let lastFile: string | null = null;
 
 function onProgress(p: { status?: string; file?: string; loaded?: number; total?: number }): void {
+  if (p.file) lastFile = p.file;
   if (p.status !== "progress" || !p.file || !p.total) return;
   fileProgress.set(p.file, { loaded: p.loaded ?? 0, total: p.total });
   let loaded = 0, total = 0;
@@ -90,11 +116,15 @@ ctx.addEventListener("message", (e: MessageEvent) => {
       if (msg.type === "init")  await init(msg.id, msg.hfId, msg.dtype);
       if (msg.type === "embed") await embed(msg.id, msg.texts);
     } catch (err) {
-      ctx.postMessage({
-        type:    "error",
-        id:      msg.id,
-        message: err instanceof Error ? err.message : String(err),
-      });
+      let message = err instanceof Error ? err.message : String(err);
+      if (msg.type === "init") {
+        // "Failed to fetch" alone is undebuggable — name the file and the
+        // likely culprits.
+        const where = lastFile ? ` while fetching "${lastFile}"` : "";
+        message = `model download failed${where}: ${message}. ` +
+          "Check your connection (and any ad-blocker on huggingface.co), then retry from Settings → Search.";
+      }
+      ctx.postMessage({ type: "error", id: msg.id, message });
     }
   })();
 });
