@@ -113,6 +113,7 @@ export async function addConceptEdge(
   graphId: string,
   source: string,
   target: string,
+  kind?: "lineage",
 ): Promise<string | null> {
   if (source === target) return null;
   return db.transaction("rw", db.conceptEdges, db.graphs, async () => {
@@ -124,7 +125,7 @@ export async function addConceptEdge(
       .first();
     if (existing) return existing._id;
     const _id = newId();
-    await db.conceptEdges.add({ _id, graphId, source, target });
+    await db.conceptEdges.add({ _id, graphId, source, target, ...(kind ? { kind } : {}) });
     await touchGraph(graphId);
     return _id;
   });
@@ -239,7 +240,7 @@ export async function expandSourceTree(
         if (!item.parentTargetId) continue;
         const parent = sourceIdByTarget.get(item.parentTargetId);
         const child  = sourceIdByTarget.get(item.targetId);
-        if (parent && child) await addConceptEdge(graphId, parent, child);
+        if (parent && child) await addConceptEdge(graphId, parent, child, "lineage");
       }
       return { rootSourceId, added };
     },

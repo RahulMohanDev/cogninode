@@ -117,6 +117,9 @@ export interface ConceptEdge {
   source:  string;          // concept OR source-node id
   target:  string;          // concept OR source-node id
   label?:  string;
+  /** "lineage" = created by unfolding a chat subtree (mirrors branch
+   *  parentage, rendered dashed). User-drawn edges carry no kind. */
+  kind?:   "lineage";
 }
 
 // A chat, branch (subtree root), or reflection placed ON the canvas as a

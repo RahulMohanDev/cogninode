@@ -21,6 +21,7 @@ import {
   ReactFlowProvider,
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
   MiniMap,
   Panel,
@@ -105,7 +106,12 @@ export default function GraphEditor() {
     nodeInfo: id => {
       const n = nodeById.get(id);
       if (!n) return undefined;
-      return { label: n.label, chatId: n.chatId, chatTitle: chatById.get(n.chatId)?.title ?? "?" };
+      return {
+        label:     n.label,
+        chatId:    n.chatId,
+        chatTitle: chatById.get(n.chatId)?.title ?? "?",
+        isRoot:    n.parentId === null,
+      };
     },
     reflectionTitle: id => refById.get(id)?.title,
   }), [chatById, nodeById, refById]);
@@ -248,9 +254,11 @@ export default function GraphEditor() {
               concept={selectedConcept}
               edges={conceptEdges}
               sources={sources}
+              concepts={concepts}
               resolvers={resolvers}
               chats={chats}
               reflections={reflections}
+              onSelectNode={setSelectedId}
               onClose={() => setSelectedId(null)}
             />
           )}
@@ -260,9 +268,11 @@ export default function GraphEditor() {
               source={selectedSource}
               edges={conceptEdges}
               concepts={concepts}
+              sources={sources}
               resolvers={resolvers}
               expandCount={expandPlan ? expandPlan.length - 1 : 0}
               onExpand={expandPlan ? () => void expandSourceTree(graphId, expandPlan) : undefined}
+              onSelectNode={setSelectedId}
               onClose={() => setSelectedId(null)}
             />
           )}
@@ -440,6 +450,7 @@ function ConceptCanvas({
         maxZoom={2}
         zoomOnDoubleClick={false}
         deleteKeyCode={["Backspace", "Delete"]}
+        connectionMode={ConnectionMode.Loose}
         onConnect={onConnect}
         onNodeClick={(_e, n) => onSelect(n.id)}
         onPaneClick={() => onSelect(null)}
@@ -687,16 +698,18 @@ interface ConceptPanelProps {
   concept:     Concept;
   edges:       ConceptEdge[];
   sources:     GraphSource[];
+  concepts:    Concept[];
   resolvers:   SourceResolvers;
   chats:       Chat[];
   reflections: Reflection[];
+  onSelectNode: (id: string) => void;
   onClose:     () => void;
 }
 
 function ConceptPanel({
-  graphId, concept, edges, sources, resolvers, chats, reflections, onClose,
+  graphId, concept, edges, sources, concepts, resolvers, chats, reflections,
+  onSelectNode, onClose,
 }: ConceptPanelProps) {
-  const navigate = useNavigate();
   const toast = useToast();
   const [label, setLabel] = useState(concept.label);
   const [notes, setNotes] = useState(concept.notes);
@@ -710,22 +723,17 @@ function ConceptPanel({
 
   const sourceById = useMemo(() => new Map(sources.map(s => [s._id, s])), [sources]);
 
-  // Sources connected to this concept (either edge direction).
-  const connected = useMemo(() => {
-    const out: Array<{ edgeId: string; source: GraphSource }> = [];
+  // Targets already wired to this concept — keeps the pickers free of dupes.
+  const connectedTargetIds = useMemo(() => {
+    const out = new Set<string>();
     for (const e of edges) {
       const otherId = e.source === concept._id ? e.target : e.target === concept._id ? e.source : null;
       if (!otherId) continue;
       const s = sourceById.get(otherId);
-      if (s) out.push({ edgeId: e._id, source: s });
+      if (s) out.add(s.targetId);
     }
     return out;
   }, [edges, concept._id, sourceById]);
-
-  const connectedTargetIds = useMemo(
-    () => new Set(connected.map(c => c.source.targetId)),
-    [connected],
-  );
 
   const attach = (targetType: "chat" | "reflection") => (targetId: string): void => {
     void attachToConcept({ graphId, conceptId: concept._id, targetType, targetId })
@@ -778,35 +786,14 @@ function ConceptPanel({
         </div>
 
         <div className="tw:flex tw:flex-col tw:gap-1.5">
-          <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
-            Connected{connected.length > 0 ? ` · ${connected.length}` : ""}
-          </label>
-          {connected.map(({ edgeId, source }) => {
-            const display = resolveSourceDisplay(source, resolvers);
-            return (
-              <div key={edgeId} className="tw:group/att tw:flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2 tw:rounded-[8px] tw:border tw:border-line-2 tw:bg-bg-3 tw:text-[12.5px] tw:text-ink tw:min-w-0">
-                <span className="tw:font-mono tw:text-[8.5px] tw:tracking-[0.08em] tw:uppercase tw:text-ink-4 tw:flex-none">{source.targetType === "node" ? "branch" : source.targetType}</span>
-                <button
-                  className="tw:flex-1 tw:min-w-0 tw:truncate tw:text-left tw:p-0 tw:hover:text-coral tw:disabled:opacity-60"
-                  onClick={() => { if (display.href) navigate(display.href); }}
-                  disabled={!display.href}
-                  title={`Open: ${display.title}`}
-                >
-                  {display.title}
-                </button>
-                <button
-                  className="tw:w-[20px] tw:h-[20px] tw:grid tw:place-items-center tw:rounded-[5px] tw:flex-none tw:text-ink-4 tw:opacity-0 tw:group-hover/att:opacity-100 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
-                  onClick={() => void deleteConceptEdge(edgeId)}
-                  title="Disconnect (the source stays on the canvas)"
-                  aria-label={`Disconnect ${display.title}`}
-                >
-                  <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
-                    <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
-            );
-          })}
+          <ConnectionsList
+            nodeId={concept._id}
+            edges={edges}
+            concepts={concepts}
+            sources={sources}
+            resolvers={resolvers}
+            onSelectNode={onSelectNode}
+          />
 
           <AttachPicker
             placeholder="Attach a chat…"
@@ -848,14 +835,17 @@ function ConceptPanel({
 // ── source side panel ──────────────────────────────────────────────────
 
 function SourcePanel({
-  source, edges, concepts, resolvers, expandCount = 0, onExpand, onClose,
+  source, edges, concepts, sources, resolvers, expandCount = 0, onExpand,
+  onSelectNode, onClose,
 }: {
   source:      GraphSource;
   edges:       ConceptEdge[];
   concepts:    Concept[];
+  sources:     GraphSource[];
   resolvers:   SourceResolvers;
   expandCount?: number;
   onExpand?:   (() => void) | undefined;
+  onSelectNode: (id: string) => void;
   onClose:     () => void;
 }) {
   const navigate = useNavigate();
@@ -868,22 +858,14 @@ function SourcePanel({
   }, [confirming]);
 
   const display = resolveSourceDisplay(source, resolvers);
-  const conceptById = useMemo(() => new Map(concepts.map(c => [c._id, c])), [concepts]);
-
-  const connectedConcepts = useMemo(() => {
-    const out: Array<{ edgeId: string; concept: Concept }> = [];
-    for (const e of edges) {
-      const otherId = e.source === source._id ? e.target : e.target === source._id ? e.source : null;
-      if (!otherId) continue;
-      const c = conceptById.get(otherId);
-      if (c) out.push({ edgeId: e._id, concept: c });
-    }
-    return out;
-  }, [edges, source._id, conceptById]);
+  const headerLabel =
+    display.subtitle === "chat" ? "Chat" :
+    display.subtitle.startsWith("branch") ? "Branch" :
+    display.subtitle === "reflection" ? "Reflection" : "Node";
 
   return (
     <div className="tw:w-[320px] tw:flex-none tw:border-l tw:border-line tw:bg-bg tw:flex tw:flex-col tw:overflow-y-auto tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
-      <PanelHeader label={source.targetType === "node" ? "Branch" : source.targetType === "chat" ? "Chat" : "Reflection"} onClose={onClose} />
+      <PanelHeader label={headerLabel} onClose={onClose} />
 
       <div className="tw:p-4 tw:flex tw:flex-col tw:gap-4">
         <div>
@@ -916,30 +898,14 @@ function SourcePanel({
           </p>
         )}
 
-        <div className="tw:flex tw:flex-col tw:gap-1.5">
-          <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
-            Classified under{connectedConcepts.length > 0 ? ` · ${connectedConcepts.length}` : ""}
-          </label>
-          {connectedConcepts.length === 0 && (
-            <p className="tw:m-0 tw:text-[12px] tw:text-ink-4">Not connected yet — drag from its handle to a concept.</p>
-          )}
-          {connectedConcepts.map(({ edgeId, concept }) => (
-            <div key={edgeId} className="tw:group/att tw:flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2 tw:rounded-[8px] tw:border tw:border-line-2 tw:bg-bg-3 tw:text-[12.5px] tw:text-ink tw:min-w-0">
-              <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none ${COLOR_BG[concept.color]}`} />
-              <span className="tw:flex-1 tw:min-w-0 tw:truncate">{concept.label}</span>
-              <button
-                className="tw:w-[20px] tw:h-[20px] tw:grid tw:place-items-center tw:rounded-[5px] tw:flex-none tw:text-ink-4 tw:opacity-0 tw:group-hover/att:opacity-100 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
-                onClick={() => void deleteConceptEdge(edgeId)}
-                title="Disconnect"
-                aria-label={`Disconnect from ${concept.label}`}
-              >
-                <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
-                  <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
+        <ConnectionsList
+          nodeId={source._id}
+          edges={edges}
+          concepts={concepts}
+          sources={sources}
+          resolvers={resolvers}
+          onSelectNode={onSelectNode}
+        />
 
         <div className="tw:pt-2 tw:border-t tw:border-line-2">
           {confirming ? (
@@ -965,6 +931,113 @@ function SourcePanel({
 }
 
 // ── shared bits ────────────────────────────────────────────────────────
+
+// One symmetric connections list for EVERY node type — nodes are just
+// nodes here. Each row is whatever sits at the other end of an edge
+// (concept or source alike): click selects it on the canvas, ↗ opens the
+// underlying chat/branch/reflection, ✕ cuts just that edge.
+function ConnectionsList({
+  nodeId, edges, concepts, sources, resolvers, onSelectNode,
+}: {
+  nodeId:       string;
+  edges:        ConceptEdge[];
+  concepts:     Concept[];
+  sources:      GraphSource[];
+  resolvers:    SourceResolvers;
+  onSelectNode: (id: string) => void;
+}) {
+  const navigate = useNavigate();
+  const conceptById = useMemo(() => new Map(concepts.map(c => [c._id, c])), [concepts]);
+  const sourceById  = useMemo(() => new Map(sources.map(s => [s._id, s])), [sources]);
+
+  const rows = useMemo(() => {
+    const out: Array<{
+      edgeId:  string;
+      otherId: string;
+      title:   string;
+      chip:    string;
+      dot?:    string;       // concept accent class
+      href?:   string;
+      lineage: boolean;
+    }> = [];
+    for (const e of edges) {
+      const otherId = e.source === nodeId ? e.target : e.target === nodeId ? e.source : null;
+      if (!otherId) continue;
+      const c = conceptById.get(otherId);
+      if (c) {
+        out.push({
+          edgeId: e._id, otherId, title: c.label, chip: "concept",
+          dot: COLOR_BG[c.color] ?? "", lineage: e.kind === "lineage",
+        });
+        continue;
+      }
+      const s = sourceById.get(otherId);
+      if (s) {
+        const d = resolveSourceDisplay(s, resolvers);
+        out.push({
+          edgeId: e._id, otherId, title: d.title,
+          chip: d.subtitle === "chat" ? "chat" : s.targetType === "node" ? "branch" : "reflection",
+          ...(d.href ? { href: d.href } : {}),
+          lineage: e.kind === "lineage",
+        });
+      }
+    }
+    return out;
+  }, [edges, nodeId, conceptById, sourceById, resolvers]);
+
+  return (
+    <div className="tw:flex tw:flex-col tw:gap-1.5">
+      <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
+        Connections{rows.length > 0 ? ` · ${rows.length}` : ""}
+      </label>
+      {rows.length === 0 && (
+        <p className="tw:m-0 tw:text-[12px] tw:text-ink-4">
+          No connections yet — drag from a handle to any other node.
+        </p>
+      )}
+      {rows.map(row => (
+        <div
+          key={row.edgeId}
+          className="tw:group/att tw:flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2 tw:rounded-[8px] tw:border tw:border-line-2 tw:bg-bg-3 tw:text-[12.5px] tw:text-ink tw:min-w-0"
+          title={row.lineage ? "From the chat's tree structure" : undefined}
+        >
+          {row.dot
+            ? <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none ${row.dot}`} />
+            : <span className="tw:font-mono tw:text-[8.5px] tw:tracking-[0.08em] tw:uppercase tw:text-ink-4 tw:flex-none">{row.chip}</span>}
+          <button
+            className="tw:flex-1 tw:min-w-0 tw:truncate tw:text-left tw:p-0 tw:hover:text-coral"
+            onClick={() => onSelectNode(row.otherId)}
+            title={`Select "${row.title}" on the canvas`}
+          >
+            {row.title}
+          </button>
+          {row.href && (
+            <button
+              className="tw:w-[20px] tw:h-[20px] tw:grid tw:place-items-center tw:rounded-[5px] tw:flex-none tw:text-ink-4 tw:opacity-0 tw:group-hover/att:opacity-100 tw:hover:bg-bg-2 tw:hover:text-ink"
+              onClick={() => navigate(row.href!)}
+              title="Open"
+              aria-label={`Open ${row.title}`}
+            >
+              <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
+                <path d="M6 3 H13 V10 M13 3 L3 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+          <button
+            className="tw:w-[20px] tw:h-[20px] tw:grid tw:place-items-center tw:rounded-[5px] tw:flex-none tw:text-ink-4 tw:opacity-0 tw:group-hover/att:opacity-100 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
+            onClick={() => void deleteConceptEdge(row.edgeId)}
+            title="Disconnect (both nodes stay on the canvas)"
+            aria-label={`Disconnect ${row.title}`}
+          >
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function PanelHeader({ label, onClose }: { label: string; onClose: () => void }) {
   return (

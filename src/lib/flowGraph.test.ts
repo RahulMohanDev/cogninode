@@ -80,7 +80,9 @@ describe("buildConceptFlowGraph", () => {
   const resolvers = {
     chatTitle: (id: string) => (id === "c1" ? "Java learning" : undefined),
     nodeInfo:  (id: string) =>
-      id === "n1" ? { label: "generics deep dive", chatId: "c1", chatTitle: "Java learning" } : undefined,
+      id === "n1" ? { label: "generics deep dive", chatId: "c1", chatTitle: "Java learning", isRoot: false }
+      : id === "root1" ? { label: "Java learning", chatId: "c1", chatTitle: "Java learning", isRoot: true }
+      : undefined,
     reflectionTitle: (id: string) => (id === "r1" ? "PECS rule" : undefined),
   };
 
@@ -128,17 +130,33 @@ describe("buildConceptFlowGraph", () => {
     expect(g.edges.map(e => e.id)).toEqual(["e1"]);
   });
 
-  it("renders source↔source lineage edges dashed", () => {
+  it("dashes only kind:'lineage' edges — user-drawn edges are equal and solid", () => {
     const g = buildConceptFlowGraph(
       [concept("k1")],
       [source("s1", "chat", "c1"), source("s2", "node", "n1")],
-      [edge("e1", "s1", "s2"), edge("e2", "k1", "s1")],
+      [
+        { ...edge("e1", "s1", "s2"), kind: "lineage" as const },
+        edge("e2", "s1", "s2"),       // user-drawn source↔source: solid
+        edge("e3", "k1", "s1"),
+      ],
       resolvers,
     );
-    const lineage = g.edges.find(e => e.id === "e1")!;
-    const classification = g.edges.find(e => e.id === "e2")!;
-    expect(lineage.style.strokeDasharray).toBe("6 4");
-    expect(classification.style.strokeDasharray).toBeUndefined();
+    expect(g.edges.find(e => e.id === "e1")!.style.strokeDasharray).toBe("6 4");
+    expect(g.edges.find(e => e.id === "e2")!.style.strokeDasharray).toBeUndefined();
+    expect(g.edges.find(e => e.id === "e3")!.style.strokeDasharray).toBeUndefined();
+  });
+
+  it("displays a chat's root node AS the chat (no wrapper semantics)", () => {
+    const g = buildConceptFlowGraph(
+      [],
+      [source("s1", "node", "root1")],
+      [],
+      resolvers,
+    );
+    const s1 = g.nodes.find(n => n.id === "s1")!;
+    expect(s1.data.subtitle).toBe("chat");
+    expect(s1.data.title).toBe("Java learning");
+    expect((s1.data as { href: string }).href).toBe("/chat/c1");
   });
 });
 
@@ -151,18 +169,17 @@ describe("planSubtreeSources", () => {
     node("b", "root", 1, "Metaclasses"),
   ];
 
-  it("chat drop: root card is the chat; children link to it; grid positions offset from origin", () => {
+  it("chat drop: roots at the ROOT NODE (no wrapper card); the canvas mirrors the chat", () => {
     const plan = planSubtreeSources("c1", CHAT_NODES, null, { x: 1000, y: 500 });
     expect(plan).toHaveLength(4);
+    expect(plan.every(p => p.targetType === "node")).toBe(true);
 
-    const root = plan.find(p => p.targetType === "chat")!;
-    expect(root.targetId).toBe("c1");
+    const root = plan.find(p => p.targetId === "root")!;
     expect(root.parentTargetId).toBeNull();
     expect(root).toMatchObject({ x: 1000, y: 500 });
 
     const a = plan.find(p => p.targetId === "a")!;
-    expect(a.targetType).toBe("node");
-    expect(a.parentTargetId).toBe("c1");          // re-parented onto the chat card
+    expect(a.parentTargetId).toBe("root");
     expect(a.y).toBe(500 + SOURCE_Y_GAP);
 
     const a1 = plan.find(p => p.targetId === "a1")!;
@@ -183,9 +200,9 @@ describe("planSubtreeSources", () => {
     expect(plan.find(p => p.targetId === "a1")!.parentTargetId).toBe("a");
   });
 
-  it("single-node chat plans one chat card", () => {
+  it("single-node chat plans one root-node card", () => {
     const plan = planSubtreeSources("c1", [node("root", null, 0)], null, { x: 5, y: 5 });
     expect(plan).toHaveLength(1);
-    expect(plan[0]).toMatchObject({ targetType: "chat", targetId: "c1", parentTargetId: null });
+    expect(plan[0]).toMatchObject({ targetType: "node", targetId: "root", parentTargetId: null });
   });
 });

@@ -43,18 +43,20 @@ function TypeIcon({ targetType }: { targetType: SourceNodeData["targetType"] }) 
 }
 
 export function SourceNode({ data, selected }: NodeProps<SourceFlowNodeT>) {
+  // Same card anatomy as concept nodes — nodes are nodes on this canvas;
+  // only the eyebrow (type) and the neutral border tell them apart.
   return (
     <div
-      className={`tw:border tw:rounded-[10px] tw:bg-bg-2 tw:py-2.5 tw:px-3 tw:w-[190px] tw:text-[12.5px] tw:cursor-pointer tw:transition-[box-shadow,border-color] tw:duration-150 tw:ease-[ease] ${data.stale ? "tw:border-dashed tw:border-coral" : "tw:border-line"} ${selected ? "tw:shadow-[0_0_0_3px_color-mix(in_oklab,var(--lilac)_38%,transparent)]" : "tw:hover:border-ink-3"}`}
+      className={`tw:border-2 tw:rounded-[12px] tw:bg-bg-3 tw:py-3 tw:px-3.5 tw:w-[200px] tw:text-[13px] tw:cursor-pointer tw:transition-[box-shadow,border-color] tw:duration-150 tw:ease-[ease] ${data.stale ? "tw:border-dashed tw:border-coral" : "tw:border-line"} ${selected ? "tw:shadow-[0_0_0_3px_color-mix(in_oklab,var(--lilac)_38%,transparent)]" : "tw:shadow-1 tw:hover:shadow-2 tw:hover:border-ink-3"}`}
     >
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <Handle type="source" position={Position.Bottom} style={handleStyle} />
 
-      <div className={`tw:font-mono tw:text-[9px] tw:tracking-[0.1em] tw:uppercase tw:mb-1 tw:flex tw:items-center tw:gap-[5px] tw:min-w-0 ${data.stale ? "tw:text-coral" : "tw:text-ink-3"}`}>
+      <div className={`tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:mb-1 tw:flex tw:items-center tw:gap-[5px] tw:min-w-0 ${data.stale ? "tw:text-coral" : "tw:text-ink-3"}`}>
         <TypeIcon targetType={data.targetType} />
         <span className="tw:truncate">{data.subtitle}</span>
       </div>
-      <div className={`tw:font-medium tw:text-[13px] tw:leading-[1.25] tw:text-balance ${data.stale ? "tw:text-ink-3 tw:line-through" : "tw:text-ink"}`}>
+      <div className={`tw:font-display tw:font-semibold tw:text-[14px] tw:tracking-[-0.01em] tw:leading-[1.2] tw:text-balance ${data.stale ? "tw:text-ink-3 tw:line-through" : "tw:text-ink"}`}>
         {data.title}
       </div>
     </div>

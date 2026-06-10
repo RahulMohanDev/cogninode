@@ -88,7 +88,7 @@ export interface ConceptFlowGraph {
 export interface SourceResolvers {
   chatTitle:       (chatId: string) => string | undefined;
   /** Branch label + owning chat (undefined when the node is gone). */
-  nodeInfo:        (nodeId: string) => { label: string; chatId: string; chatTitle: string } | undefined;
+  nodeInfo:        (nodeId: string) => { label: string; chatId: string; chatTitle: string; isRoot: boolean } | undefined;
   reflectionTitle: (reflectionId: string) => string | undefined;
 }
 
@@ -107,6 +107,15 @@ function sourceData(s: GraphSource, resolve: SourceResolvers): SourceNodeData {
   }
   if (s.targetType === "node") {
     const info = resolve.nodeInfo(s.targetId);
+    // A chat's root node IS the chat (labels stay in sync) — display it as
+    // one, so unfolded trees don't carry a redundant wrapper card.
+    if (info?.isRoot) {
+      return {
+        title: info.label, subtitle: "chat",
+        targetType: s.targetType, targetId: s.targetId,
+        href: `/chat/${info.chatId}`, stale: false,
+      };
+    }
     return {
       title:    info?.label ?? "(deleted branch)",
       subtitle: info ? `branch · ${info.chatTitle}` : "branch",
@@ -170,20 +179,17 @@ export function buildConceptFlowGraph(
   const placed = new Set([...conceptIds, ...sourceById.keys()]);
   const flowEdges: FlowGraphEdge[] = edges
     .filter(e => placed.has(e.source) && placed.has(e.target))
-    .map(e => {
-      // Source↔source edges are tree lineage (unfolded subtrees) — dashed,
-      // so the user's classification edges stay visually primary.
-      const lineage = sourceById.has(e.source) && sourceById.has(e.target);
-      return {
-        id:       e._id,
-        source:   e.source,
-        target:   e.target,
-        animated: false,
-        style: lineage
-          ? { stroke: "var(--line)", strokeWidth: 1.5, strokeDasharray: "6 4" }
-          : { stroke: "var(--line)", strokeWidth: 2 },
-      };
-    });
+    .map(e => ({
+      id:       e._id,
+      source:   e.source,
+      target:   e.target,
+      animated: false,
+      // Lineage edges (laid down by unfolding a chat tree) render dashed;
+      // every edge the USER draws is an equal, solid connection.
+      style: e.kind === "lineage"
+        ? { stroke: "var(--line)", strokeWidth: 1.5, strokeDasharray: "6 4" }
+        : { stroke: "var(--line)", strokeWidth: 2 },
+    }));
 
   return { nodes, edges: flowEdges };
 }
@@ -208,12 +214,13 @@ export interface SubtreePlanItem {
 
 /**
  * Plan cards for a chat's subtree. `rootNodeId === null` means a CHAT
- * drop: the root card is the chat itself, its children are branch cards.
- * Otherwise the card tree starts at that branch. The root lands at
- * `origin`; descendants spread on the DFS grid below it.
+ * drop, which roots the plan at the chat's root NODE — every card is a
+ * plain conversation node (the canvas mirrors the chat tree; no wrapper
+ * "chat" card on top). The root lands at `origin`; descendants spread on
+ * the DFS grid below it.
  */
 export function planSubtreeSources(
-  chatId:       string,
+  _chatId:      string,
   chatNodes:    DbNode[],
   rootNodeId:   string | null,
   origin:       { x: number; y: number },
@@ -245,23 +252,17 @@ export function planSubtreeSources(
   };
   walk(actualRootId);
 
-  const isChatDrop = rootNodeId === null;
   const items: SubtreePlanItem[] = [];
   for (const id of subtreeIds) {
     const p = pointById.get(id);
     const n = chatNodes.find(x => x._id === id);
     if (!p || !n) continue;
-    const isRoot = id === actualRootId;
     items.push({
-      targetType: isRoot && isChatDrop ? "chat" : "node",
-      targetId:   isRoot && isChatDrop ? chatId : id,
+      targetType: "node",
+      targetId:   id,
       x: origin.x + (p.x - rootPoint.x) * SOURCE_X_GAP,
       y: origin.y + (p.y - rootPoint.y) * SOURCE_Y_GAP,
-      parentTargetId: isRoot
-        ? null
-        : n.parentId === actualRootId && isChatDrop
-          ? chatId
-          : n.parentId,
+      parentTargetId: id === actualRootId ? null : n.parentId,
     });
   }
   return items;
