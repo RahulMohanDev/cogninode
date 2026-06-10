@@ -83,8 +83,8 @@ export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
         </svg>
         Branch from selection
       </button>
-      <span className="tw:w-px tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:my-1 tw:mx-px" />
-      <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2.5 tw:rounded-[6px] tw:whitespace-nowrap tw:hover:bg-[color-mix(in_oklab,white_14%,transparent)] tw:dark:hover:bg-[color-mix(in_oklab,var(--bg)_18%,transparent)]" onClick={close} title="Close">
+      <span className="tw:w-px tw:bg-[var(--veil-white-14)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:my-1 tw:mx-px" />
+      <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2.5 tw:rounded-[6px] tw:whitespace-nowrap tw:hover:bg-[var(--veil-white-14)] tw:dark:hover:bg-[color-mix(in_oklab,var(--bg)_18%,transparent)]" onClick={close} title="Close">
         <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
           <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>

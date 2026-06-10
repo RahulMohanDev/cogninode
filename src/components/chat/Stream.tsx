@@ -86,7 +86,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
           <div className="tw:ml-auto tw:flex tw:gap-2 tw:flex-none">
             {collapseAction}
             {onSaveReflection && (
-              <button className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]" onClick={() => onSaveReflection()} title="Snapshot this path into your reflections">
+              <button className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[var(--veil-white-14)] tw:text-white tw:border-[var(--veil-white-18)] tw:hover:bg-[var(--veil-white-22)] tw:dark:bg-[var(--veil-deep-14)] tw:dark:text-[#0e0a14] tw:dark:border-[var(--veil-deep-22)]" onClick={() => onSaveReflection()} title="Snapshot this path into your reflections">
                 Save as reflection
               </button>
             )}

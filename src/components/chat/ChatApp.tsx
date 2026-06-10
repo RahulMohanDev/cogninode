@@ -288,7 +288,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     >
       <span>Collapse {currentNodeMessages ?? 0} messages into one?</span>
       <button
-        className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]"
+        className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[var(--veil-white-14)] tw:text-white tw:border-[var(--veil-white-18)] tw:hover:bg-[var(--veil-white-22)] tw:dark:bg-[var(--veil-deep-14)] tw:dark:text-[#0e0a14] tw:dark:border-[var(--veil-deep-22)]"
         onClick={() => { void handleCollapseToOne(); setCollapseConfirm(false); }}
         style={{
           padding: "2px 8px",
@@ -301,7 +301,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
         yes
       </button>
       <button
-        className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]"
+        className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[var(--veil-white-14)] tw:text-white tw:border-[var(--veil-white-18)] tw:hover:bg-[var(--veil-white-22)] tw:dark:bg-[var(--veil-deep-14)] tw:dark:text-[#0e0a14] tw:dark:border-[var(--veil-deep-22)]"
         onClick={() => setCollapseConfirm(false)}
         style={{
           padding: "2px 8px",
@@ -316,7 +316,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     </span>
   ) : (
     <button
-      className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-white tw:border-[color-mix(in_oklab,white_18%,transparent)] tw:hover:bg-[color-mix(in_oklab,white_22%,transparent)] tw:dark:bg-[color-mix(in_oklab,#0e0a14_14%,transparent)] tw:dark:text-[#0e0a14] tw:dark:border-[color-mix(in_oklab,#0e0a14_22%,transparent)]"
+      className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[var(--veil-white-14)] tw:text-white tw:border-[var(--veil-white-18)] tw:hover:bg-[var(--veil-white-22)] tw:dark:bg-[var(--veil-deep-14)] tw:dark:text-[#0e0a14] tw:dark:border-[var(--veil-deep-22)]"
       type="button"
       onClick={() => setCollapseConfirm(true)}
       disabled={collapseDisabled}
@@ -495,7 +495,7 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
             <path d="M5.5 7 Q8 4 10.5 7" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
           </svg>
           Reflect
-          <span className={`tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] ${reflectionsActive ? "tw:bg-[color-mix(in_oklab,white_18%,transparent)] tw:text-[color-mix(in_oklab,white_80%,transparent)]" : "tw:bg-bg-2 tw:text-ink-3"}`}>⌃R</span>
+          <span className={`tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] ${reflectionsActive ? "tw:bg-[var(--veil-white-18)] tw:text-[var(--veil-white-80)]" : "tw:bg-bg-2 tw:text-ink-3"}`}>⌃R</span>
         </button>
 
         <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-3 tw:rounded-[8px] tw:border tw:text-[13px] tw:transition-[border-color,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:hover:border-ink-3 tw:hover:text-ink" type="button" onClick={openJump} title="Quick jump">

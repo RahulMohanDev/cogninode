@@ -352,9 +352,9 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
       </div>
 
       <button className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`} onClick={handleNewChat} title="New chat (⌃N)">
-        <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-[14px] tw:leading-none">+</span>
+        <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[var(--veil-white-14)] tw:text-[14px] tw:leading-none">+</span>
         <span className={isCollapsed ? "tw:hidden" : undefined}>New chat</span>
-        <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[color-mix(in_oklab,white_80%,transparent)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
+        <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
       </button>
 
       <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>Recent chats</div>
@@ -396,7 +396,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                   <span className="tw:flex-1 tw:truncate">{chat.title || "Untitled"}</span>
                 )}
                 {!isRenaming && (
-                  <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(chat.updatedAt)}</span>
+                  <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(chat.updatedAt)}</span>
                 )}
                 {!isRenaming && (
                   <button
