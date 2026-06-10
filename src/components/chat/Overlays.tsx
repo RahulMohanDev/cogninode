@@ -80,6 +80,12 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
 
 export default Overlays;
 
+
+// depth → accent colour maps (root, L1, L2, L3+)
+const QJ_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
+const TN_BORDER = ["tw:border-coral", "tw:border-teal", "tw:border-lilac", "tw:border-butter"];
+const TN_DOT = QJ_DOT;
+
 // ── QuickJump ────────────────────────────────────────────────────────────────
 // An MRU ("Alt+Tab") branch (node) switcher spanning every chat. With an empty
 // search box the node the user just switched FROM is at index 0 and
@@ -209,14 +215,15 @@ function QuickJump({
   const noOtherNodes = ordered.length === 0;
 
   return (
-    <div className="qj-overlay" onClick={onClose}>
-      <div className="qj" onClick={e => e.stopPropagation()}>
-        <div className="qj-input">
+    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[color-mix(in_oklab,black_60%,transparent)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
+      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
+        <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
             <path d="M10.5 10.5 L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <input
+            className="tw:flex-1 tw:border-none tw:bg-transparent tw:outline-none tw:text-[15px] tw:text-ink"
             ref={inputRef}
             value={q}
             onChange={e => setQ(e.target.value)}
@@ -225,27 +232,26 @@ function QuickJump({
             spellCheck={false}
             autoComplete="off"
           />
-          <span className="qj-kbd">esc</span>
+          <span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-0.5 tw:px-[7px] tw:rounded-[4px] tw:text-ink-3">esc</span>
         </div>
 
-        <div className="qj-list">
+        <div className="tw:max-h-[50vh] tw:overflow-y-auto tw:p-1.5">
           {noOtherNodes ? (
-            <div className="qj-empty">No other branches — press ⌃N to start a chat.</div>
+            <div className="tw:py-9 tw:px-[18px] tw:text-center tw:text-ink-3 tw:text-[13px]">No other branches — press ⌃N to start a chat.</div>
           ) : filtered.length === 0 ? (
-            <div className="qj-empty">No branches match.</div>
+            <div className="tw:py-9 tw:px-[18px] tw:text-center tw:text-ink-3 tw:text-[13px]">No branches match.</div>
           ) : (
             filtered.map((row, i) => {
               const title = row.chat.title || "Untitled chat";
               return (
                 <div
                   key={row.node._id}
-                  className={`qj-item${i === hi ? " hi" : ""}`}
-                  data-depth={Math.min(3, row.node.depth)}
+                  className={`tw:flex tw:items-center tw:gap-2.5 tw:py-2.5 tw:px-3.5 tw:rounded-[8px] tw:cursor-pointer tw:text-[14px] tw:text-ink tw:hover:bg-bg-2 ${i === hi ? "tw:bg-bg-2" : ""}`}
                   onClick={() => void jump(row)}
                   onMouseEnter={() => setHi(i)}
                 >
-                  <span className="qj-dot" />
-                  <span className="qj-label">
+                  <span className={`tw:w-[9px] tw:h-[9px] tw:rounded-[50%] tw:flex-none ${QJ_DOT[Math.min(3, row.node.depth)]}`} />
+                  <span className="tw:flex-1">
                     {row.isRoot ? (
                       title
                     ) : (
@@ -256,11 +262,11 @@ function QuickJump({
                       </>
                     )}
                   </span>
-                  {row.isRoot && <span className="qj-chat">root</span>}
+                  {row.isRoot && <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">root</span>}
                   {i === 0 && q.trim() === "" && (
-                    <span className="qj-chat">← back</span>
+                    <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">← back</span>
                   )}
-                  <span className="qj-path">
+                  <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:tracking-[0.02em]">
                     {row.visited ? relativeTime(row.node.createdAt) : "not visited"}
                   </span>
                 </div>
@@ -269,11 +275,11 @@ function QuickJump({
           )}
         </div>
 
-        <div className="qj-foot">
-          <span><span className="qj-kbd">↑</span><span className="qj-kbd">↓</span> navigate</span>
-          <span><span className="qj-kbd">↵</span> jump</span>
-          <span><span className="qj-kbd">esc</span> close</span>
-          <span style={{ marginLeft: "auto" }}>
+        <div className="tw:flex tw:items-center tw:gap-3.5 tw:py-2.5 tw:px-[18px] tw:border-t tw:border-line tw:font-mono tw:text-[10px] tw:text-ink-3 tw:tracking-[0.04em]">
+          <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">↑</span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">↓</span> navigate</span>
+          <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">↵</span> jump</span>
+          <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">esc</span> close</span>
+          <span className="tw:ml-auto">
             {filtered.length} of {ordered.length}
           </span>
         </div>
@@ -349,15 +355,15 @@ function TreeMap({
   }, [chatId, onClose]);
 
   return (
-    <div className="tree-overlay" onClick={onClose}>
-      <div className="tree-overlay-head" onClick={e => e.stopPropagation()}>
-        <button className="icon-btn" onClick={onClose} title="Close (Esc)">
+    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--bg)_96%,white)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_88%,black)] tw:z-[150] tw:flex tw:flex-col tw:animate-[fadeIn_0.18s_ease-out]" onClick={onClose}>
+      <div className="tw:flex tw:items-center tw:gap-4 tw:py-[18px] tw:px-7 tw:border-b tw:border-line tw:bg-bg-3" onClick={e => e.stopPropagation()}>
+        <button className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink" onClick={onClose} title="Close (Esc)">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
         </button>
-        <div className="to-title">
-          <em>{chat?.title ?? "Chat"}</em>
+        <div className="tw:font-display tw:font-semibold tw:text-[22px] tw:tracking-[-0.02em] tw:flex-1">
+          <em className="tw:font-serif tw:italic tw:text-coral tw:font-normal">{chat?.title ?? "Chat"}</em>
           <span style={{
             marginLeft: 10, fontFamily: "var(--mono)", fontSize: 11,
             color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase",
@@ -376,10 +382,10 @@ function TreeMap({
         </div>
       </div>
 
-      <div className="tree-overlay-body" onClick={e => e.stopPropagation()}>
+      <div className="tw:flex-1 tw:relative tw:overflow-hidden" onClick={e => e.stopPropagation()}>
         <div style={{ width: "100%", height: "100%", overflow: "auto" }}>
-          <div className="tree-canvas" style={{ width: W, height: H, margin: "20px auto", position: "relative" }}>
-            <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
+          <div className="tw:relative" style={{ width: W, height: H, margin: "20px auto" }}>
+            <svg className="tw:absolute tw:inset-0 tw:w-full tw:h-full" viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
               {edges.map(({ from, to }) => {
                 const a = pointById.get(from);
                 const b = pointById.get(to);
@@ -411,8 +417,7 @@ function TreeMap({
               return (
                 <div
                   key={n._id}
-                  className={`tree-node${isCurrent ? " current" : ""}`}
-                  data-depth={depth}
+                  className={`tw:absolute tw:[transform:translate(-50%,-50%)] tw:w-[220px] tw:border-2 tw:rounded-[12px] tw:py-3 tw:px-3.5 tw:text-[13px] tw:cursor-pointer tw:transition-[transform,border-color,box-shadow] tw:duration-150 tw:ease-[ease] tw:z-[2] tw:hover:[transform:translate(-50%,-50%)_translateY(-2px)] tw:hover:shadow-2 ${TN_BORDER[depth]} ${isCurrent ? "tw:bg-ink tw:text-bg tw:shadow-[0_12px_28px_-8px_rgba(22,20,19,0.4)]" : "tw:bg-bg-3 tw:shadow-1"}`}
                   style={{
                     left:  xpx(p.x),
                     top:   ypx(p.y),
@@ -422,11 +427,11 @@ function TreeMap({
                   }}
                   onClick={() => void pick(n._id)}
                 >
-                  <div className="tn-eyebrow">
-                    <span className="tn-dot" />
+                  <div className={`tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:mb-1 tw:flex tw:items-center tw:gap-[5px] ${isCurrent ? "tw:text-[color-mix(in_oklab,var(--bg)_70%,transparent)]" : "tw:text-ink-3"}`}>
+                    <span className={`tw:w-[7px] tw:h-[7px] tw:rounded-[50%] ${TN_DOT[depth]}`} />
                     {eyebrow}
                   </div>
-                  <div className="tn-label">{truncate(label, 60)}</div>
+                  <div className="tw:font-display tw:font-semibold tw:text-[14px] tw:tracking-[-0.01em] tw:leading-[1.2] tw:text-balance">{truncate(label, 60)}</div>
                 </div>
               );
             })}
@@ -492,9 +497,9 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="qj-overlay" onClick={onClose}>
-      <div className="qj" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
-        <div className="qj-input" style={{ padding: "16px 22px" }}>
+    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[color-mix(in_oklab,black_60%,transparent)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
+      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
+        <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none" style={{ padding: "16px 22px" }}>
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" style={{ color: "var(--ink)" }}>
             <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
             <path d="M4 8 H6 M8 8 H10 M4 10 H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -505,7 +510,7 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
           }}>
             Keyboard shortcuts
           </div>
-          <button className="icon-btn" onClick={onClose} title="Close (Esc)">
+          <button className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink" onClick={onClose} title="Close (Esc)">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
@@ -523,10 +528,10 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {g.items.map((it, i) => (
-                  <div key={i} className="shortcut-card">
+                  <div key={i} className="tw:flex tw:items-center tw:justify-between tw:py-[9px] tw:px-3 tw:rounded-[8px] tw:bg-bg tw:border tw:border-line tw:text-[13px]">
                     <span>{it.label}</span>
-                    <span className="keys">
-                      {it.keys.map((k, j) => <kbd key={j}>{k}</kbd>)}
+                    <span className="tw:flex tw:gap-1">
+                      {it.keys.map((k, j) => <kbd key={j} className="tw:font-mono tw:text-[11px] tw:bg-bg-3 tw:border tw:border-line tw:shadow-[0_1px_0_var(--line)] tw:py-0.5 tw:px-1.5 tw:rounded-[5px] tw:text-ink">{k}</kbd>)}
                     </span>
                   </div>
                 ))}

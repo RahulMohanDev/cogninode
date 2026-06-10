@@ -169,7 +169,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
                 </span>
                 <div>
                   <button
-                    className="btn-primary coral"
+                    className="tw:bg-coral tw:text-bg tw:py-3 tw:px-5 tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:w-full tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:bg-[#ff4520] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))]"
                     type="button"
                     onClick={() => onAuthReset?.()}
                   >

@@ -69,9 +69,9 @@ export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
   };
 
   return (
-    <div className="sel-pop" style={{ top, left }}>
+    <div className="tw:fixed tw:bg-ink tw:text-bg tw:rounded-app-sm tw:p-[5px] tw:flex tw:gap-px tw:shadow-[0_16px_40px_-14px_rgba(0,0,0,0.4)] tw:z-[100] tw:animate-[popUp_0.12s_ease-out] tw:text-[12px]" style={{ top, left }}>
       <button
-        className="primary"
+        className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2.5 tw:rounded-[6px] tw:whitespace-nowrap tw:bg-coral tw:text-white tw:hover:bg-[#ff4520]"
         onClick={() => { onBranch(sel.text); close(); }}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
@@ -83,8 +83,8 @@ export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
         </svg>
         Branch from selection
       </button>
-      <span className="sep" />
-      <button onClick={close} title="Close">
+      <span className="tw:w-px tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:my-1 tw:mx-px" />
+      <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2.5 tw:rounded-[6px] tw:whitespace-nowrap tw:hover:bg-[color-mix(in_oklab,white_14%,transparent)] tw:dark:hover:bg-[color-mix(in_oklab,var(--bg)_18%,transparent)]" onClick={close} title="Close">
         <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
           <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>

@@ -30,9 +30,10 @@ export function ApiKeyForm() {
                 </p>
 
                 <form onSubmit={submit}>
-                    <div className="field">
-                        <label>OpenRouter API key</label>
+                    <div className="tw:flex tw:flex-col tw:gap-1.5 tw:mb-3.5">
+                        <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">OpenRouter API key</label>
                         <input
+                            className="tw:py-[11px] tw:px-3.5 tw:border tw:border-line tw:rounded-app-sm tw:text-[15px] tw:outline-none tw:bg-bg-3 tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3"
                             type="password"
                             placeholder="sk-or-v1-..."
                             value={draft}
@@ -58,7 +59,7 @@ export function ApiKeyForm() {
                         </div>
                     )}
 
-                    <button className="btn-primary coral" type="submit" disabled={verifying}>
+                    <button className="tw:bg-coral tw:text-bg tw:py-3 tw:px-5 tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:w-full tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:bg-[#ff4520] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))]" type="submit" disabled={verifying}>
                         {verifying ? "Verifying…" : (
                             <>
                                 Connect

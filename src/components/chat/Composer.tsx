@@ -224,7 +224,7 @@ export function Composer({
           )}
           {uploadError && (
             <span
-              className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1 tw:pr-2.5 tw:pl-1.5 tw:bg-bg-2 tw:border tw:border-line tw:rounded-[999px] tw:text-[12px] tw:text-ink tw:bg-[color-mix(in_oklab,var(--coral)_14%,var(--bg-3))] tw:border-[color-mix(in_oklab,var(--coral)_40%,var(--line))] tw:text-coral"
+              className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1 tw:pr-2.5 tw:pl-1.5 tw:border tw:rounded-[999px] tw:text-[12px] tw:bg-[color-mix(in_oklab,var(--coral)_14%,var(--bg-3))] tw:border-[color-mix(in_oklab,var(--coral)_40%,var(--line))] tw:text-coral"
               title={uploadError}
             >
               <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[5px] tw:grid tw:place-items-center tw:font-mono tw:text-[9px] tw:font-bold tw:text-white tw:tracking-[-0.02em] tw:bg-coral">!</span>
@@ -313,7 +313,7 @@ export function Composer({
                     <>
                       <div className="tw:h-px tw:bg-line tw:my-1.5 tw:mx-1" />
                       <div
-                        className="tw:group/addrow tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:rounded-[8px] tw:text-[13px] tw:text-ink tw:cursor-pointer tw:text-ink-3 tw:hover:text-ink tw:hover:bg-bg-2"
+                        className="tw:group/addrow tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:text-ink-3 tw:hover:text-ink tw:hover:bg-bg-2"
                         onClick={() => { setModelPickerOpen(false); onOpenSettings(); }}
                       >
                         <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:flex-none tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:bg-bg-2 tw:border tw:border-dashed tw:border-line tw:text-ink-3 tw:group-hover/addrow:border-coral tw:group-hover/addrow:text-coral">

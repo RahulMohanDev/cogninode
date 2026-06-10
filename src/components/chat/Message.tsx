@@ -360,7 +360,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
 
       {/* Inline delete-confirm pill replaces the action row while pending. */}
       {confirming ? (
-        <div className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1 tw:justify-end tw:gap-1.5">
+        <div className="tw:flex tw:items-center tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1 tw:justify-end tw:gap-1.5">
           <span style={{ marginRight: 8 }}>Delete this message?</span>
           <button
             onClick={() => void handleDelete()}

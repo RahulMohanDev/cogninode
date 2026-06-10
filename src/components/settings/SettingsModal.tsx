@@ -40,10 +40,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   if (!open) return null;
 
   return (
-    <div className="qj-overlay sm-overlay" onClick={onClose}>
-      <div className="settings-modal" onClick={e => e.stopPropagation()}>
-        <div className="sm-head">
-          <span className="sm-head-icon">
+    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[color-mix(in_oklab,black_60%,transparent)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[8vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
+      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-app tw:shadow-3 tw:overflow-hidden tw:flex tw:flex-col tw:max-h-[84vh] tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
+        <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:bg-bg-3">
+          <span className="tw:text-ink-3 tw:grid tw:place-items-center">
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4" />
               <path
@@ -52,15 +52,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               />
             </svg>
           </span>
-          <h2>Settings</h2>
-          <button className="icon-btn" onClick={onClose} title="Close (Esc)">
+          <h2 className="tw:flex-1 tw:m-0 tw:font-display tw:font-semibold tw:text-[18px] tw:tracking-[-0.015em] tw:text-ink">Settings</h2>
+          <button className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink" onClick={onClose} title="Close (Esc)">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        <div className="sm-body">
+        <div className="sm-body tw:flex-1 tw:overflow-y-auto tw:pt-1 tw:px-5 tw:pb-5 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
           <ApiKeySection
             apiKey={apiKey}
             onRemoveKey={() => { clearApiKey(); onClose(); }}
@@ -116,24 +116,24 @@ function ApiKeySection({
     : "";
 
   return (
-    <div className="sm-section">
-      <div className="sm-section-h">
-        <h3>OpenRouter API key</h3>
-        <p>Stored in localStorage on this device only.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">OpenRouter API key</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Stored in localStorage on this device only.</p>
       </div>
 
-      <div className="card-row sm-card-row">
-        <div className="sm-key-current">
-          <div className="cr-title">Current key</div>
-          <div className="api-key-masked">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div className="tw:flex-1 tw:min-w-0">
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Current key</div>
+          <div className="tw:font-mono tw:text-[12px] tw:text-ink-2 tw:bg-bg-2 tw:py-[5px] tw:px-2.5 tw:rounded-app-xs tw:inline-block tw:max-w-full tw:truncate tw:mt-1">
             {apiKey
               ? (reveal ? apiKey : masked)
-              : <span className="api-key-empty">No key set</span>}
+              : <span className="tw:text-ink-3 tw:italic">No key set</span>}
           </div>
         </div>
-        <div className="sm-key-actions">
+        <div className="tw:flex tw:gap-1">
           <button
-            className="icon-btn"
+            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
             disabled={!apiKey}
             onClick={() => setReveal(v => !v)}
             title={reveal ? "Hide key" : "Reveal key"}
@@ -141,7 +141,7 @@ function ApiKeySection({
             {reveal ? "Hide" : "Reveal"}
           </button>
           <button
-            className="icon-btn danger"
+            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
             disabled={!apiKey}
             onClick={onRemoveKey}
             title="Remove key"
@@ -168,25 +168,25 @@ function ModelSection({
   const all = getAllModels(customModels);
 
   return (
-    <div className="sm-section">
-      <div className="sm-section-h">
-        <h3>Default model</h3>
-        <p>Used for new messages. "Std msg" ≈ 1,200 in + 600 out tokens.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Default model</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Used for new messages. "Std msg" ≈ 1,200 in + 600 out tokens.</p>
       </div>
       {all.map(m => {
         const stdCost = calculateCostUsd(1200, 600, m);
         const isCustom = !BUILTIN_MODELS.some(b => b.id === m.id);
         return (
-          <div key={m.id} className="card-row sm-card-row">
+          <div key={m.id} className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
             <div>
-              <div className="cr-title">
+              <div className="tw:font-medium tw:text-[14px] tw:text-ink">
                 {m.name}
-                {isCustom && <span className="sm-custom-tag"> · custom</span>}
+                {isCustom && <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.08em] tw:uppercase tw:text-ink-3 tw:ml-1"> · custom</span>}
               </div>
-              <div className="cr-sub">{m.vendor || "—"} · {m.tag}</div>
+              <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">{m.vendor || "—"} · {m.tag}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span className="sm-cost-badge">
+              <span className="tw:font-mono tw:text-[11px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px] tw:text-ink-2 tw:tracking-[0.02em]">
                 {stdCost === 0 ? "free" : `${formatCost(stdCost)} / std msg`}
               </span>
               <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -223,16 +223,16 @@ function BranchModeSection({
   onChange: (v: "follow" | "stay") => void;
 }) {
   return (
-    <div className="sm-section">
-      <div className="sm-section-h">
-        <h3>Branch behaviour</h3>
-        <p>What happens after you branch from a selection.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Branch behaviour</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">What happens after you branch from a selection.</p>
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Follow new branch</div>
-          <div className="cr-sub">Jump to the freshly created branch automatically.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Follow new branch</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Jump to the freshly created branch automatically.</div>
         </div>
         <input
           type="radio"
@@ -243,10 +243,10 @@ function BranchModeSection({
         />
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Stay on current node</div>
-          <div className="cr-sub">Keep your place; branch is created in the background.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Stay on current node</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Keep your place; branch is created in the background.</div>
         </div>
         <input
           type="radio"
@@ -270,16 +270,16 @@ function ThemeSection({
   onChange: (v: "light" | "dark") => void;
 }) {
   return (
-    <div className="sm-section">
-      <div className="sm-section-h">
-        <h3>Theme</h3>
-        <p>Reading-by-lamplight dark, or warm cream light.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Theme</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Reading-by-lamplight dark, or warm cream light.</p>
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Light</div>
-          <div className="cr-sub">Warm cream surfaces with espresso ink.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Light</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Warm cream surfaces with espresso ink.</div>
         </div>
         <input
           type="radio"
@@ -290,10 +290,10 @@ function ThemeSection({
         />
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Dark</div>
-          <div className="cr-sub">Low-glare ink with cream type. Default.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Dark</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Low-glare ink with cream type. Default.</div>
         </div>
         <input
           type="radio"
@@ -359,26 +359,26 @@ function CustomModelsSection({
   const canSave = name.trim().length > 0 && modelStr.trim().length > 0;
 
   return (
-    <div className="sm-section">
-      <div className="sm-sub-h">
-        <h4>Custom models</h4>
-        <p>Any OpenRouter model string works. Prices are per million tokens.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mt-[18px] tw:mx-0 tw:mb-1.5 tw:pt-3.5 tw:border-t tw:border-dashed tw:border-line-2">
+        <h4 className="tw:m-0 tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:font-medium">Custom models</h4>
+        <p className="tw:mt-1 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Any OpenRouter model string works. Prices are per million tokens.</p>
       </div>
 
       {customModels.length === 0 && !addOpen && (
-        <div className="sm-empty">No custom models yet.</div>
+        <div className="tw:p-3.5 tw:text-[13px] tw:text-ink-3 tw:bg-bg tw:border tw:border-dashed tw:border-line tw:rounded-app-sm tw:text-center tw:italic">No custom models yet.</div>
       )}
 
       {customModels.map(m => (
-        <div key={m.id} className="card-row sm-card-row">
+        <div key={m.id} className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
           <div>
-            <div className="cr-title">{m.name}<span className="sm-custom-tag"> · custom</span></div>
-            <div className="cr-sub" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+            <div className="tw:font-medium tw:text-[14px] tw:text-ink">{m.name}<span className="tw:font-mono tw:text-[10px] tw:tracking-[0.08em] tw:uppercase tw:text-ink-3 tw:ml-1"> · custom</span></div>
+            <div className="tw:text-ink-3 tw:mt-0.5 tw:font-mono tw:text-[12px]">
               {m.openRouterId} · in ${m.inputPricePerM}/M · out ${m.outputPricePerM}/M
             </div>
           </div>
           <button
-            className="icon-btn danger"
+            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
             onClick={() => remove(m.id)}
             title="Remove custom model"
           >
@@ -388,23 +388,25 @@ function CustomModelsSection({
       ))}
 
       {!addOpen ? (
-        <button className="btn-outline sm-add-cta" onClick={() => setAddOpen(true)}>
+        <button className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3 tw:mt-3.5 tw:w-full tw:justify-center" onClick={() => setAddOpen(true)}>
           + Add custom model
         </button>
       ) : (
-        <div className="custom-model-form">
-          <div className="cmf-row">
-            <div className="cmf-field">
-              <label>Display name</label>
+        <div className="tw:mt-3.5 tw:p-4 tw:bg-bg tw:border tw:border-line tw:rounded-app-sm tw:flex tw:flex-col tw:gap-2.5">
+          <div className="tw:grid tw:grid-cols-2 tw:gap-2.5">
+            <div className="tw:flex tw:flex-col tw:gap-1">
+              <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Display name</label>
               <input
+                className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:text-ink tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3"
                 placeholder="Claude Opus 4"
                 value={name}
                 onChange={e => setName(e.target.value)}
               />
             </div>
-            <div className="cmf-field">
-              <label>OpenRouter model string</label>
+            <div className="tw:flex tw:flex-col tw:gap-1">
+              <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">OpenRouter model string</label>
               <input
+                className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:text-ink tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3"
                 placeholder="anthropic/claude-opus-4"
                 value={modelStr}
                 onChange={e => setModelStr(e.target.value)}
@@ -412,19 +414,21 @@ function CustomModelsSection({
               />
             </div>
           </div>
-          <div className="cmf-row">
-            <div className="cmf-field">
-              <label>Input $/M tokens</label>
+          <div className="tw:grid tw:grid-cols-2 tw:gap-2.5">
+            <div className="tw:flex tw:flex-col tw:gap-1">
+              <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Input $/M tokens</label>
               <input
+                className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:text-ink tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3"
                 type="number" step="0.01" min="0"
                 placeholder="3.30"
                 value={inPx}
                 onChange={e => setInPx(e.target.value)}
               />
             </div>
-            <div className="cmf-field">
-              <label>Output $/M tokens</label>
+            <div className="tw:flex tw:flex-col tw:gap-1">
+              <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Output $/M tokens</label>
               <input
+                className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:text-ink tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3"
                 type="number" step="0.01" min="0"
                 placeholder="16.50"
                 value={outPx}
@@ -432,10 +436,10 @@ function CustomModelsSection({
               />
             </div>
           </div>
-          <div className="cmf-actions">
-            <button className="btn-outline" onClick={reset}>Cancel</button>
+          <div className="tw:flex tw:gap-2 tw:justify-end tw:mt-1">
+            <button className="tw:bg-bg-3 tw:text-ink tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3" onClick={reset}>Cancel</button>
             <button
-              className="btn-primary coral"
+              className="tw:bg-coral tw:text-bg tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:w-full tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:bg-[#ff4520] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))]"
               onClick={add}
               disabled={!canSave}
             >
@@ -509,29 +513,29 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
   };
 
   return (
-    <div className="sm-section">
-      <div className="sm-section-h">
-        <h3>Your data</h3>
-        <p>Everything lives in this browser. Bring it with you, or wipe it.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Your data</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Everything lives in this browser. Bring it with you, or wipe it.</p>
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Export all chats</div>
-          <div className="cr-sub">Download a JSON backup of chats, nodes, messages, reflections, and files.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Export all chats</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Download a JSON backup of chats, nodes, messages, reflections, and files.</div>
         </div>
-        <button className="btn-outline" onClick={() => void doExport()} disabled={busy}>
+        <button className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3" onClick={() => void doExport()} disabled={busy}>
           Export JSON
         </button>
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Import from backup</div>
-          <div className="cr-sub">Merge a JSON backup; existing chats are kept.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Import from backup</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Merge a JSON backup; existing chats are kept.</div>
         </div>
         <button
-          className="btn-outline"
+          className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
         >
@@ -550,13 +554,13 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
         />
       </div>
 
-      <div className="card-row sm-card-row">
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
-          <div className="cr-title">Clear all data</div>
-          <div className="cr-sub">Wipes IndexedDB and the API key. Cannot be undone.</div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Clear all data</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Wipes IndexedDB and the API key. Cannot be undone.</div>
         </div>
         <button
-          className="btn-outline danger-outline"
+          className="tw:bg-bg-3 tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
           onClick={() => { setConfirmOpen(true); setConfirmText(""); setStatus(null); }}
           disabled={busy}
         >
@@ -565,8 +569,8 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
       </div>
 
       {confirmOpen && (
-        <div className="card-row sm-card-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-          <div className="cr-sub" style={{ color: "var(--coral)" }}>
+        <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          <div className="tw:text-[13px] tw:mt-0.5 tw:text-coral">
             Type <strong>DELETE</strong> to confirm. This removes all chats and the API key.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -583,14 +587,14 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
               }}
             />
             <button
-              className="btn-outline"
+              className="tw:bg-bg-3 tw:text-ink tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3"
               onClick={() => { setConfirmOpen(false); setConfirmText(""); }}
               disabled={busy}
             >
               Cancel
             </button>
             <button
-              className="btn-primary coral"
+              className="tw:bg-coral tw:text-bg tw:py-3 tw:px-5 tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:w-full tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:bg-[#ff4520] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))]"
               onClick={() => void doClear()}
               disabled={busy || confirmText !== "DELETE"}
             >
@@ -601,8 +605,8 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
       )}
 
       {status && (
-        <div className="card-row sm-card-row">
-          <div className="cr-sub" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+        <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:text-ink-3 tw:mt-0.5 tw:font-mono tw:text-[12px]">
             {status}
           </div>
         </div>
@@ -615,13 +619,13 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
 
 function AboutSection() {
   return (
-    <div className="sm-section sm-about">
-      <div className="sm-section-h">
-        <h3>cogninode beta v0.1.0</h3>
-        <p>Open source · MIT license · runs entirely in your browser.</p>
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">cogninode beta v0.1.0</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Open source · MIT license · runs entirely in your browser.</p>
       </div>
-      <div className="sm-about-links">
-        <a href="https://github.com/rahulmohan/cogninode" target="_blank" rel="noopener noreferrer">
+      <div className="tw:flex tw:gap-[18px] tw:mt-2.5">
+        <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="https://github.com/rahulmohan/cogninode" target="_blank" rel="noopener noreferrer">
           GitHub
         </a>
       </div>
