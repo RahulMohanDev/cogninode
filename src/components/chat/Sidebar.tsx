@@ -16,6 +16,7 @@ import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
 import { anyModalOpen }                 from "../../hooks/useModalStack";
 import { useSearchState }               from "../../hooks/useSearchState";
+import { searchService }                from "../../lib/search/service";
 
 export interface SidebarProps {
   activeChatId:   string | null;
@@ -311,12 +312,45 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     }
   };
 
+  // Chat filtering goes through the search service, so matches come from
+  // full message bodies and reflections (and meaning, once the semantic
+  // layer is up) — not just title substrings. Results are relevance-ranked.
+  const [ranked, setRanked] = useState<{ q: string; chatIds: string[] } | null>(null);
+  useEffect(() => {
+    const needle = search.trim();
+    if (!needle) {
+      setRanked(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void searchService.search(needle, 60).then(res => {
+        if (cancelled) return;
+        const chatIds: string[] = [];
+        for (const h of res.hits) {
+          if (!chatIds.includes(h.chatId)) chatIds.push(h.chatId);
+        }
+        setRanked({ q: needle, chatIds });
+      });
+    }, 150);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [search]);
+
   const visibleChats = useMemo(() => {
     if (!chats) return [];
-    if (!search.trim()) return chats;
-    const q = search.trim().toLowerCase();
+    const needle = search.trim();
+    if (!needle) return chats;
+    // Ranked results once the (debounced) service answer for THIS query is
+    // in; title-substring fallback while typing.
+    if (ranked && ranked.q === needle) {
+      const byId = new Map(chats.map(c => [c._id, c]));
+      return ranked.chatIds
+        .map(id => byId.get(id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined);
+    }
+    const q = needle.toLowerCase();
     return chats.filter(c => c.title.toLowerCase().includes(q));
-  }, [chats, search]);
+  }, [chats, search, ranked]);
 
   const isDark = prefs.theme === "dark";
 
@@ -607,6 +641,8 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         )}
       </div>
 
+      <SearchStatusStrip collapsed={isCollapsed} onOpenSettings={onOpenSettings} />
+
       <div className={`tw:border-t tw:border-line tw:flex tw:items-center tw:relative ${isCollapsed ? "tw:flex-col tw:gap-1 tw:py-2.5 tw:px-0 tw:mt-auto" : "tw:gap-2.5 tw:p-3"}`}>
         <div className={`tw:w-[34px] tw:h-[34px] tw:rounded-[50%] tw:text-bg tw:grid tw:place-items-center tw:font-display tw:font-semibold tw:text-[14px] tw:flex-none tw:bg-bg-2 tw:border tw:border-line tw:dark:bg-bg-3 ${isCollapsed ? "tw:hidden" : ""}`} title="cogninode beta">
           <Glyph size={20} color="var(--ink)" accent="var(--coral)" />
@@ -616,7 +652,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:flex tw:items-center tw:gap-1 tw:min-w-0">
             <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none" style={{ background: "var(--teal)" }} />
             local
-            <SearchStatusChip onOpenSettings={onOpenSettings} />
+            <SearchStatusChip />
           </span>
         </div>
         <button
@@ -659,37 +695,93 @@ export default Sidebar;
 
 // ── small inline pieces ───────────────────────────────────────────
 
-// Persistent semantic-search status in the sidebar footer: download /
-// indexing progress while the model spins up, a quiet "hybrid" once
-// ready, and a clickable failure state that opens Settings → Search.
-function SearchStatusChip({ onOpenSettings }: { onOpenSettings: () => void }) {
+// Quiet "hybrid" badge once semantic search is READY — short enough to
+// never truncate in the cramped footer line. While the model downloads /
+// indexes (or fails), the full-width SearchStatusStrip above the footer
+// takes over.
+function SearchStatusChip() {
   const s = useSearchState();
   const { prefs } = useSettings();
-  if (!prefs.semanticSearch || s.semantic === "off") return null;
-
-  const [dot, label, pulse] =
-    s.semantic === "starting"    ? ["var(--lilac)",  "search…", true] as const :
-    s.semantic === "downloading" ? ["var(--lilac)",  `model ${s.downloadPct}%`, true] as const :
-    s.semantic === "indexing"    ? ["var(--butter)", `indexing ${s.indexed}/${s.indexTotal}`, true] as const :
-    s.semantic === "ready"       ? ["var(--teal)",   "hybrid", false] as const :
-                                   ["var(--coral)",  "search failed", false] as const;
-
-  const failed = s.semantic === "error";
+  if (!prefs.semanticSearch || s.semantic !== "ready") return null;
   return (
-    <button
-      className={`tw:inline-flex tw:items-center tw:gap-1 tw:min-w-0 tw:p-0 tw:font-mono tw:text-[10px] ${failed ? "tw:text-coral tw:cursor-pointer tw:hover:underline" : "tw:text-ink-3 tw:cursor-default"}`}
-      onClick={failed ? onOpenSettings : undefined}
-      title={
-        failed
-          ? `${s.error ?? "Semantic search failed"} — click to open Settings`
-          : `Semantic search: ${label} · ${s.vectorCount} items embedded`
-      }
-      type="button"
+    <span
+      className="tw:inline-flex tw:items-center tw:gap-1 tw:flex-none tw:font-mono tw:text-[10px] tw:text-ink-3"
+      title={`Hybrid search ready · ${s.vectorCount} items embedded`}
     >
       <span aria-hidden="true">·</span>
-      <span className={`tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none ${pulse ? "tw:animate-pulse" : ""}`} style={{ background: dot }} />
-      <span className="tw:truncate">{label}</span>
-    </button>
+      <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none" style={{ background: "var(--teal)" }} />
+      hybrid
+    </span>
+  );
+}
+
+// Full-width status strip pinned above the footer while the semantic layer
+// is busy (download / indexing, with a progress bar) or broken (with an
+// inline retry). Hidden when ready/off so it costs no space at rest.
+function SearchStatusStrip({ collapsed, onOpenSettings }: { collapsed: boolean; onOpenSettings: () => void }) {
+  const s = useSearchState();
+  const { prefs } = useSettings();
+  if (!prefs.semanticSearch) return null;
+
+  const active = s.semantic === "starting" || s.semantic === "downloading" || s.semantic === "indexing";
+  const failed = s.semantic === "error";
+  if (!active && !failed) return null;
+
+  const label =
+    s.semantic === "starting"    ? "semantic search: preparing…" :
+    s.semantic === "downloading" ? `downloading model · ${s.downloadPct}%` :
+    s.semantic === "indexing"    ? `indexing messages · ${s.indexed}/${s.indexTotal}` :
+    "semantic search failed";
+
+  if (collapsed) {
+    return (
+      <div className="tw:grid tw:place-items-center tw:py-1.5" title={failed ? (s.error ?? label) : label}>
+        <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] ${failed ? "tw:bg-coral" : "tw:bg-butter tw:animate-pulse"}`} />
+      </div>
+    );
+  }
+
+  const pct =
+    s.semantic === "downloading" ? s.downloadPct :
+    s.semantic === "indexing" && s.indexTotal > 0
+      ? Math.round((s.indexed / s.indexTotal) * 100)
+      : null;
+  const barColor = s.semantic === "downloading" ? "var(--lilac)" : "var(--butter)";
+
+  return (
+    <div className="tw:mx-3 tw:mb-2 tw:py-2 tw:px-2.5 tw:rounded-[10px] tw:border tw:border-line tw:bg-bg-3 tw:flex tw:flex-col tw:gap-1.5">
+      <div className="tw:flex tw:items-center tw:gap-1.5 tw:font-mono tw:text-[10px] tw:min-w-0">
+        <span
+          className={`tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:flex-none ${!failed ? "tw:animate-pulse" : ""}`}
+          style={{ background: failed ? "var(--coral)" : barColor }}
+        />
+        <button
+          className={`tw:truncate tw:p-0 tw:text-left ${failed ? "tw:text-coral tw:cursor-pointer tw:hover:underline" : "tw:text-ink-2 tw:cursor-default"}`}
+          onClick={failed ? onOpenSettings : undefined}
+          title={failed ? `${s.error ?? label} — click for Settings` : label}
+          type="button"
+        >
+          {label}
+        </button>
+        {failed && (
+          <button
+            className="tw:ml-auto tw:flex-none tw:text-ink-2 tw:underline tw:p-0 tw:hover:text-ink"
+            onClick={() => void searchService.retrySemantic()}
+            type="button"
+          >
+            retry
+          </button>
+        )}
+      </div>
+      {pct !== null && (
+        <div className="tw:h-1 tw:rounded-[999px] tw:bg-bg-2 tw:overflow-hidden">
+          <div
+            className="tw:h-full tw:rounded-[999px] tw:transition-[width] tw:duration-300 tw:ease-out"
+            style={{ width: `${pct}%`, background: barColor }}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

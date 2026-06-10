@@ -11,6 +11,7 @@ import { db, type Chat, type Node } from "../../lib/db";
 import { buildTree, layoutTree, findPath } from "../../lib/path";
 import { getNodeMRU } from "../../lib/nodeHistory";
 import { anyModalOpen, useModalBehavior } from "../../hooks/useModalStack";
+import { searchService } from "../../lib/search/service";
 
 export interface OverlaysProps {
   chatId: string;
@@ -98,6 +99,9 @@ interface QuickJumpRow {
   chat:    Chat;
   visited: boolean;
   isRoot:  boolean;
+  /** Matched-content excerpt when the hit came from a message/reflection
+   *  on this branch (index-backed search), not from its label. */
+  snippet?: string;
 }
 
 /** Relative-time label for a past timestamp, e.g. "3m ago", "2d ago". */
@@ -184,14 +188,57 @@ function QuickJump({
     return out;
   }, [nodes, chats, mru, currentNodeId]);
 
+  // Typed queries go through the search service so branches match on their
+  // MESSAGE CONTENT (BM25 + semantic once ready), not just labels/titles.
+  // Hits collapse to one row per branch, ranked, with a matched-text
+  // excerpt. Substring filtering covers the debounce gap.
+  const mruSet = useMemo(() => new Set(mru), [mru]);
+  const [serviceRows, setServiceRows] = useState<{ q: string; rows: QuickJumpRow[] } | null>(null);
+  useEffect(() => {
+    const needle = q.trim();
+    if (!needle) {
+      setServiceRows(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      void searchService.search(needle, 60).then(res => {
+        if (cancelled) return;
+        const nodeById = new Map((nodes ?? []).map(n => [n._id, n]));
+        const chatById = new Map((chats ?? []).map(c => [c._id, c]));
+        const rows: QuickJumpRow[] = [];
+        const seen = new Set<string>();
+        for (const h of res.hits) {
+          if (h.nodeId === currentNodeId || seen.has(h.nodeId)) continue;
+          const node = nodeById.get(h.nodeId);
+          const chat = chatById.get(h.chatId);
+          if (!node || !chat) continue;
+          seen.add(h.nodeId);
+          const fromContent = h.kind === "message" || h.kind === "reflection";
+          rows.push({
+            node,
+            chat,
+            visited: mruSet.has(node._id),
+            isRoot:  chat.rootNodeId === node._id,
+            ...(fromContent && h.snippet?.text ? { snippet: h.snippet.text } : {}),
+          });
+        }
+        setServiceRows({ q: needle, rows });
+      });
+    }, 140);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q, nodes, chats, currentNodeId, mruSet]);
+
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = q.trim();
     if (!needle) return ordered;
+    if (serviceRows && serviceRows.q === needle) return serviceRows.rows;
+    const lower = needle.toLowerCase();
     return ordered.filter(r =>
-      r.node.label.toLowerCase().includes(needle) ||
-      r.chat.title.toLowerCase().includes(needle),
+      r.node.label.toLowerCase().includes(lower) ||
+      r.chat.title.toLowerCase().includes(lower),
     );
-  }, [ordered, q]);
+  }, [ordered, q, serviceRows]);
 
   const jump = useCallback(async (row: QuickJumpRow) => {
     await db.chats.update(row.node.chatId, { currentNodeId: row.node._id });
@@ -253,15 +300,20 @@ function QuickJump({
                   onMouseEnter={() => setHi(i)}
                 >
                   <span className={`tw:w-[9px] tw:h-[9px] tw:rounded-[50%] tw:flex-none ${QJ_DOT[Math.min(3, row.node.depth)]}`} />
-                  <span className="tw:flex-1">
-                    {row.isRoot ? (
-                      title
-                    ) : (
-                      <>
-                        {title}
-                        <span style={{ color: "var(--ink-3)", margin: "0 6px" }}>›</span>
-                        {row.node.label || "branch"}
-                      </>
+                  <span className="tw:flex-1 tw:min-w-0 tw:flex tw:flex-col tw:gap-px">
+                    <span className="tw:truncate">
+                      {row.isRoot ? (
+                        title
+                      ) : (
+                        <>
+                          {title}
+                          <span style={{ color: "var(--ink-3)", margin: "0 6px" }}>›</span>
+                          {row.node.label || "branch"}
+                        </>
+                      )}
+                    </span>
+                    {row.snippet && (
+                      <span className="tw:text-[11.5px] tw:text-ink-3 tw:truncate">{row.snippet}</span>
                     )}
                   </span>
                   {row.isRoot && <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">root</span>}
@@ -282,7 +334,9 @@ function QuickJump({
           <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">↵</span> jump</span>
           <span><span className="tw:font-mono tw:text-[10px] tw:bg-bg-2 tw:border tw:border-line tw:py-px tw:px-[5px] tw:rounded-[3px] tw:text-ink-2 tw:my-0 tw:mx-[3px]">esc</span> close</span>
           <span className="tw:ml-auto">
-            {filtered.length} of {ordered.length}
+            {q.trim()
+              ? `${filtered.length} match${filtered.length === 1 ? "" : "es"}`
+              : `${filtered.length} of ${ordered.length}`}
           </span>
         </div>
       </div>

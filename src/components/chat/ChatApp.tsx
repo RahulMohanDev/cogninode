@@ -458,6 +458,10 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
   const openJump = (): void => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", ctrlKey: true }));
   };
+  const openSearch = (): void => {
+    // Handled by the global SearchOverlay's ⌘K listener.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }));
+  };
 
   // Drop the root entry (its label is just "root" / chat-title); show its
   // descendants as crumb chips coloured by depth.
@@ -484,6 +488,15 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
       </div>
 
       <div className="tw:flex tw:items-center tw:gap-1.5">
+        <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-3 tw:rounded-[8px] tw:border tw:text-[13px] tw:transition-[border-color,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:hover:border-ink-3 tw:hover:text-ink" type="button" onClick={openSearch} title="Search everything — messages, reflections, branches">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M10.5 10.5 L14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+          Search
+          <span className="tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] tw:bg-bg-2 tw:text-ink-3">⌘K</span>
+        </button>
+
         <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-3 tw:rounded-[8px] tw:border tw:text-[13px] tw:transition-[border-color,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:hover:border-ink-3 tw:hover:text-ink" type="button" onClick={openTree} title="Tree view">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <circle cx="8"  cy="3"  r="2" stroke="currentColor" strokeWidth="1.4"/>
