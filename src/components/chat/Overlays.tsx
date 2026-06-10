@@ -10,6 +10,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, type Chat, type Node } from "../../lib/db";
 import { buildTree, layoutTree, findPath } from "../../lib/path";
 import { getNodeMRU } from "../../lib/nodeHistory";
+import { anyModalOpen, useModalBehavior } from "../../hooks/useModalStack";
 
 export interface OverlaysProps {
   chatId: string;
@@ -36,7 +37,13 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
         t.tagName === "TEXTAREA" ||
         t.isContentEditable
       );
-      if (inField && !ctrl && e.key !== "Escape") return;
+      if (inField && !ctrl) return;
+
+      // Stand down while a foreign modal (Settings, save dialog, …) is on
+      // top — toggling an overlay underneath it is never what the user
+      // meant. Our own overlays still toggle/swap freely. Esc is handled
+      // per-overlay by useModalBehavior (topmost layer only), not here.
+      if (anyModalOpen() && open === null) return;
 
       // Cmd+K or Ctrl+Q → QuickJump
       if (ctrl && (e.key === "q" || e.key === "Q" || e.key === "k" || e.key === "K")) {
@@ -54,13 +61,6 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
       if (ctrl && (e.key === "/" || e.key === "?")) {
         e.preventDefault();
         setOpen(prev => (prev === "shortcuts" ? null : "shortcuts"));
-        return;
-      }
-      // Esc → close any open overlay (and stop propagation so it doesn't also cancel a stream)
-      if (e.key === "Escape" && open !== null) {
-        e.preventDefault();
-        e.stopPropagation();
-        setOpen(null);
         return;
       }
     };
@@ -130,6 +130,10 @@ function QuickJump({
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Esc-to-close (topmost layer only), focus restore, Tab containment.
+  useModalBehavior(true, onClose, panelRef);
 
   const nodes = useLiveQuery<Node[], Node[]>(() => db.nodes.toArray(), [], []);
   const chats = useLiveQuery<Chat[], Chat[]>(() => db.chats.toArray(), [], []);
@@ -206,17 +210,15 @@ function QuickJump({
       e.preventDefault();
       const row = filtered[hi];
       if (row) void jump(row);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
+    // Escape is handled by useModalBehavior at the window level.
   };
 
   const noOtherNodes = ordered.length === 0;
 
   return (
     <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
-      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Quick jump" className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
         <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5" />
@@ -299,6 +301,9 @@ function TreeMap({
   currentNodeId: string;
   onClose:       () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useModalBehavior(true, onClose, rootRef);
+
   const chat  = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const nodes = useLiveQuery<Node[], Node[]>(
     () => db.nodes.where("chatId").equals(chatId).toArray(),
@@ -355,7 +360,7 @@ function TreeMap({
   }, [chatId, onClose]);
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--bg)_96%,white)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_88%,black)] tw:z-[150] tw:flex tw:flex-col tw:animate-[fadeIn_0.18s_ease-out]" onClick={onClose}>
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-label="Tree map" className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--bg)_96%,white)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_88%,black)] tw:z-[150] tw:flex tw:flex-col tw:animate-[fadeIn_0.18s_ease-out]" onClick={onClose}>
       <div className="tw:flex tw:items-center tw:gap-4 tw:py-[18px] tw:px-7 tw:border-b tw:border-line tw:bg-bg-3" onClick={e => e.stopPropagation()}>
         <button className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink" onClick={onClose} title="Close (Esc)">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -462,6 +467,9 @@ interface ShortcutItem { keys: string[]; label: string }
 interface ShortcutGroup { name: string; items: ShortcutItem[] }
 
 function Shortcuts({ onClose }: { onClose: () => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalBehavior(true, onClose, panelRef);
+
   const groups: ShortcutGroup[] = [
     {
       name: "Navigate",
@@ -498,7 +506,7 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
-      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
         <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none" style={{ padding: "16px 22px" }}>
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" style={{ color: "var(--ink)" }}>
             <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />

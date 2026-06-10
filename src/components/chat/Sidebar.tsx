@@ -4,7 +4,7 @@
 // other consumers (Chats page) keep compiling.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate }                  from "react-router-dom";
+import { useLocation, useNavigate }     from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
   db, createChat, deleteChat, deleteNodeSubtree, renameChat, renameNode,
@@ -14,6 +14,7 @@ import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
 import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
+import { anyModalOpen }                 from "../../hooks/useModalStack";
 
 export interface SidebarProps {
   activeChatId:   string | null;
@@ -118,9 +119,11 @@ const DEPTH_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
 
 export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [search, setSearch] = useState("");
   const { prefs, setTheme, setPref } = useSettings();
   const activeStreams = useActiveStreams();
+  const onReflectionsPage = location.pathname.startsWith("/reflections");
 
   // Collapsed = slim icon rail. Persisted in prefs so it survives reloads and
   // is shared with the .shell grid (which owns the column width).
@@ -144,6 +147,25 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [prefs.sidebarCollapsed, setPref]);
+
+  // ⌃N / ⌘N — new chat, as advertised in the shortcuts sheet. Skipped while
+  // typing or while a modal is on top (spawning a chat under a dialog is
+  // never intended).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl || (e.key !== "n" && e.key !== "N")) return;
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (
+        t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
+      );
+      if (inField || anyModalOpen()) return;
+      e.preventDefault();
+      void createChat("New chat").then(id => navigate(`/chat/${id}`));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
 
   const chats = useLiveQuery(
     () => db.chats.orderBy("updatedAt").reverse().toArray(),
@@ -320,6 +342,18 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
             <rect x="9" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
             <rect x="2" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
             <rect x="9" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          </svg>
+        </button>
+        <button
+          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onReflectionsPage ? "tw:bg-lilac-tint tw:text-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+          title="Reflections"
+          aria-label="Reflections"
+          aria-current={onReflectionsPage ? "page" : undefined}
+          onClick={() => navigate("/reflections")}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
           </svg>
         </button>
         <button

@@ -12,6 +12,7 @@ import { buildTree, layoutTree } from "../lib/path";
 import { Sidebar } from "../components/chat/Sidebar";
 import { SettingsModal } from "../components/settings/SettingsModal";
 import { useSettings } from "../hooks/useSettings";
+import { useSettingsHotkey } from "../hooks/useSettingsHotkey";
 
 interface Starter {
   label:  string;
@@ -34,6 +35,9 @@ export default function Chats() {
   const navigate = useNavigate();
   const { prefs } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // ⌃, / ⌘, — advertised in the shortcuts sheet.
+  useSettingsHotkey(() => setSettingsOpen(true));
 
   const chats = useLiveQuery(
     () => db.chats.orderBy("updatedAt").reverse().toArray(),

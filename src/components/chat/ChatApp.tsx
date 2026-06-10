@@ -11,6 +11,8 @@ import { useLiveQuery }        from "dexie-react-hooks";
 import { db, createBranch, newId, type Message as DbMessage, type Node as DbNode } from "../../lib/db";
 import { useStream }           from "../../hooks/useStream";
 import { useSettings }         from "../../hooks/useSettings";
+import { useSettingsHotkey }   from "../../hooks/useSettingsHotkey";
+import { anyModalOpen }        from "../../hooks/useModalStack";
 import { findPath }            from "../../lib/path";
 import { recordNodeVisit }     from "../../lib/nodeHistory";
 import { Sidebar }             from "./Sidebar";
@@ -18,6 +20,7 @@ import { Stream }              from "./Stream";
 import { Composer }            from "./Composer";
 import { SelectionPopup }      from "./SelectionPopup";
 import { Overlays }            from "./Overlays";
+import { SaveReflectionDialog } from "./SaveReflectionDialog";
 import { SettingsModal }       from "../settings/SettingsModal";
 
 export interface ChatAppProps {
@@ -67,10 +70,26 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
   // Initial prefill applied once via Composer's `initialText` prop.
   const [prefill, setPrefill] = useState<string | null>(initialPrefill);
 
-  const [settingsOpen,     setSettingsOpen]     = useState(false);
-  const [reflectionsMode,  setReflectionsMode]  = useState(false);
-  const [collapseConfirm,  setCollapseConfirm]  = useState(false);
+  const [settingsOpen,       setSettingsOpen]       = useState(false);
+  const [reflectionsMode,    setReflectionsMode]    = useState(false);
+  const [collapseConfirm,    setCollapseConfirm]    = useState(false);
+  const [saveReflectionOpen, setSaveReflectionOpen] = useState(false);
   const streamRef = useRef<HTMLDivElement | null>(null);
+
+  // ⌃, / ⌘, — advertised in the shortcuts sheet.
+  useSettingsHotkey(() => setSettingsOpen(true));
+
+  // The transient !chat shell below flashes "Loading…" for a frame on warm
+  // Dexie reads. Only show the hint once loading has taken noticeably long.
+  const [showLoadingHint, setShowLoadingHint] = useState(false);
+  useEffect(() => {
+    if (chat) {
+      setShowLoadingHint(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setShowLoadingHint(true), 150);
+    return () => clearTimeout(t);
+  }, [chat]);
 
   // Live count of messages on the current node — drives the Collapse-to-one
   // button's disabled state + the "Collapse N messages…" confirm label. We
@@ -110,7 +129,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
         t.tagName === "TEXTAREA" ||
         t.isContentEditable
       );
-      if (inField) return;
+      if (inField || anyModalOpen()) return;
 
       e.preventDefault();
       setReflectionsMode(v => !v);
@@ -118,6 +137,20 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Esc cancels an in-flight stream — promised by the shortcuts sheet. The
+  // modal stack owns Esc while anything modal is open (it marks the event
+  // defaultPrevented), so a single press never closes an overlay AND kills
+  // the stream.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (anyModalOpen()) return;
+      if (state === "streaming") cancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state, cancel]);
 
   const handleBranchFromSelection = async (text: string): Promise<void> => {
     if (!chat) return;
@@ -175,42 +208,10 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
     // No quote chip — this is a fresh branch, not a quoted side-track.
   };
 
-  // Snapshot the current node's distilled path into the reflections table.
-  // Body is the messages along root → currentNodeId concatenated as markdown;
-  // title is derived from the current node's label (falling back to chat title).
-  const handleSaveReflection = useCallback(async (): Promise<void> => {
-    if (!chat) return;
-    const allNodes = await db.nodes.where("chatId").equals(chatId).toArray();
-    const ids = findPath(allNodes, currentNodeId);
-    if (ids.length === 0) return;
-    const nodeMap = new Map(allNodes.map(n => [n._id, n]));
-    const currentNode = nodeMap.get(currentNodeId);
-
-    // Collect messages along the path in order.
-    const sections: string[] = [];
-    for (const nid of ids) {
-      const msgs = await db.messages.where("nodeId").equals(nid).sortBy("createdAt");
-      for (const m of msgs) {
-        const speaker = m.role === "user" ? "**You**" : "**Assistant**";
-        sections.push(`${speaker}\n\n${m.content}`);
-      }
-    }
-    const body = sections.join("\n\n---\n\n");
-    const rawTitle =
-      (currentNode?.label && currentNode.label.trim()) ||
-      chat.title ||
-      "Reflection";
-    const title = rawTitle.length > 80 ? rawTitle.slice(0, 80) + "…" : rawTitle;
-
-    await db.reflections.put({
-      _id:       newId(),
-      chatId,
-      nodeId:    currentNodeId,
-      title,
-      body,
-      updatedAt: Date.now(),
-    });
-  }, [chat, chatId, currentNodeId]);
+  // "Save as reflection" opens a confirm dialog (SaveReflectionDialog) that
+  // composes the path snapshot, lets the user title it / include reasoning,
+  // and reports success or failure via toasts. The snapshot logic lives in
+  // lib/reflections.ts.
 
   // ── Collapse-to-one ────────────────────────────────────────────────────
   // Concatenate every message on the current node into a single user-role
@@ -338,7 +339,9 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
         <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
           <div className="tw:flex-1 tw:grid tw:place-items-center tw:py-[60px] tw:px-8 tw:text-ink-3">
             <div className="tw:text-center tw:max-w-[520px]">
-              <p className="tw:text-[16px] tw:text-ink-2 tw:mt-0 tw:mb-6">Loading…</p>
+              {showLoadingHint && (
+                <p className="tw:text-[16px] tw:text-ink-2 tw:mt-0 tw:mb-6 tw:animate-[fadeIn_0.14s_ease-out]">Loading…</p>
+              )}
             </div>
           </div>
         </div>
@@ -381,7 +384,7 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
           onBranchFromMessage={(msg, q) => void handleBranchFromMessage(msg, q)}
           reflectionsMode={reflectionsMode}
           onExitReflections={() => setReflectionsMode(false)}
-          onSaveReflection={() => void handleSaveReflection()}
+          onSaveReflection={() => setSaveReflectionOpen(true)}
           collapseAction={collapseAction}
         />
 
@@ -409,6 +412,13 @@ export function ChatApp({ chatId, initialPrefill }: ChatAppProps) {
       )}
 
       <Overlays chatId={chatId} currentNodeId={currentNodeId} />
+
+      <SaveReflectionDialog
+        open={saveReflectionOpen}
+        chatId={chatId}
+        nodeId={currentNodeId}
+        onClose={() => setSaveReflectionOpen(false)}
+      />
 
       <SettingsModal
         open={settingsOpen}

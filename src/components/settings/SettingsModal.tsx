@@ -2,7 +2,7 @@
 // Settings modal: API key, default model, branch mode, custom models CRUD,
 // data export/import/clear, and about. Returns null when closed.
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { db } from "../../lib/db";
 import {
@@ -14,6 +14,7 @@ import {
 } from "../../lib/cost";
 import { exportAllChats, importFromJson } from "../../lib/export";
 import { useSettings } from "../../hooks/useSettings";
+import { useModalBehavior } from "../../hooks/useModalStack";
 
 export interface SettingsModalProps {
   open:    boolean;
@@ -21,27 +22,19 @@ export interface SettingsModalProps {
 }
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
-  // Esc to close — only when open
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Esc-to-close, focus restore, and Tab containment via the shared modal
+  // stack — Settings sits at z-210 so it stays above the z-200 overlays and
+  // Esc unwinds the topmost layer only.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useModalBehavior(open, onClose, panelRef);
 
   const { apiKey, clearApiKey, prefs, setPref, setTheme } = useSettings();
 
   if (!open) return null;
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[8vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
-      <div className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-app tw:shadow-3 tw:overflow-hidden tw:flex tw:flex-col tw:max-h-[84vh] tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
+    <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[8vh] tw:z-[210] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Settings" className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-app tw:shadow-3 tw:overflow-hidden tw:flex tw:flex-col tw:max-h-[84vh] tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
         <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:bg-bg-3">
           <span className="tw:text-ink-3 tw:grid tw:place-items-center">
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
