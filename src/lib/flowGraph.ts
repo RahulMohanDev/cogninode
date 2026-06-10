@@ -7,7 +7,7 @@
 
 import { buildTree, layoutTree, findPath } from "./path";
 import type {
-  Concept, ConceptColor, ConceptEdge, ConceptLink, Node as DbNode,
+  Concept, ConceptColor, ConceptEdge, GraphSource, Node as DbNode,
 } from "./db";
 
 export const FLOW_X_GAP = 260;
@@ -49,8 +49,20 @@ export interface ConceptNodeData {
   label:           string;
   notes:           string;
   color:           ConceptColor;
+  /** Connected chat + branch sources (via edges). */
   chatCount:       number;
   reflectionCount: number;
+  [key: string]: unknown;
+}
+
+export interface SourceNodeData {
+  title:      string;
+  subtitle:   string;        // "chat" | "branch · <chat>" | "reflection"
+  targetType: GraphSource["targetType"];
+  targetId:   string;
+  /** Open destination, precomputed: /chat/… or /reflections?open=… */
+  href:       string;
+  stale:      boolean;       // underlying chat/branch/reflection is gone
   [key: string]: unknown;
 }
 
@@ -61,37 +73,101 @@ export interface ConceptFlowNode {
   data:     ConceptNodeData;
 }
 
+export interface SourceFlowNode {
+  id:       string;
+  type:     "source";
+  position: { x: number; y: number };
+  data:     SourceNodeData;
+}
+
 export interface ConceptFlowGraph {
-  nodes: ConceptFlowNode[];
+  nodes: Array<ConceptFlowNode | SourceFlowNode>;
   edges: FlowGraphEdge[];
+}
+
+export interface SourceResolvers {
+  chatTitle:       (chatId: string) => string | undefined;
+  /** Branch label + owning chat (undefined when the node is gone). */
+  nodeInfo:        (nodeId: string) => { label: string; chatId: string; chatTitle: string } | undefined;
+  reflectionTitle: (reflectionId: string) => string | undefined;
+}
+
+export function resolveSourceDisplay(s: GraphSource, resolve: SourceResolvers): SourceNodeData {
+  return sourceData(s, resolve);
+}
+
+function sourceData(s: GraphSource, resolve: SourceResolvers): SourceNodeData {
+  if (s.targetType === "chat") {
+    const title = resolve.chatTitle(s.targetId);
+    return {
+      title: title ?? "(deleted chat)", subtitle: "chat",
+      targetType: s.targetType, targetId: s.targetId,
+      href: `/chat/${s.targetId}`, stale: title === undefined,
+    };
+  }
+  if (s.targetType === "node") {
+    const info = resolve.nodeInfo(s.targetId);
+    return {
+      title:    info?.label ?? "(deleted branch)",
+      subtitle: info ? `branch · ${info.chatTitle}` : "branch",
+      targetType: s.targetType, targetId: s.targetId,
+      href:  info ? `/chat/${info.chatId}?node=${s.targetId}` : "",
+      stale: info === undefined,
+    };
+  }
+  const title = resolve.reflectionTitle(s.targetId);
+  return {
+    title: title ?? "(deleted reflection)", subtitle: "reflection",
+    targetType: s.targetType, targetId: s.targetId,
+    href: `/reflections?open=${s.targetId}`, stale: title === undefined,
+  };
 }
 
 export function buildConceptFlowGraph(
   concepts: Concept[],
+  sources:  GraphSource[],
   edges:    ConceptEdge[],
-  links:    ConceptLink[],
+  resolve:  SourceResolvers,
 ): ConceptFlowGraph {
+  const sourceById  = new Map(sources.map(s => [s._id, s]));
+  const conceptIds  = new Set(concepts.map(c => c._id));
+
+  // Per-concept attachment badges = connected sources, via edges.
   const chatCounts = new Map<string, number>();
   const reflCounts = new Map<string, number>();
-  for (const l of links) {
-    const map = l.targetType === "chat" ? chatCounts : reflCounts;
-    map.set(l.conceptId, (map.get(l.conceptId) ?? 0) + 1);
+  for (const e of edges) {
+    const pairs: Array<[string, string]> = [[e.source, e.target], [e.target, e.source]];
+    for (const [maybeConcept, maybeSource] of pairs) {
+      if (!conceptIds.has(maybeConcept)) continue;
+      const s = sourceById.get(maybeSource);
+      if (!s) continue;
+      const map = s.targetType === "reflection" ? reflCounts : chatCounts;
+      map.set(maybeConcept, (map.get(maybeConcept) ?? 0) + 1);
+    }
   }
 
-  const nodes: ConceptFlowNode[] = concepts.map(c => ({
-    id:       c._id,
-    type:     "concept",
-    position: { x: c.x, y: c.y },
-    data: {
-      label:           c.label,
-      notes:           c.notes,
-      color:           c.color,
-      chatCount:       chatCounts.get(c._id) ?? 0,
-      reflectionCount: reflCounts.get(c._id) ?? 0,
-    },
-  }));
+  const nodes: Array<ConceptFlowNode | SourceFlowNode> = [
+    ...concepts.map((c): ConceptFlowNode => ({
+      id:       c._id,
+      type:     "concept",
+      position: { x: c.x, y: c.y },
+      data: {
+        label:           c.label,
+        notes:           c.notes,
+        color:           c.color,
+        chatCount:       chatCounts.get(c._id) ?? 0,
+        reflectionCount: reflCounts.get(c._id) ?? 0,
+      },
+    })),
+    ...sources.map((s): SourceFlowNode => ({
+      id:       s._id,
+      type:     "source",
+      position: { x: s.x, y: s.y },
+      data:     sourceData(s, resolve),
+    })),
+  ];
 
-  const placed = new Set(concepts.map(c => c._id));
+  const placed = new Set([...conceptIds, ...sourceById.keys()]);
   const flowEdges: FlowGraphEdge[] = edges
     .filter(e => placed.has(e.source) && placed.has(e.target))
     .map(e => ({

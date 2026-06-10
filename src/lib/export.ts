@@ -1,14 +1,16 @@
 // src/lib/export.ts
 import {
-  db,
+  db, newId,
   type Chat, type Concept, type ConceptEdge, type ConceptLink,
-  type KnowledgeGraph, type Message, type Node, type Reflection,
-  type StoredFile,
+  type GraphSource, type KnowledgeGraph, type Message, type Node,
+  type Reflection, type StoredFile,
 } from "./db";
 
-// v2 adds knowledge graphs (graphs/concepts/conceptEdges/conceptLinks).
-// v1 backups (no graph fields) import fine — the new fields are optional.
-export const EXPORT_VERSION = 2;
+// v2 added knowledge graphs (concepts/edges/conceptLinks); v3 replaces
+// conceptLinks with canvas source nodes (graphSources). Older backups
+// import fine: v1 has no graph fields, v2 conceptLinks are converted to
+// sources + edges on the way in.
+export const EXPORT_VERSION = 3;
 
 export interface ExportPayload {
   version:     number;
@@ -21,6 +23,8 @@ export interface ExportPayload {
   graphs?:       KnowledgeGraph[];
   concepts?:     Concept[];
   conceptEdges?: ConceptEdge[];
+  graphSources?: GraphSource[];
+  /** v2 backups only — converted to graphSources + edges on import. */
   conceptLinks?: ConceptLink[];
 }
 
@@ -38,7 +42,7 @@ export async function exportAllChats(): Promise<void> {
     graphs:       await db.graphs.toArray(),
     concepts:     await db.concepts.toArray(),
     conceptEdges: await db.conceptEdges.toArray(),
-    conceptLinks: await db.conceptLinks.toArray(),
+    graphSources: await db.graphSources.toArray(),
   };
 
   const json = JSON.stringify(payload, null, 2);
@@ -94,12 +98,40 @@ export async function importFromJson(file: File): Promise<{
   const newGraphIds = new Set(newGraphs.map(g => g._id));
   const newConcepts = (payload.concepts ?? []).filter(c => newGraphIds.has(c.graphId));
   const newEdges    = (payload.conceptEdges ?? []).filter(e => newGraphIds.has(e.graphId));
-  const newLinks    = (payload.conceptLinks ?? []).filter(l => newGraphIds.has(l.graphId));
+  const newSources  = (payload.graphSources ?? []).filter(s => newGraphIds.has(s.graphId));
+
+  // v2 backups: convert conceptLinks → one source per (graph, target) +
+  // an edge per linking concept, mirroring the schema-v5 migration.
+  const v2Links = (payload.conceptLinks ?? []).filter(l => newGraphIds.has(l.graphId));
+  if (v2Links.length > 0) {
+    const conceptById = new Map(newConcepts.map(c => [c._id, c]));
+    const sourceIdByKey = new Map<string, string>();
+    let spread = 0;
+    for (const l of v2Links) {
+      const key = `${l.graphId}:${l.targetId}`;
+      let sourceId = sourceIdByKey.get(key);
+      if (!sourceId) {
+        sourceId = newId();
+        sourceIdByKey.set(key, sourceId);
+        const c = conceptById.get(l.conceptId);
+        newSources.push({
+          _id:        sourceId,
+          graphId:    l.graphId,
+          targetType: l.targetType,
+          targetId:   l.targetId,
+          x:          (c?.x ?? 0) + 260,
+          y:          (c?.y ?? 0) + 40 + (spread++ % 4) * 90,
+          createdAt:  l.createdAt ?? Date.now(),
+        });
+      }
+      newEdges.push({ _id: newId(), graphId: l.graphId, source: l.conceptId, target: sourceId });
+    }
+  }
 
   await db.transaction(
     "rw",
     [db.chats, db.nodes, db.messages, db.reflections, db.files,
-     db.graphs, db.concepts, db.conceptEdges, db.conceptLinks],
+     db.graphs, db.concepts, db.conceptEdges, db.graphSources],
     async () => {
       await db.chats.bulkAdd(newChats);
       await db.nodes.bulkAdd(newNodes);
@@ -109,7 +141,7 @@ export async function importFromJson(file: File): Promise<{
       await db.graphs.bulkAdd(newGraphs);
       await db.concepts.bulkAdd(newConcepts);
       await db.conceptEdges.bulkAdd(newEdges);
-      await db.conceptLinks.bulkAdd(newLinks);
+      await db.graphSources.bulkAdd(newSources);
     }
   );
 

@@ -114,11 +114,28 @@ export interface Concept {
 export interface ConceptEdge {
   _id:     string;
   graphId: string;
-  source:  string;          // concept id
-  target:  string;          // concept id
+  source:  string;          // concept OR source-node id
+  target:  string;          // concept OR source-node id
   label?:  string;
 }
 
+// A chat, branch (subtree root), or reflection placed ON the canvas as a
+// first-class node — connectable to concepts (and anything else) by
+// edges. This is the granularity layer for traversal-RAG: the user drags
+// exactly the trees/subtrees they want classified.
+export interface GraphSource {
+  _id:        string;
+  graphId:    string;
+  targetType: "chat" | "node" | "reflection";
+  targetId:   string;
+  x:          number;
+  y:          number;
+  createdAt:  number;
+}
+
+/** Legacy (schema ≤4 / export v2) panel-attachment shape. The table was
+ *  replaced by graphSources + edges in v5; this type remains for the
+ *  import converter and the upgrade migration. */
 export interface ConceptLink {
   _id:        string;
   graphId:    string;
@@ -159,7 +176,7 @@ export const db = new Dexie("cogninode") as Dexie & {
   graphs:       EntityTable<KnowledgeGraph, "_id">;
   concepts:     EntityTable<Concept,     "_id">;
   conceptEdges: EntityTable<ConceptEdge, "_id">;
-  conceptLinks: EntityTable<ConceptLink, "_id">;
+  graphSources: EntityTable<GraphSource, "_id">;
 };
 
 db.version(1).stores({
@@ -187,6 +204,46 @@ db.version(4).stores({
   concepts:     "_id, graphId",
   conceptEdges: "_id, graphId, source, target",
   conceptLinks: "_id, graphId, conceptId, targetId",
+});
+
+// v5: attachments become first-class canvas nodes (graphSources) wired to
+// concepts via ordinary edges — the playground/traversal model. Existing
+// conceptLinks rows migrate to one source per (graph, target) plus an
+// edge per linking concept; the table is then dropped.
+db.version(5).stores({
+  graphSources: "_id, graphId, targetId",
+  conceptLinks: null,
+}).upgrade(async tx => {
+  const links = await tx.table("conceptLinks").toArray() as ConceptLink[];
+  if (links.length === 0) return;
+  const concepts = await tx.table("concepts").toArray() as Concept[];
+  const conceptById = new Map(concepts.map(c => [c._id, c]));
+  const sourceIdByKey = new Map<string, string>();
+  let spread = 0;
+  for (const l of links) {
+    const key = `${l.graphId}:${l.targetId}`;
+    let sourceId = sourceIdByKey.get(key);
+    if (!sourceId) {
+      sourceId = crypto.randomUUID();
+      sourceIdByKey.set(key, sourceId);
+      const c = conceptById.get(l.conceptId);
+      await tx.table("graphSources").add({
+        _id:        sourceId,
+        graphId:    l.graphId,
+        targetType: l.targetType,
+        targetId:   l.targetId,
+        x:          (c?.x ?? 0) + 260,
+        y:          (c?.y ?? 0) + 40 + (spread++ % 4) * 90,
+        createdAt:  l.createdAt ?? Date.now(),
+      });
+    }
+    await tx.table("conceptEdges").add({
+      _id:     crypto.randomUUID(),
+      graphId: l.graphId,
+      source:  l.conceptId,
+      target:  sourceId,
+    });
+  }
 });
 
 // ── Meta helpers ───────────────────────────────────────────────
@@ -388,6 +445,19 @@ export async function buildPathMessages(
 // re-attached across branches and we don't want to orphan a still-used
 // blob.
 
+/** Remove knowledge-graph source nodes whose underlying chat/branch/
+ *  reflection is being deleted, along with any edges touching them.
+ *  Must run inside a transaction that includes graphSources + conceptEdges. */
+async function purgeSourcesByTargets(targetIds: string[]): Promise<void> {
+  if (targetIds.length === 0) return;
+  const doomed = await db.graphSources.where("targetId").anyOf(targetIds).toArray();
+  if (doomed.length === 0) return;
+  const ids = doomed.map(s => s._id);
+  await db.conceptEdges.where("source").anyOf(ids).delete();
+  await db.conceptEdges.where("target").anyOf(ids).delete();
+  await db.graphSources.bulkDelete(ids);
+}
+
 /** Collect a node and all its descendants in a chat into an id set. */
 function collectSubtreeIds(nodes: Node[], rootId: string): Set<string> {
   const childrenByParent = new Map<string, string[]>();
@@ -431,7 +501,7 @@ export async function deleteNodeSubtree(
 ): Promise<DeleteSubtreeResult> {
   return db.transaction(
     "rw",
-    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.conceptLinks],
+    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.graphSources, db.conceptEdges],
     async () => {
       const chat = await db.chats.get(chatId);
       if (!chat) {
@@ -492,12 +562,11 @@ export async function deleteNodeSubtree(
       await db.reflections.where("nodeId").anyOf(doomedArr).delete();
       await db.nodes.bulkDelete(doomedArr);
       if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
-      // Knowledge-graph links to the deleted reflections.
-      if (doomedReflections.length > 0) {
-        await db.conceptLinks
-          .where("targetId").anyOf(doomedReflections.map(r => r._id))
-          .delete();
-      }
+      // Knowledge-graph sources for the deleted branches + reflections.
+      await purgeSourcesByTargets([
+        ...doomedArr,
+        ...doomedReflections.map(r => r._id),
+      ]);
 
       // Repoint currentNodeId if it was inside the deleted subtree.
       const parentNodeId: string | null = target.parentId;
@@ -535,11 +604,11 @@ export async function deleteNodeSubtree(
   );
 }
 
-/** Delete one reflection plus any knowledge-graph links pointing at it. */
+/** Delete one reflection plus any knowledge-graph sources pointing at it. */
 export async function deleteReflection(reflectionId: string): Promise<void> {
-  await db.transaction("rw", db.reflections, db.conceptLinks, async () => {
+  await db.transaction("rw", db.reflections, db.graphSources, db.conceptEdges, async () => {
     await db.reflections.delete(reflectionId);
-    await db.conceptLinks.where("targetId").equals(reflectionId).delete();
+    await purgeSourcesByTargets([reflectionId]);
   });
 }
 
@@ -557,7 +626,7 @@ export interface DeleteChatResult {
 export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
   return db.transaction(
     "rw",
-    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.conceptLinks],
+    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.graphSources, db.conceptEdges],
     async () => {
       const chat = await db.chats.get(chatId);
       if (!chat) {
@@ -592,10 +661,13 @@ export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
       await db.nodes.where("chatId").equals(chatId).delete();
       await db.chats.delete(chatId);
       if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
-      // Knowledge-graph links to this chat and its reflections.
-      await db.conceptLinks
-        .where("targetId").anyOf([chatId, ...reflections.map(r => r._id)])
-        .delete();
+      // Knowledge-graph sources for this chat, its branches, and its
+      // reflections.
+      await purgeSourcesByTargets([
+        chatId,
+        ...nodes.map(n => n._id),
+        ...reflections.map(r => r._id),
+      ]);
 
       return {
         nodesDeleted:       nodes.length,

@@ -6,7 +6,7 @@
 
 import {
   db, newId,
-  type Concept, type ConceptColor, type ConceptEdge, type ConceptLink,
+  type Concept, type ConceptColor, type ConceptEdge, type GraphSource,
 } from "./db";
 
 export const CONCEPT_COLORS: ConceptColor[] = ["coral", "teal", "lilac", "butter"];
@@ -36,11 +36,11 @@ export async function renameGraph(graphId: string, name: string): Promise<void> 
 export async function deleteGraph(graphId: string): Promise<void> {
   await db.transaction(
     "rw",
-    [db.graphs, db.concepts, db.conceptEdges, db.conceptLinks],
+    [db.graphs, db.concepts, db.conceptEdges, db.graphSources],
     async () => {
       await db.concepts.where("graphId").equals(graphId).delete();
       await db.conceptEdges.where("graphId").equals(graphId).delete();
-      await db.conceptLinks.where("graphId").equals(graphId).delete();
+      await db.graphSources.where("graphId").equals(graphId).delete();
       await db.graphs.delete(graphId);
     },
   );
@@ -93,11 +93,11 @@ export async function deleteConcept(conceptId: string): Promise<void> {
   if (!concept) return;
   await db.transaction(
     "rw",
-    [db.concepts, db.conceptEdges, db.conceptLinks, db.graphs],
+    [db.concepts, db.conceptEdges, db.graphs],
     async () => {
+      // Edges go; connected source nodes stay on the canvas.
       await db.conceptEdges.where("source").equals(conceptId).delete();
       await db.conceptEdges.where("target").equals(conceptId).delete();
-      await db.conceptLinks.where("conceptId").equals(conceptId).delete();
       await db.concepts.delete(conceptId);
       await touchGraph(concept.graphId);
     },
@@ -139,36 +139,73 @@ export async function deleteConceptEdge(edgeId: string): Promise<void> {
   });
 }
 
-// ── attachments ────────────────────────────────────────────────
+// ── source nodes (chats / branches / reflections on the canvas) ────────
 
-export async function attachToConcept(opts: {
-  graphId:    string;
-  conceptId:  string;
-  targetType: ConceptLink["targetType"];
-  targetId:   string;
-}): Promise<string> {
-  return db.transaction("rw", db.conceptLinks, db.graphs, async () => {
-    const existing = await db.conceptLinks
-      .where("conceptId").equals(opts.conceptId)
-      .filter(l => l.targetType === opts.targetType && l.targetId === opts.targetId)
+/** Place a chat/branch/reflection on the canvas. One source per
+ *  (graph, target) — re-adding an existing target returns it instead, so
+ *  drags from the library never duplicate. */
+export async function addSource(
+  graphId: string,
+  opts: { targetType: GraphSource["targetType"]; targetId: string; x: number; y: number },
+): Promise<{ id: string; created: boolean }> {
+  return db.transaction("rw", db.graphSources, db.graphs, async () => {
+    const existing = await db.graphSources
+      .where("targetId").equals(opts.targetId)
+      .filter(s => s.graphId === graphId)
       .first();
-    if (existing) return existing._id;
+    if (existing) return { id: existing._id, created: false };
     const _id = newId();
-    await db.conceptLinks.add({
+    await db.graphSources.add({
       _id,
-      graphId:    opts.graphId,
-      conceptId:  opts.conceptId,
+      graphId,
       targetType: opts.targetType,
       targetId:   opts.targetId,
+      x:          Math.round(opts.x),
+      y:          Math.round(opts.y),
       createdAt:  Date.now(),
     });
-    await touchGraph(opts.graphId);
-    return _id;
+    await touchGraph(graphId);
+    return { id: _id, created: true };
   });
 }
 
-export async function detachLink(linkId: string): Promise<void> {
-  await db.conceptLinks.delete(linkId);
+export async function moveSource(sourceId: string, x: number, y: number): Promise<void> {
+  await db.graphSources.update(sourceId, { x: Math.round(x), y: Math.round(y) });
+}
+
+export async function deleteSource(sourceId: string): Promise<void> {
+  const source = await db.graphSources.get(sourceId);
+  if (!source) return;
+  await db.transaction(
+    "rw",
+    [db.graphSources, db.conceptEdges, db.graphs],
+    async () => {
+      await db.conceptEdges.where("source").equals(sourceId).delete();
+      await db.conceptEdges.where("target").equals(sourceId).delete();
+      await db.graphSources.delete(sourceId);
+      await touchGraph(source.graphId);
+    },
+  );
+}
+
+/** Classic "attach to concept": ensure a source node exists (placed near
+ *  the concept when new) and wire an edge concept↔source. */
+export async function attachToConcept(opts: {
+  graphId:    string;
+  conceptId:  string;
+  targetType: GraphSource["targetType"];
+  targetId:   string;
+}): Promise<void> {
+  const concept = await db.concepts.get(opts.conceptId);
+  const siblings = await db.conceptEdges
+    .where("source").equals(opts.conceptId).count();
+  const { id: sourceId } = await addSource(opts.graphId, {
+    targetType: opts.targetType,
+    targetId:   opts.targetId,
+    x: (concept?.x ?? 0) + 260,
+    y: (concept?.y ?? 0) + 40 + (siblings % 4) * 90,
+  });
+  await addConceptEdge(opts.graphId, opts.conceptId, sourceId);
 }
 
 /** Spread new concepts on a loose grid so untouched ones never stack. */

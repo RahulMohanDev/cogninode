@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { db, type Concept, type ConceptEdge, type KnowledgeGraph } from "../lib/db";
+import { db, type Concept, type ConceptEdge, type GraphSource, type KnowledgeGraph } from "../lib/db";
 import { createGraph, deleteGraph, renameGraph } from "../lib/knowledge";
 import { Sidebar } from "../components/chat/Sidebar";
 import { SettingsModal } from "../components/settings/SettingsModal";
@@ -37,21 +37,20 @@ export default function Graphs() {
   );
   const concepts = useLiveQuery(() => db.concepts.toArray(), [], [] as Concept[]);
   const edges    = useLiveQuery(() => db.conceptEdges.toArray(), [], [] as ConceptEdge[]);
+  const sources  = useLiveQuery(() => db.graphSources.toArray(), [], [] as GraphSource[]);
 
   const byGraph = useMemo(() => {
-    const map = new Map<string, { concepts: Concept[]; edges: ConceptEdge[] }>();
-    for (const c of concepts) {
-      const e = map.get(c.graphId) ?? { concepts: [], edges: [] };
-      e.concepts.push(c);
-      map.set(c.graphId, e);
-    }
-    for (const ed of edges) {
-      const e = map.get(ed.graphId) ?? { concepts: [], edges: [] };
-      e.edges.push(ed);
-      map.set(ed.graphId, e);
-    }
+    const map = new Map<string, { concepts: Concept[]; edges: ConceptEdge[]; sources: GraphSource[] }>();
+    const entry = (id: string) => {
+      const e = map.get(id) ?? { concepts: [], edges: [], sources: [] };
+      map.set(id, e);
+      return e;
+    };
+    for (const c of concepts) entry(c.graphId).concepts.push(c);
+    for (const ed of edges)   entry(ed.graphId).edges.push(ed);
+    for (const s of sources)  entry(s.graphId).sources.push(s);
     return map;
-  }, [concepts, edges]);
+  }, [concepts, edges, sources]);
 
   const startNewGraph = async (): Promise<void> => {
     const id = await createGraph("New graph");
@@ -102,9 +101,9 @@ export default function Graphs() {
                 <GraphCard
                   key={g._id}
                   graph={g}
-                  conceptCount={byGraph.get(g._id)?.concepts.length ?? 0}
                   concepts={byGraph.get(g._id)?.concepts ?? []}
                   edges={byGraph.get(g._id)?.edges ?? []}
+                  sources={byGraph.get(g._id)?.sources ?? []}
                   onOpen={() => navigate(`/graphs/${g._id}`)}
                 />
               ))}
@@ -127,13 +126,13 @@ export default function Graphs() {
 // ── per-graph card ─────────────────────────────────────────────────────
 
 function GraphCard({
-  graph, conceptCount, concepts, edges, onOpen,
+  graph, concepts, edges, sources, onOpen,
 }: {
-  graph:        KnowledgeGraph;
-  conceptCount: number;
-  concepts:     Concept[];
-  edges:        ConceptEdge[];
-  onOpen:       () => void;
+  graph:    KnowledgeGraph;
+  concepts: Concept[];
+  edges:    ConceptEdge[];
+  sources:  GraphSource[];
+  onOpen:   () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming]     = useState(false);
@@ -213,13 +212,19 @@ function GraphCard({
       )}
 
       <div className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mb-4 tw:flex tw:items-center tw:gap-2.5">
-        <span>{conceptCount} concept{conceptCount === 1 ? "" : "s"}</span>
+        <span>{concepts.length} concept{concepts.length === 1 ? "" : "s"}</span>
+        {sources.length > 0 && (
+          <>
+            <span style={{ opacity: 0.3 }}>·</span>
+            <span>{sources.length} source{sources.length === 1 ? "" : "s"}</span>
+          </>
+        )}
         <span style={{ opacity: 0.3 }}>·</span>
         <span>{relativeTime(graph.updatedAt)}</span>
       </div>
 
       <div className="tw:flex-1 tw:relative tw:mt-auto">
-        <MiniConstellation concepts={concepts} edges={edges} />
+        <MiniConstellation concepts={concepts} edges={edges} sources={sources} />
       </div>
 
       {confirming && (
@@ -246,20 +251,30 @@ const ACCENT_VAR: Record<string, string> = {
   coral: "var(--coral)", teal: "var(--teal)", lilac: "var(--lilac)", butter: "var(--butter)",
 };
 
-function MiniConstellation({ concepts, edges }: { concepts: Concept[]; edges: ConceptEdge[] }) {
-  if (concepts.length === 0) {
+function MiniConstellation({
+  concepts, edges, sources,
+}: {
+  concepts: Concept[];
+  edges:    ConceptEdge[];
+  sources:  GraphSource[];
+}) {
+  const points = [
+    ...concepts.map(c => ({ id: c._id, x: c.x, y: c.y, fill: ACCENT_VAR[c.color] ?? "var(--ink-3)", r: 2.6 })),
+    ...sources.map(s => ({ id: s._id, x: s.x, y: s.y, fill: "var(--ink-3)", r: 1.9 })),
+  ];
+  if (points.length === 0) {
     return <svg width={THUMB_W} height={THUMB_H} aria-hidden="true" />;
   }
-  const xs = concepts.map(c => c.x);
-  const ys = concepts.map(c => c.y);
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const project = (x: number, y: number) => ({
     px: maxX > minX ? PAD + ((x - minX) / (maxX - minX)) * (THUMB_W - PAD * 2) : THUMB_W / 2,
     py: maxY > minY ? PAD + ((y - minY) / (maxY - minY)) * (THUMB_H - PAD * 2) : THUMB_H / 2,
   });
-  const posById = new Map(concepts.map(c => [c._id, project(c.x, c.y)]));
-  const visible = concepts.slice(0, 24);
+  const posById = new Map(points.map(p => [p.id, project(p.x, p.y)]));
+  const visible = points.slice(0, 32);
 
   return (
     <svg width={THUMB_W} height={THUMB_H} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`} aria-hidden="true" style={{ display: "block" }}>
@@ -269,9 +284,9 @@ function MiniConstellation({ concepts, edges }: { concepts: Concept[]; edges: Co
         if (!a || !b) return null;
         return <line key={e._id} x1={a.px} y1={a.py} x2={b.px} y2={b.py} style={{ stroke: "var(--line)" }} strokeWidth={1} />;
       })}
-      {visible.map(c => {
-        const p = posById.get(c._id)!;
-        return <circle key={c._id} cx={p.px} cy={p.py} r={2.4} style={{ fill: ACCENT_VAR[c.color] ?? "var(--ink-3)" }} />;
+      {visible.map(p => {
+        const pos = posById.get(p.id)!;
+        return <circle key={p.id} cx={pos.px} cy={pos.py} r={p.r} style={{ fill: p.fill }} />;
       })}
     </svg>
   );
