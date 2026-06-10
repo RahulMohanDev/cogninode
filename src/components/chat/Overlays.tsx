@@ -3,15 +3,17 @@
 // Self-managed: installs a single global keydown listener and renders three modal
 // overlays gated by local state. Consumer is ChatApp.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db, type Chat, type Node } from "../../lib/db";
-import { buildTree, layoutTree, findPath } from "../../lib/path";
 import { getNodeMRU } from "../../lib/nodeHistory";
 import { anyModalOpen, useModalBehavior } from "../../hooks/useModalStack";
 import { searchService } from "../../lib/search/service";
+
+// React Flow (and its stylesheet) load on the first ⌃T, not at boot.
+const ChatTreeFlow = lazy(() => import("../graph/ChatTreeFlow"));
 
 export interface OverlaysProps {
   chatId: string;
@@ -82,10 +84,8 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
 export default Overlays;
 
 
-// depth → accent colour maps (root, L1, L2, L3+)
+// depth → accent colour map (root, L1, L2, L3+)
 const QJ_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
-const TN_BORDER = ["tw:border-coral", "tw:border-teal", "tw:border-lilac", "tw:border-butter"];
-const TN_DOT = QJ_DOT;
 
 // ── QuickJump ────────────────────────────────────────────────────────────────
 // An MRU ("Alt+Tab") branch (node) switcher spanning every chat. With an empty
@@ -365,49 +365,6 @@ function TreeMap({
     [],
   );
 
-  const { points, edges, maxX, maxY } = useMemo(() => {
-    const list = nodes ?? [];
-    const roots = buildTree(list);
-    const laid = layoutTree(roots);
-    const pmap = new Map(laid.map(p => [p.nodeId, p]));
-    const edgeList: Array<{ from: string; to: string }> = [];
-    for (const n of list) {
-      if (n.parentId && pmap.has(n.parentId)) {
-        edgeList.push({ from: n.parentId, to: n._id });
-      }
-    }
-    const mx = laid.reduce((m, p) => Math.max(m, p.x), 0);
-    const my = laid.reduce((m, p) => Math.max(m, p.y), 0);
-    return { points: laid, edges: edgeList, maxX: mx, maxY: my };
-  }, [nodes]);
-
-  const ancestors = useMemo(() => {
-    const list = nodes ?? [];
-    return new Set(findPath(list, currentNodeId));
-  }, [nodes, currentNodeId]);
-
-  // SVG canvas dimensions — generous so big trees scroll naturally.
-  const W = Math.max(700, (maxX + 1) * 240);
-  const H = Math.max(420, (maxY + 1) * 160);
-
-  const xpx = useCallback((x: number) => {
-    if (maxX === 0) return W / 2;
-    return 130 + (x / maxX) * (W - 260);
-  }, [maxX, W]);
-  const ypx = useCallback((y: number) => {
-    if (maxY === 0) return H / 2;
-    return 80 + (y / maxY) * (H - 160);
-  }, [maxY, H]);
-
-  const pointById = useMemo(
-    () => new Map(points.map(p => [p.nodeId, p])),
-    [points],
-  );
-  const nodeById = useMemo(
-    () => new Map((nodes ?? []).map(n => [n._id, n])),
-    [nodes],
-  );
-
   const pick = useCallback(async (nodeId: string) => {
     await db.chats.update(chatId, { currentNodeId: nodeId });
     onClose();
@@ -427,7 +384,7 @@ function TreeMap({
             marginLeft: 10, fontFamily: "var(--mono)", fontSize: 11,
             color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase",
           }}>
-            {points.length} node{points.length === 1 ? "" : "s"}
+            {nodes.length} node{nodes.length === 1 ? "" : "s"}
           </span>
         </div>
         <div style={{
@@ -442,60 +399,19 @@ function TreeMap({
       </div>
 
       <div className="tw:flex-1 tw:relative tw:overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div style={{ width: "100%", height: "100%", overflow: "auto" }}>
-          <div className="tw:relative" style={{ width: W, height: H, margin: "20px auto" }}>
-            <svg className="tw:absolute tw:inset-0 tw:w-full tw:h-full" viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
-              {edges.map(({ from, to }) => {
-                const a = pointById.get(from);
-                const b = pointById.get(to);
-                if (!a || !b) return null;
-                const ax = xpx(a.x), ay = ypx(a.y);
-                const bx = xpx(b.x), by = ypx(b.y);
-                const my = (ay + by) / 2;
-                const onPath = ancestors.has(from) && ancestors.has(to);
-                return (
-                  <path
-                    key={`${from}-${to}`}
-                    d={`M ${ax} ${ay} C ${ax} ${my}, ${bx} ${my}, ${bx} ${by}`}
-                    stroke={onPath ? "var(--coral)" : "var(--line)"}
-                    strokeWidth={onPath ? 2.5 : 2}
-                    fill="none"
-                  />
-                );
-              })}
-            </svg>
-
-            {points.map(p => {
-              const n = nodeById.get(p.nodeId);
-              if (!n) return null;
-              const depth = Math.min(3, n.depth);
-              const isCurrent  = n._id === currentNodeId;
-              const isOnPath   = ancestors.has(n._id);
-              const label      = n.label || (n.parentId === null ? "root" : `branch L${n.depth}`);
-              const eyebrow    = n.parentId === null ? "root" : `branch L${n.depth}`;
-              return (
-                <div
-                  key={n._id}
-                  className={`tw:absolute tw:[transform:translate(-50%,-50%)] tw:w-[220px] tw:border-2 tw:rounded-[12px] tw:py-3 tw:px-3.5 tw:text-[13px] tw:cursor-pointer tw:transition-[transform,border-color,box-shadow] tw:duration-150 tw:ease-[ease] tw:z-[2] tw:hover:[transform:translate(-50%,-50%)_translateY(-2px)] tw:hover:shadow-2 ${TN_BORDER[depth]} ${isCurrent ? "tw:bg-ink tw:text-bg tw:shadow-[0_12px_28px_-8px_rgba(22,20,19,0.4)]" : "tw:bg-bg-3 tw:shadow-1"}`}
-                  style={{
-                    left:  xpx(p.x),
-                    top:   ypx(p.y),
-                    ...(isOnPath && !isCurrent
-                      ? { borderColor: "var(--coral)", boxShadow: "0 8px 22px -8px rgba(0,0,0,0.28)" }
-                      : {}),
-                  }}
-                  onClick={() => void pick(n._id)}
-                >
-                  <div className={`tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:mb-1 tw:flex tw:items-center tw:gap-[5px] ${isCurrent ? "tw:text-[color-mix(in_oklab,var(--bg)_70%,transparent)]" : "tw:text-ink-3"}`}>
-                    <span className={`tw:w-[7px] tw:h-[7px] tw:rounded-[50%] ${TN_DOT[depth]}`} />
-                    {eyebrow}
-                  </div>
-                  <div className="tw:font-display tw:font-semibold tw:text-[14px] tw:tracking-[-0.01em] tw:leading-[1.2] tw:text-balance">{truncate(label, 60)}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <Suspense
+          fallback={
+            <div className="tw:h-full tw:grid tw:place-items-center tw:text-ink-3 tw:text-[13px]">
+              Loading tree…
+            </div>
+          }
+        >
+          <ChatTreeFlow
+            dbNodes={nodes}
+            currentNodeId={currentNodeId}
+            onPick={(nodeId) => void pick(nodeId)}
+          />
+        </Suspense>
       </div>
     </div>
   );
@@ -508,11 +424,6 @@ function LegendDot({ color, label }: { color: string; label: string }) {
       {label}
     </span>
   );
-}
-
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s;
-  return s.slice(0, n - 1) + "…";
 }
 
 // ── Shortcuts cheat sheet ────────────────────────────────────────────────────
