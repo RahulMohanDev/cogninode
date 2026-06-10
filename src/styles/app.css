@@ -126,20 +126,26 @@
   --shadow-3: 0 30px 60px -30px rgba(22,20,19,0.22);
 }
 
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; }
-body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+/* The app's own element baseline. Lives in @layer base (declared after the
+   compat block above, so it wins within the layer) — utilities can override
+   it, which is exactly the relationship these rules had in a world with no
+   utilities at all. */
+@layer base {
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, textarea { font: inherit; color: inherit; }
+  a { color: inherit; text-decoration: none; }
 }
-button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
-input, textarea { font: inherit; color: inherit; }
-a { color: inherit; text-decoration: none; }
 ::selection { background: var(--coral); color: white; }
 
 /* ====== Shell layout ====== */
@@ -1575,75 +1581,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ============ Auth / settings / billing ============ */
-.auth-page {
-  height: 100vh; height: 100dvh;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.auth-side {
-  background: var(--bg);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: 36px 48px;
-  overflow: hidden;
-}
-.auth-side .auth-brand {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--display); font-weight: 600; font-size: 20px;
-  letter-spacing: -0.02em;
-}
-.auth-side .auth-quote {
-  margin-top: auto;
-  font-family: var(--display);
-  font-size: 38px;
-  line-height: 1;
-  letter-spacing: -0.025em;
-  font-weight: 600;
-  text-wrap: balance;
-  max-width: 460px;
-}
-.auth-side .auth-quote em {
-  font-family: var(--serif); font-style: italic; color: var(--coral); font-weight: 400;
-}
-.auth-side .auth-byline {
-  margin-top: 16px;
-  color: var(--ink-3);
-  font-size: 14px;
-  max-width: 420px;
-}
-.auth-side .auth-tree {
-  position: absolute;
-  right: -180px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0.18;
-  width: 500px;
-  pointer-events: none;
-}
-.auth-form {
-  background: var(--bg-3);
-  display: grid; place-items: center;
-  padding: 32px;
-}
-.auth-form .auth-wrap {
-  width: 100%;
-  max-width: 380px;
-}
-.auth-form h1 {
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 38px;
-  letter-spacing: -0.025em;
-  margin: 0 0 10px;
-  line-height: 1;
-}
-.auth-form h1 em { font-family: var(--serif); font-style: italic; color: var(--coral); font-weight: 400; }
-.auth-form .lead {
-  color: var(--ink-2);
-  margin: 0 0 28px;
-  font-size: 15px;
-}
 .field {
   display: flex; flex-direction: column;
   gap: 6px;
@@ -1727,26 +1664,6 @@ a { color: inherit; text-decoration: none; }
   content: ""; flex: 1; height: 1px; background: var(--line);
 }
 
-.tos {
-  text-align: center;
-  font-size: 12px;
-  color: var(--ink-3);
-  margin-top: 18px;
-}
-.tos a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.foot-link {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--ink-3);
-}
-.foot-link a { color: var(--ink); font-weight: 500; }
-.foot-link a:hover { text-decoration: underline; }
-
-@media (max-width: 880px) {
-  .auth-page { grid-template-columns: 1fr; }
-  .auth-side { display: none; }
-}
 
 /* ============ Generic page (settings, billing, chats list) ============ */
 .page {
@@ -2399,7 +2316,6 @@ a { color: inherit; text-decoration: none; }
    we already retoned for dark. */
 
 /* Auth page: the decorative tree uses currentColor (--ink-3) — good. */
-[data-theme="dark"] .auth-side .auth-tree { opacity: 0.22; }
 
 
 /* ============================================================ */
@@ -2496,50 +2412,6 @@ a { color: inherit; text-decoration: none; }
 .model-pop .mp-row.mp-add:hover .mp-add-icon {
   border-color: var(--coral);
   color: var(--coral);
-}
-
-/* ── Key gate (setup.html) ───────────────────────────────────── */
-.key-gate .auth-side {
-  padding: 36px 48px;
-}
-.key-gate .gate-notes {
-  margin-top: 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.key-gate .gate-note {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-.key-gate .gate-note-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: none;
-}
-.key-gate .gate-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--coral);
-  background: var(--coral-tint);
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  margin: -2px 0 14px;
-  border: 1px solid var(--coral-soft);
-}
-[data-theme="dark"] .key-gate .gate-error { border-color: var(--coral-soft); }
-.key-gate .gate-tos {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: var(--ink-3);
 }
 
 /* ── Settings modal ──────────────────────────────────────────── */

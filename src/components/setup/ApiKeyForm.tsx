@@ -19,12 +19,12 @@ export function ApiKeyForm() {
     }
 
     return (
-        <div className="auth-form">
-            <div className="auth-wrap">
-                <h1>
-                    Connect your <em>key.</em>
+        <div className="tw:bg-bg-3 tw:grid tw:place-items-center tw:p-8">
+            <div className="tw:w-full tw:max-w-[380px]">
+                <h1 className="tw:font-display tw:font-semibold tw:text-[38px] tw:tracking-[-0.025em] tw:m-0 tw:mb-2.5 tw:leading-none">
+                    Connect your <em className="tw:font-serif tw:italic tw:text-coral tw:font-normal">key.</em>
                 </h1>
-                <p className="lead">
+                <p className="tw:text-ink-2 tw:m-0 tw:mb-7 tw:text-[15px]">
                     Paste your OpenRouter API key below. It's stored only in this
                     browser's localStorage — never sent anywhere except OpenRouter.
                 </p>
@@ -49,7 +49,7 @@ export function ApiKeyForm() {
                     </div>
 
                     {error && (
-                        <div className="gate-error">
+                        <div className="tw:flex tw:items-center tw:gap-2 tw:text-[13px] tw:text-coral tw:bg-coral-tint tw:px-3 tw:py-[9px] tw:rounded-app-sm tw:-mt-0.5 tw:mb-3.5 tw:border tw:border-coral-soft">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                                 <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.4" />
                                 <path d="M8 5 V9 M8 11 V11.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -76,7 +76,7 @@ export function ApiKeyForm() {
                     </button>
                 </form>
 
-                <div className="tos gate-tos">
+                <div className="tw:flex tw:items-center tw:justify-center tw:gap-1 tw:text-center tw:text-[12px] tw:text-ink-3 tw:mt-[18px]">
                     <svg
                         width="11"
                         height="11"
@@ -94,6 +94,7 @@ export function ApiKeyForm() {
                     </svg>
                     Stored locally · never leaves your browser ·{" "}
                     <a
+                        className="tw:text-ink tw:underline tw:underline-offset-[3px]"
                         href="https://github.com/RahulMohanDev/cogninode"
                         target="_blank"
                         rel="noopener noreferrer"
@@ -102,9 +103,14 @@ export function ApiKeyForm() {
                     </a>
                 </div>
 
-                <div className="foot-link">
+                <div className="tw:mt-5 tw:text-center tw:text-[13px] tw:text-ink-3">
                     Don't have a key? Get one at{" "}
-                    <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">
+                    <a
+                        className="tw:text-ink tw:font-medium tw:hover:underline"
+                        href="https://openrouter.ai/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
                         openrouter.ai/keys
                         <svg
                             width="11"

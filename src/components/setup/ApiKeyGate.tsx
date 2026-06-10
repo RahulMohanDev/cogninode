@@ -19,7 +19,7 @@ export function ApiKeyGate({ children }: ApiKeyGateProps) {
     if (apiKey) return <>{children}</>;
 
     return (
-        <div className="auth-page key-gate">
+        <div className="tw:h-dvh tw:grid tw:grid-cols-2 tw:max-[880px]:grid-cols-1">
             <SetupHero />
             <ApiKeyForm />
         </div>
