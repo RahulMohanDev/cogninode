@@ -48,7 +48,7 @@ function FileChips({ fileIds }: { fileIds: string[] }) {
   if (!files || files.length === 0) return null;
 
   return (
-    <div className="files-row" style={{ padding: 0, marginTop: 6 }}>
+    <div className="tw:flex tw:flex-wrap tw:gap-1.5 tw:p-0 tw:mt-1.5">
       {files.map(file => {
         if (file.kind === "image") {
           return (
@@ -70,8 +70,8 @@ function FileChips({ fileIds }: { fileIds: string[] }) {
           file.kind === "pdf"  ? "PDF" :
           file.kind === "code" ? "<>"  : "FILE";
         return (
-          <span key={file._id} className="file-chip">
-            <span className={`fc-icon ${file.kind === "code" ? "code" : file.kind === "pdf" ? "pdf" : "img"}`}>
+          <span key={file._id} className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1 tw:pr-2.5 tw:pl-1.5 tw:bg-bg-2 tw:border tw:border-line tw:rounded-[999px] tw:text-[12px] tw:text-ink">
+            <span className={`tw:w-[22px] tw:h-[22px] tw:rounded-[5px] tw:grid tw:place-items-center tw:font-mono tw:text-[9px] tw:font-bold tw:text-white tw:tracking-[-0.02em] ${file.kind === "code" ? "tw:bg-[#2c2c2c] tw:dark:bg-[#4a4135]" : file.kind === "pdf" ? "tw:bg-[#e35d4d]" : "tw:bg-teal"}`}>
               {iconLabel}
             </span>
             {file.name}
@@ -93,17 +93,17 @@ function hostnameOf(url: string): string {
 
 function Sources({ citations }: { citations: NonNullable<DbMessage["citations"]> }) {
   return (
-    <div className="msg-sources">
-      <div className="ms-label">Sources</div>
-      <ol className="ms-list">
+    <div className="tw:mt-3 tw:pt-2.5 tw:border-t tw:border-line">
+      <div className="tw:font-mono tw:text-[11px] tw:uppercase tw:tracking-[0.08em] tw:text-ink-3 tw:mb-1.5">Sources</div>
+      <ol className="tw:my-0 tw:pl-5 tw:flex tw:flex-col tw:gap-1">
         {citations.map((c, i) => {
           const host = hostnameOf(c.url);
           return (
-            <li key={`${c.url}-${i}`}>
-              <a href={c.url} target="_blank" rel="noopener noreferrer">
+            <li key={`${c.url}-${i}`} className="tw:text-[13px] tw:text-ink-3">
+              <a className="tw:text-ink tw:no-underline tw:border-b tw:border-b-line tw:hover:text-coral tw:hover:border-b-coral" href={c.url} target="_blank" rel="noopener noreferrer">
                 {c.title || host}
               </a>
-              <span className="ms-host">{host}</span>
+              <span className="tw:ml-1.5 tw:font-mono tw:text-[11px] tw:text-ink-4">{host}</span>
             </li>
           );
         })}
@@ -265,14 +265,14 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
   );
 
   return (
-    <div className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""}`}>
+    <div className={`msg ${message.role}${reflectionsMode ? " reflecting" : ""} tw:group/msg tw:flex tw:flex-col tw:gap-1.5 tw:relative ${isAssistant ? "tw:items-start" : "tw:items-end"}`}>
       {/* Reflections-mode side handle: delete + merge into previous (if eligible) */}
       {reflectionsMode && (
-        <div className="reflect-handles">
+        <div className={`tw:absolute tw:top-0 tw:flex tw:flex-col tw:gap-1 tw:z-[2] ${isAssistant ? "tw:left-[-44px]" : "tw:left-auto tw:right-[-44px]"}`}>
           {canMerge && (
             <button
               title="Merge into previous"
-              className="merge"
+              className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[7px] tw:bg-bg-3 tw:border tw:border-line tw:text-ink-3 tw:cursor-pointer tw:transition-[border-color,color,background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg tw:hover:border-lilac tw:hover:text-lilac"
               onClick={() => void handleMerge()}
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -283,7 +283,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
           )}
           <button
             title="Delete this message"
-            className="delete"
+            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[7px] tw:bg-bg-3 tw:border tw:border-line tw:text-ink-3 tw:cursor-pointer tw:transition-[border-color,color,background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg tw:hover:border-coral tw:hover:text-coral"
             onClick={() => setConfirming(true)}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -293,11 +293,11 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
         </div>
       )}
 
-      <div className="m-head">
+      <div className="tw:flex tw:items-center tw:gap-2 tw:font-mono tw:text-[10px] tw:tracking-[0.1em] tw:text-ink-3 tw:uppercase">
         {isAssistant ? (
           <>
             {model && (
-              <span className="m-avatar" style={{ background: "var(--ink-2)" }}>
+              <span className="tw:w-[18px] tw:h-[18px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[9px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>
                 {initials}
               </span>
             )}
@@ -311,13 +311,12 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
       <div className="m-body">
         {message.quote && !reflectionsMode && (
           <div
-            className="quote-block"
+            className="tw:flex tw:flex-col tw:gap-[3px] tw:py-[7px] tw:pr-2.5 tw:pl-3 tw:border-l-[3px] tw:border-l-coral tw:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:rounded-[4px_8px_8px_4px] tw:text-[12px] tw:leading-[1.4] tw:mb-2 tw:cursor-pointer"
             onClick={() => void handleGoToSource()}
             title="Go to source branch"
-            style={{ cursor: "pointer" }}
           >
-            <span className="quote-from">↳ branched from</span>
-            <span className="quote-text">"{message.quote}"</span>
+            <span className="tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:opacity-65">↳ branched from</span>
+            <span className="tw:italic tw:font-serif tw:text-[14px]">"{message.quote}"</span>
           </div>
         )}
 
@@ -361,17 +360,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
 
       {/* Inline delete-confirm pill replaces the action row while pending. */}
       {confirming ? (
-        <div
-          className="m-foot"
-          style={{
-            justifyContent: "flex-end",
-            gap: 6,
-            alignItems: "center",
-            fontFamily: "var(--mono)",
-            fontSize: 11,
-            color: "var(--ink-3)",
-          }}
-        >
+        <div className="tw:flex tw:items-center tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1 tw:justify-end tw:gap-1.5">
           <span style={{ marginRight: 8 }}>Delete this message?</span>
           <button
             onClick={() => void handleDelete()}
@@ -399,12 +388,12 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
           </button>
         </div>
       ) : isAssistant && !reflectionsMode ? (
-        <div className="m-foot">
-          <span className="credits">
-            <span className="cd" />
+        <div className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1">
+          <span className="tw:inline-flex tw:items-center tw:gap-[5px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px]">
+            <span className="tw:w-[5px] tw:h-[5px] tw:rounded-[50%] tw:bg-teal" />
             {typeof message.costUsd === "number" ? formatCost(message.costUsd) : "—"}
             {typeof message.inputTokens === "number" && typeof message.outputTokens === "number" && (
-              <span className="cr-detail">
+              <span className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:tracking-[0.02em]">
                 &nbsp;·&nbsp;{message.inputTokens.toLocaleString()} in + {message.outputTokens.toLocaleString()} out
                 {typeof message.pathDepth === "number" && (
                   <>&nbsp;·&nbsp;{message.pathDepth}-node path</>
@@ -412,8 +401,8 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
               </span>
             )}
           </span>
-          <div className="m-actions">
-            <button title="Branch from this" onClick={() => onBranch?.(undefined)}>
+          <div className="tw:flex tw:items-center tw:gap-0.5 tw:ml-auto tw:opacity-0 tw:transition-opacity tw:duration-[120ms] tw:ease-[ease] tw:group-hover/msg:opacity-100">
+            <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title="Branch from this" onClick={() => onBranch?.(undefined)}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
                 <circle cx="4"  cy="3"  r="1.6" fill="currentColor" />
                 <circle cx="12" cy="3"  r="1.6" fill="currentColor" />
@@ -422,13 +411,13 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
                       strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </button>
-            <button title="Copy" onClick={handleCopy}>
+            <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title="Copy" onClick={handleCopy}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
                 <rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.4" />
                 <path d="M3 11 V3 H11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </button>
-            <button title={editing ? "Save edit" : "Edit (reflections)"} onClick={() => {
+            <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title={editing ? "Save edit" : "Edit (reflections)"} onClick={() => {
               if (editing) handleSaveMarkdown(draft);
               else         setEditing(true);
             }}>
@@ -440,15 +429,15 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
           </div>
         </div>
       ) : !isAssistant && !reflectionsMode ? (
-        <div className="m-foot">
-          <div className="m-actions">
-            <button title="Copy" onClick={handleCopy}>
+        <div className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1">
+          <div className="tw:flex tw:items-center tw:gap-0.5 tw:ml-auto tw:opacity-0 tw:transition-opacity tw:duration-[120ms] tw:ease-[ease] tw:group-hover/msg:opacity-100">
+            <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title="Copy" onClick={handleCopy}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
                 <rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.4" />
                 <path d="M3 11 V3 H11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </button>
-            <button title={editing ? "Save edit" : "Edit"} onClick={() => {
+            <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title={editing ? "Save edit" : "Edit"} onClick={() => {
               if (editing) handleSaveMarkdown(draft);
               else         setEditing(true);
             }}>

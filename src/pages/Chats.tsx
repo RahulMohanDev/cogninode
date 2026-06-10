@@ -51,42 +51,41 @@ export default function Chats() {
   }
 
   return (
-    <div className={`shell ${prefs.sidebarCollapsed ? "collapsed" : ""}`}>
+    <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
       <Sidebar activeChatId={null} onOpenSettings={() => setSettingsOpen(true)} />
-      <div className="main">
-        <div className="page">
-          <div className="page-head">
-            <span className="eyebrow">
-              <span className="dot" />
+      <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
+        <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:pt-8 tw:px-10 tw:pb-20 tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--coral)_6%,transparent),transparent_60%),radial-gradient(700px_400px_at_0%_100%,color-mix(in_oklab,var(--teal)_5%,transparent),transparent_60%),var(--bg-3)]">
+          <div className="tw:max-w-[880px] tw:mx-auto tw:mt-0 tw:mb-9">
+            <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:inline-flex tw:items-center tw:gap-2">
+              <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:bg-coral" />
               All chats
             </span>
-            <h1>
-              Your <em>grove</em>.
+            <h1 className="tw:font-display tw:font-semibold tw:text-[44px] tw:tracking-[-0.025em] tw:my-2 tw:mx-0 tw:leading-none">
+              Your <em className="tw:font-serif tw:italic tw:text-coral tw:font-normal">grove</em>.
             </h1>
-            <p>
+            <p className="tw:text-ink-2 tw:m-0 tw:max-w-[540px] tw:text-[16px]">
               Every chat is a tree of branched thoughts. Pick one to keep growing,
               or plant a new one.
             </p>
           </div>
 
-          <div className="page-body">
-            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <div className="tw:max-w-[880px] tw:mx-auto">
+            <div className="tw:flex tw:gap-2 tw:mb-3.5 tw:flex-wrap">
               {STARTERS.map((s) => (
                 <button
                   key={s.label}
                   onClick={() => { void startStarter(s); }}
-                  className="btn-outline"
-                  style={{ fontSize: 13, padding: "9px 14px" }}
+                  className="tw:bg-bg-3 tw:text-ink tw:py-[9px] tw:px-3.5 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:border-ink-3"
                 >
-                  <span style={{ fontSize: 14 }}>{s.icon}</span>
+                  <span className="tw:text-[14px]">{s.icon}</span>
                   {s.label}
                 </button>
               ))}
             </div>
 
-            <div className="chats-grid">
+            <div className="tw:grid tw:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] tw:gap-4">
               <div
-                className="chat-card new"
+                className="tw:border tw:border-line tw:rounded-[16px] tw:p-[18px] tw:cursor-pointer tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:min-h-[180px] tw:relative tw:overflow-hidden tw:bg-bg-3 tw:border-dashed tw:grid tw:flex-col tw:place-items-center tw:text-center tw:hover:border-ink-3 tw:hover:-translate-y-0.5"
                 onClick={() => { void startNewChat(); }}
                 role="button"
                 tabIndex={0}
@@ -97,9 +96,9 @@ export default function Chats() {
                   }
                 }}
               >
-                <div className="nc-plus">+</div>
-                <div className="nc-title">New chat</div>
-                <div className="nc-sub">⌃N · start a fresh tree</div>
+                <div className="tw:w-11 tw:h-11 tw:grid tw:place-items-center tw:rounded-[50%] tw:bg-coral tw:text-white tw:text-[22px] tw:font-light tw:leading-none tw:mb-3">+</div>
+                <div className="tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em]">New chat</div>
+                <div className="tw:text-[12px] tw:text-ink-3 tw:mt-1">⌃N · start a fresh tree</div>
               </div>
 
               {chats?.map((chat) => (
@@ -111,14 +110,7 @@ export default function Chats() {
               ))}
 
               {chats && chats.length === 0 && (
-                <div
-                  style={{
-                    gridColumn: "1 / -1",
-                    color: "var(--ink-3)",
-                    fontSize: 13,
-                    padding: "12px 4px",
-                  }}
-                >
+                <div className="tw:col-span-full tw:text-ink-3 tw:text-[13px] tw:px-1 tw:py-3">
                   No chats yet. Press ⌃N or click the + card to start your first tree.
                 </div>
               )}
@@ -187,7 +179,7 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
 
   return (
     <div
-      className="chat-card has-delete"
+      className="tw:group/card tw:bg-bg tw:border tw:border-line tw:rounded-[16px] tw:p-[18px] tw:cursor-pointer tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:min-h-[180px] tw:relative tw:overflow-hidden tw:flex tw:flex-col tw:hover:border-ink-3 tw:hover:-translate-y-0.5"
       onClick={onOpen}
       role="button"
       tabIndex={0}
@@ -199,7 +191,7 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
       }}
     >
       <button
-        className="cc-del"
+        className="tw:absolute tw:top-2.5 tw:right-2.5 tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:focus-visible:opacity-90 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
         title="Delete chat"
         aria-label="Delete chat"
         onClick={(e) => { e.stopPropagation(); arm(); }}
@@ -211,8 +203,8 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
         </svg>
       </button>
 
-      <div className="cc-title">{chat.title}</div>
-      <div className="cc-meta">
+      <div className="tw:font-display tw:font-semibold tw:text-[19px] tw:tracking-[-0.015em] tw:leading-[1.15] tw:mb-2 tw:text-balance">{chat.title}</div>
+      <div className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mb-4 tw:flex tw:items-center tw:gap-2.5">
         <span>{formatCreated(chat.createdAt)}</span>
         <span style={{ opacity: 0.3 }}>·</span>
         <span>
@@ -225,19 +217,19 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
           </>
         )}
       </div>
-      <div className="cc-tree">
+      <div className="tw:flex-1 tw:relative tw:mt-auto">
         <MiniTreeThumb chatId={chat._id} />
       </div>
 
       {confirming && (
         <div
-          className="cc-confirm"
+          className="tw:absolute tw:[inset:auto_10px_10px_10px] tw:flex tw:items-center tw:gap-1.5 tw:px-2.5 tw:py-[7px] tw:bg-[color-mix(in_oklab,var(--coral)_14%,var(--bg-3))] tw:border tw:border-[color-mix(in_oklab,var(--coral)_30%,var(--line))] tw:rounded-[8px] tw:text-[12px] tw:text-ink tw:shadow-1"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="cp-label">Delete this chat?</span>
-          <button className="cp-yes" onClick={() => { void doDelete(); }}>yes</button>
-          <span className="cp-sep">·</span>
-          <button className="cp-no" onClick={cancel}>cancel</button>
+          <span className="tw:flex-1 tw:min-w-0">Delete this chat?</span>
+          <button className="tw:px-1.5 tw:py-0.5 tw:rounded-[5px] tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] tw:text-coral tw:font-semibold tw:hover:bg-coral tw:hover:text-white" onClick={() => { void doDelete(); }}>yes</button>
+          <span className="tw:text-ink-4">·</span>
+          <button className="tw:px-1.5 tw:py-0.5 tw:rounded-[5px] tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" onClick={cancel}>cancel</button>
         </div>
       )}
     </div>

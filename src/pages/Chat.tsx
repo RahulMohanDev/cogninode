@@ -43,10 +43,10 @@ export default function Chat() {
 
   if (!chatId) {
     return (
-      <div className="empty">
-        <div className="empty-inner">
-          <h2>No chat <em>id</em>.</h2>
-          <p><Link to="/">Back to all chats →</Link></p>
+      <div className="tw:flex-1 tw:grid tw:place-items-center tw:py-[60px] tw:px-8 tw:text-ink-3">
+        <div className="tw:text-center tw:max-w-[520px]">
+          <h2 className="tw:font-display tw:font-semibold tw:text-[38px] tw:tracking-[-0.025em] tw:text-ink tw:mt-[18px] tw:mx-0 tw:mb-3 tw:leading-none">No chat <em className="tw:font-serif tw:italic tw:text-coral tw:font-normal">id</em>.</h2>
+          <p className="tw:text-[16px] tw:text-ink-2 tw:mt-0 tw:mb-6"><Link to="/">Back to all chats →</Link></p>
         </div>
       </div>
     );
@@ -54,10 +54,10 @@ export default function Chat() {
 
   if (chat === undefined && tookTooLong) {
     return (
-      <div className="empty">
-        <div className="empty-inner">
-          <h2>Chat <em>not found</em>.</h2>
-          <p>
+      <div className="tw:flex-1 tw:grid tw:place-items-center tw:py-[60px] tw:px-8 tw:text-ink-3">
+        <div className="tw:text-center tw:max-w-[520px]">
+          <h2 className="tw:font-display tw:font-semibold tw:text-[38px] tw:tracking-[-0.025em] tw:text-ink tw:mt-[18px] tw:mx-0 tw:mb-3 tw:leading-none">Chat <em className="tw:font-serif tw:italic tw:text-coral tw:font-normal">not found</em>.</h2>
+          <p className="tw:text-[16px] tw:text-ink-2 tw:mt-0 tw:mb-6">
             That chat doesn't exist in this browser.{" "}
             <Link to="/" style={{ color: "var(--coral)", textDecoration: "underline" }}>
               Back to all chats →

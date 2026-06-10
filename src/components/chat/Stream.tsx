@@ -72,26 +72,26 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   const isEmpty = pathMessages.length === 0 && streamState !== "streaming";
 
   return (
-    <div className="stream" ref={ref}>
+    <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:scroll-smooth tw:pt-8 tw:px-0 tw:pb-[200px] tw:relative" ref={ref}>
       {reflectionsMode && (
-        <div className="reflect-banner" role="status" aria-live="polite">
-          <svg className="rb-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <div className="tw:sticky tw:top-0 tw:z-[5] tw:flex tw:items-center tw:gap-3 tw:py-2.5 tw:px-[22px] tw:bg-lilac tw:text-white tw:dark:text-[#0e0a14] tw:text-[13px] tw:border-b tw:border-b-[color-mix(in_oklab,var(--lilac)_60%,black)]" role="status" aria-live="polite">
+          <svg className="tw:w-5 tw:h-5 tw:flex-none" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M3 10 Q10 4 17 10 Q10 16 3 10 Z" stroke="currentColor" strokeWidth="1.6" fill="none"/>
             <circle cx="10" cy="10" r="2" fill="currentColor"/>
           </svg>
           <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <div className="rb-title">Reflections — tidying the current path</div>
-            <div className="rb-sub">Click to edit. Delete the noise. Merge what belongs together. Press ⌃R to exit.</div>
+            <div className="tw:font-medium">Reflections — tidying the current path</div>
+            <div className="tw:opacity-[0.78] tw:font-mono tw:text-[11px]">Click to edit. Delete the noise. Merge what belongs together. Press ⌃R to exit.</div>
           </div>
-          <div className="rb-actions">
+          <div className="tw:ml-auto tw:flex tw:gap-2 tw:flex-none">
             {collapseAction}
             {onSaveReflection && (
-              <button onClick={() => onSaveReflection()} title="Snapshot this path into your reflections">
+              <button className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-[var(--veil-white-14)] tw:text-white tw:border-[var(--veil-white-18)] tw:hover:bg-[var(--veil-white-22)] tw:dark:bg-[var(--veil-deep-14)] tw:dark:text-[#0e0a14] tw:dark:border-[var(--veil-deep-22)]" onClick={() => onSaveReflection()} title="Snapshot this path into your reflections">
                 Save as reflection
               </button>
             )}
             {onExitReflections && (
-              <button className="exit" onClick={() => onExitReflections()}>
+              <button className="tw:py-[5px] tw:px-3 tw:rounded-[7px] tw:text-[12px] tw:font-medium tw:border tw:cursor-pointer tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:bg-white tw:text-lilac tw:border-white tw:hover:bg-[color-mix(in_oklab,white_90%,var(--lilac))] tw:dark:bg-[#0e0a14] tw:dark:text-lilac tw:dark:border-[#0e0a14]" onClick={() => onExitReflections()}>
                 Done
               </button>
             )}
@@ -99,11 +99,11 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
         </div>
       )}
 
-      <div className="stream-inner">
+      <div className="tw:max-w-[780px] tw:mx-auto tw:py-0 tw:px-8 tw:flex tw:flex-col tw:gap-[26px]">
         {isEmpty && (
-          <div className="empty" style={{ minHeight: 240 }}>
-            <div className="empty-inner">
-              <p>Send your first message to grow this branch.</p>
+          <div className="tw:flex-1 tw:grid tw:place-items-center tw:py-[60px] tw:px-8 tw:text-ink-3 tw:min-h-[240px]">
+            <div className="tw:text-center tw:max-w-[520px]">
+              <p className="tw:text-[16px] tw:text-ink-2 tw:mt-0 tw:mb-6">Send your first message to grow this branch.</p>
             </div>
           </div>
         )}
@@ -124,11 +124,11 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
         })}
 
         {streamState === "streaming" && (
-          <div className="msg assistant">
-            <div className="m-head">
+          <div className="msg assistant tw:flex tw:flex-col tw:gap-1.5 tw:relative tw:items-start">
+            <div className="tw:flex tw:items-center tw:gap-2 tw:font-mono tw:text-[10px] tw:tracking-[0.1em] tw:text-ink-3 tw:uppercase">
               <span>assistant</span>
             </div>
-            <div className="m-body streaming-body">
+            <div className="m-body">
               {streamingReasoning ? (
                 <Reasoning text={streamingReasoning} streaming />
               ) : null}
@@ -146,7 +146,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
 
         {streamState === "error" && (
           streamErrorStatus === 401 ? (
-            <div className="msg assistant">
+            <div className="msg assistant tw:flex tw:flex-col tw:gap-1.5 tw:relative tw:items-start">
               <div
                 className="m-body auth-reset-card"
                 role="alert"
@@ -169,7 +169,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
                 </span>
                 <div>
                   <button
-                    className="btn-primary coral"
+                    className="tw:bg-coral tw:text-bg tw:py-3 tw:px-5 tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:w-full tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:hover:bg-[#ff4520] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))]"
                     type="button"
                     onClick={() => onAuthReset?.()}
                   >
@@ -179,7 +179,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
               </div>
             </div>
           ) : (
-            <div className="msg assistant">
+            <div className="msg assistant tw:flex tw:flex-col tw:gap-1.5 tw:relative tw:items-start">
               <div className="m-body" style={{ color: "var(--coral)" }}>
                 <strong>Stream error:</strong>{" "}
                 {streamError ?? "Unknown error — see browser console for details."}
