@@ -208,6 +208,44 @@ export async function attachToConcept(opts: {
   await addConceptEdge(opts.graphId, opts.conceptId, sourceId);
 }
 
+/** Persist a planned subtree unfold (see planSubtreeSources): one source
+ *  card per item — deduped, existing cards keep their position — plus
+ *  lineage edges mirroring parentage. Returns the root card's id and how
+ *  many cards were actually new. */
+export async function expandSourceTree(
+  graphId: string,
+  plan: Array<{
+    targetType: "chat" | "node";
+    targetId:   string;
+    x: number;
+    y: number;
+    parentTargetId: string | null;
+  }>,
+): Promise<{ rootSourceId: string | null; added: number }> {
+  return db.transaction(
+    "rw",
+    [db.graphSources, db.conceptEdges, db.graphs],
+    async () => {
+      const sourceIdByTarget = new Map<string, string>();
+      let added = 0;
+      let rootSourceId: string | null = null;
+      for (const item of plan) {
+        const { id, created } = await addSource(graphId, item);
+        sourceIdByTarget.set(item.targetId, id);
+        if (created) added++;
+        if (item.parentTargetId === null) rootSourceId = id;
+      }
+      for (const item of plan) {
+        if (!item.parentTargetId) continue;
+        const parent = sourceIdByTarget.get(item.parentTargetId);
+        const child  = sourceIdByTarget.get(item.targetId);
+        if (parent && child) await addConceptEdge(graphId, parent, child);
+      }
+      return { rootSourceId, added };
+    },
+  );
+}
+
 /** Spread new concepts on a loose grid so untouched ones never stack. */
 export function nextConceptPosition(count: number): { x: number; y: number } {
   return {

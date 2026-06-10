@@ -35,7 +35,7 @@ export interface FlowGraphEdge {
   source:   string;
   target:   string;
   animated: boolean;
-  style:    { stroke: string; strokeWidth: number };
+  style:    { stroke: string; strokeWidth: number; strokeDasharray?: string };
 }
 
 export interface FlowGraph {
@@ -170,15 +170,101 @@ export function buildConceptFlowGraph(
   const placed = new Set([...conceptIds, ...sourceById.keys()]);
   const flowEdges: FlowGraphEdge[] = edges
     .filter(e => placed.has(e.source) && placed.has(e.target))
-    .map(e => ({
-      id:       e._id,
-      source:   e.source,
-      target:   e.target,
-      animated: false,
-      style:    { stroke: "var(--line)", strokeWidth: 2 },
-    }));
+    .map(e => {
+      // Source↔source edges are tree lineage (unfolded subtrees) — dashed,
+      // so the user's classification edges stay visually primary.
+      const lineage = sourceById.has(e.source) && sourceById.has(e.target);
+      return {
+        id:       e._id,
+        source:   e.source,
+        target:   e.target,
+        animated: false,
+        style: lineage
+          ? { stroke: "var(--line)", strokeWidth: 1.5, strokeDasharray: "6 4" }
+          : { stroke: "var(--line)", strokeWidth: 2 },
+      };
+    });
 
   return { nodes, edges: flowEdges };
+}
+
+// ── unfolding chat subtrees onto the canvas ────────────────────────────
+// Dropping a chat/branch from the Library expands the WHOLE subtree into
+// individual source cards (lineage edges mirroring parentage) so the user
+// can prune branches they don't want classified. Pure planning — the
+// editor persists the result.
+
+export const SOURCE_X_GAP = 230;
+export const SOURCE_Y_GAP = 130;
+
+export interface SubtreePlanItem {
+  targetType: "chat" | "node";
+  targetId:   string;
+  x:          number;
+  y:          number;
+  /** Target id of the parent item (edge gets wired); null for the root. */
+  parentTargetId: string | null;
+}
+
+/**
+ * Plan cards for a chat's subtree. `rootNodeId === null` means a CHAT
+ * drop: the root card is the chat itself, its children are branch cards.
+ * Otherwise the card tree starts at that branch. The root lands at
+ * `origin`; descendants spread on the DFS grid below it.
+ */
+export function planSubtreeSources(
+  chatId:       string,
+  chatNodes:    DbNode[],
+  rootNodeId:   string | null,
+  origin:       { x: number; y: number },
+): SubtreePlanItem[] {
+  const forest = buildTree(chatNodes);
+  const points = layoutTree(forest);
+  const pointById = new Map(points.map(p => [p.nodeId, p]));
+
+  // Locate the subtree root node.
+  const actualRootId = rootNodeId
+    ?? chatNodes.find(n => n.parentId === null)?._id
+    ?? null;
+  if (!actualRootId) return [];
+  const rootPoint = pointById.get(actualRootId);
+  if (!rootPoint) return [];
+
+  // Collect the subtree (root + descendants).
+  const childrenByParent = new Map<string, DbNode[]>();
+  for (const n of chatNodes) {
+    if (!n.parentId) continue;
+    const arr = childrenByParent.get(n.parentId) ?? [];
+    arr.push(n);
+    childrenByParent.set(n.parentId, arr);
+  }
+  const subtreeIds = new Set<string>();
+  const walk = (id: string): void => {
+    subtreeIds.add(id);
+    for (const c of childrenByParent.get(id) ?? []) walk(c._id);
+  };
+  walk(actualRootId);
+
+  const isChatDrop = rootNodeId === null;
+  const items: SubtreePlanItem[] = [];
+  for (const id of subtreeIds) {
+    const p = pointById.get(id);
+    const n = chatNodes.find(x => x._id === id);
+    if (!p || !n) continue;
+    const isRoot = id === actualRootId;
+    items.push({
+      targetType: isRoot && isChatDrop ? "chat" : "node",
+      targetId:   isRoot && isChatDrop ? chatId : id,
+      x: origin.x + (p.x - rootPoint.x) * SOURCE_X_GAP,
+      y: origin.y + (p.y - rootPoint.y) * SOURCE_Y_GAP,
+      parentTargetId: isRoot
+        ? null
+        : n.parentId === actualRootId && isChatDrop
+          ? chatId
+          : n.parentId,
+    });
+  }
+  return items;
 }
 
 export function buildChatFlowGraph(dbNodes: DbNode[], currentNodeId: string): FlowGraph {

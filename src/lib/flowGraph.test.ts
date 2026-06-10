@@ -1,7 +1,8 @@
 // src/lib/flowGraph.test.ts
 import { describe, it, expect } from "vitest";
 import {
-  buildChatFlowGraph, buildConceptFlowGraph, FLOW_X_GAP, FLOW_Y_GAP,
+  buildChatFlowGraph, buildConceptFlowGraph, planSubtreeSources,
+  FLOW_X_GAP, FLOW_Y_GAP, SOURCE_X_GAP, SOURCE_Y_GAP,
 } from "./flowGraph";
 import type { Concept, ConceptEdge, GraphSource, Node as DbNode } from "./db";
 
@@ -125,5 +126,66 @@ describe("buildConceptFlowGraph", () => {
       resolvers,
     );
     expect(g.edges.map(e => e.id)).toEqual(["e1"]);
+  });
+
+  it("renders source↔source lineage edges dashed", () => {
+    const g = buildConceptFlowGraph(
+      [concept("k1")],
+      [source("s1", "chat", "c1"), source("s2", "node", "n1")],
+      [edge("e1", "s1", "s2"), edge("e2", "k1", "s1")],
+      resolvers,
+    );
+    const lineage = g.edges.find(e => e.id === "e1")!;
+    const classification = g.edges.find(e => e.id === "e2")!;
+    expect(lineage.style.strokeDasharray).toBe("6 4");
+    expect(classification.style.strokeDasharray).toBeUndefined();
+  });
+});
+
+describe("planSubtreeSources", () => {
+  // root → a → a1 ; root → b
+  const CHAT_NODES: DbNode[] = [
+    node("root", null, 0, "What are classes"),
+    node("a", "root", 1, "Java"),
+    node("a1", "a", 2, "Type erasure"),
+    node("b", "root", 1, "Metaclasses"),
+  ];
+
+  it("chat drop: root card is the chat; children link to it; grid positions offset from origin", () => {
+    const plan = planSubtreeSources("c1", CHAT_NODES, null, { x: 1000, y: 500 });
+    expect(plan).toHaveLength(4);
+
+    const root = plan.find(p => p.targetType === "chat")!;
+    expect(root.targetId).toBe("c1");
+    expect(root.parentTargetId).toBeNull();
+    expect(root).toMatchObject({ x: 1000, y: 500 });
+
+    const a = plan.find(p => p.targetId === "a")!;
+    expect(a.targetType).toBe("node");
+    expect(a.parentTargetId).toBe("c1");          // re-parented onto the chat card
+    expect(a.y).toBe(500 + SOURCE_Y_GAP);
+
+    const a1 = plan.find(p => p.targetId === "a1")!;
+    expect(a1.parentTargetId).toBe("a");
+    expect(a1.y).toBe(500 + 2 * SOURCE_Y_GAP);
+
+    const b = plan.find(p => p.targetId === "b")!;
+    expect(Math.abs(b.x - a.x)).toBe(SOURCE_X_GAP); // siblings spread on x
+  });
+
+  it("branch drop: plans only that subtree, rooted at origin", () => {
+    const plan = planSubtreeSources("c1", CHAT_NODES, "a", { x: 0, y: 0 });
+    expect(plan.map(p => p.targetId).sort()).toEqual(["a", "a1"]);
+    const a = plan.find(p => p.targetId === "a")!;
+    expect(a.targetType).toBe("node");
+    expect(a.parentTargetId).toBeNull();
+    expect(a).toMatchObject({ x: 0, y: 0 });
+    expect(plan.find(p => p.targetId === "a1")!.parentTargetId).toBe("a");
+  });
+
+  it("single-node chat plans one chat card", () => {
+    const plan = planSubtreeSources("c1", [node("root", null, 0)], null, { x: 5, y: 5 });
+    expect(plan).toHaveLength(1);
+    expect(plan[0]).toMatchObject({ targetType: "chat", targetId: "c1", parentTargetId: null });
   });
 });

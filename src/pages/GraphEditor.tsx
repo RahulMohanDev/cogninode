@@ -41,11 +41,11 @@ import {
 import {
   CONCEPT_COLORS,
   addConceptEdge, addSource, attachToConcept, createConcept,
-  deleteConcept, deleteConceptEdge, deleteSource, moveConcept,
-  moveSource, renameGraph, updateConcept,
+  deleteConcept, deleteConceptEdge, deleteSource, expandSourceTree,
+  moveConcept, moveSource, renameGraph, updateConcept,
 } from "../lib/knowledge";
 import {
-  buildConceptFlowGraph, resolveSourceDisplay,
+  buildConceptFlowGraph, planSubtreeSources, resolveSourceDisplay,
   type ConceptNodeData, type SourceResolvers,
 } from "../lib/flowGraph";
 import { buildTree, type TreeNode } from "../lib/path";
@@ -121,6 +121,23 @@ export default function GraphEditor() {
     () => sources.find(s => s._id === selectedId) ?? null,
     [sources, selectedId],
   );
+
+  // Unfold plan for the selected chat/branch source (its subtree as cards,
+  // rooted at the card's current position).
+  const expandPlan = useMemo(() => {
+    if (!selectedSource || selectedSource.targetType === "reflection") return null;
+    const chatId = selectedSource.targetType === "chat"
+      ? selectedSource.targetId
+      : nodeById.get(selectedSource.targetId)?.chatId;
+    if (!chatId) return null;
+    const chatNodes = dbNodes.filter(n => n.chatId === chatId);
+    const plan = planSubtreeSources(
+      chatId, chatNodes,
+      selectedSource.targetType === "chat" ? null : selectedSource.targetId,
+      { x: selectedSource.x, y: selectedSource.y },
+    );
+    return plan.length > 1 ? plan : null;
+  }, [selectedSource, dbNodes, nodeById]);
 
   // "Not found" grace, mirroring Chat.tsx.
   const [tookTooLong, setTookTooLong] = useState(false);
@@ -244,6 +261,8 @@ export default function GraphEditor() {
               edges={conceptEdges}
               concepts={concepts}
               resolvers={resolvers}
+              expandCount={expandPlan ? expandPlan.length - 1 : 0}
+              onExpand={expandPlan ? () => void expandSourceTree(graphId, expandPlan) : undefined}
               onClose={() => setSelectedId(null)}
             />
           )}
@@ -322,8 +341,10 @@ function ConceptCanvas({
     if (c.source && c.target) void addConceptEdge(graphId, c.source, c.target);
   }, [graphId]);
 
-  // Library drag → drop. Empty canvas: place a source node there. Onto a
-  // concept card: place near it AND wire the edge in one motion.
+  // Library drag → drop. Chats and branches UNFOLD: the whole subtree
+  // lands as individual cards joined by dashed lineage edges, ready for
+  // pruning — delete the cards you don't want classified. Reflections
+  // stay single cards. Dropping onto a concept also wires concept → root.
   const onDrop = useCallback(async (e: React.DragEvent) => {
     const raw = e.dataTransfer.getData(DRAG_MIME);
     if (!raw) return;
@@ -337,29 +358,57 @@ function ConceptCanvas({
 
     const hitNode = (e.target as HTMLElement).closest(".react-flow__node");
     const hitId = hitNode?.getAttribute("data-id");
+    const hitConcept = hitId && conceptIds.has(hitId)
+      ? concepts.find(c => c._id === hitId) ?? null
+      : null;
 
-    if (hitId && conceptIds.has(hitId)) {
-      await attachToConcept({
-        graphId, conceptId: hitId,
-        targetType: payload.targetType, targetId: payload.targetId,
+    // Where the root card lands: at the cursor, or fanned out beside the
+    // concept it was dropped on.
+    const pos = hitConcept
+      ? { x: hitConcept.x + 280, y: hitConcept.y }
+      : (() => {
+          const p = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+          return { x: p.x - 95, y: p.y - 28 };
+        })();
+
+    let rootSourceId: string | null = null;
+    let summary = "";
+
+    if (payload.targetType === "reflection") {
+      const { id, created } = await addSource(graphId, {
+        targetType: "reflection", targetId: payload.targetId, ...pos,
       });
-      const conceptLabel = concepts.find(c => c._id === hitId)?.label ?? "concept";
-      toast(`Connected "${payload.title}" to ${conceptLabel}`, { kind: "success" });
-      return;
+      rootSourceId = id;
+      if (!created && !hitConcept) {
+        await moveSource(id, pos.x, pos.y);
+        summary = "Already on this canvas — moved it here";
+      }
+    } else {
+      // Chat or branch: plan + unfold the subtree.
+      const chatId = payload.targetType === "chat"
+        ? payload.targetId
+        : (await db.nodes.get(payload.targetId))?.chatId;
+      if (!chatId) return;
+      const chatNodes = await db.nodes.where("chatId").equals(chatId).toArray();
+      const plan = planSubtreeSources(
+        chatId, chatNodes,
+        payload.targetType === "chat" ? null : payload.targetId,
+        pos,
+      );
+      const res = await expandSourceTree(graphId, plan);
+      rootSourceId = res.rootSourceId;
+      summary = res.added > 0
+        ? `Unfolded "${payload.title}" — ${res.added} card${res.added === 1 ? "" : "s"}. Prune what you don't need.`
+        : "Already on this canvas.";
     }
 
-    const pos = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    const { id, created } = await addSource(graphId, {
-      targetType: payload.targetType,
-      targetId:   payload.targetId,
-      x: pos.x - 95,
-      y: pos.y - 28,
-    });
-    if (!created) {
-      await moveSource(id, pos.x - 95, pos.y - 28);
-      toast("Already on this canvas — moved it here", { kind: "info" });
+    if (hitConcept && rootSourceId) {
+      await addConceptEdge(graphId, hitConcept._id, rootSourceId);
+      toast(`Connected "${payload.title}" to ${hitConcept.label}${summary ? ` · ${summary}` : ""}`, { kind: "success" });
+    } else if (summary) {
+      toast(summary, { kind: "success" });
     }
-    onSelect(id);
+    if (rootSourceId) onSelect(rootSourceId);
   }, [graphId, conceptIds, concepts, flow, onSelect, toast]);
 
   return (
@@ -557,7 +606,8 @@ function LibraryDrawer({
           spellCheck={false}
         />
         <p className="tw:m-0 tw:mt-1.5 tw:text-[11px] tw:text-ink-3">
-          Drag anything onto the canvas — or onto a concept to connect it.
+          Drag a chat or branch in — its subtree unfolds into cards.
+          Delete the ones you don't need; drop onto a concept to connect.
         </p>
       </div>
 
@@ -798,13 +848,15 @@ function ConceptPanel({
 // ── source side panel ──────────────────────────────────────────────────
 
 function SourcePanel({
-  source, edges, concepts, resolvers, onClose,
+  source, edges, concepts, resolvers, expandCount = 0, onExpand, onClose,
 }: {
-  source:    GraphSource;
-  edges:     ConceptEdge[];
-  concepts:  Concept[];
-  resolvers: SourceResolvers;
-  onClose:   () => void;
+  source:      GraphSource;
+  edges:       ConceptEdge[];
+  concepts:    Concept[];
+  resolvers:   SourceResolvers;
+  expandCount?: number;
+  onExpand?:   (() => void) | undefined;
+  onClose:     () => void;
 }) {
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
@@ -847,6 +899,15 @@ function SourcePanel({
             onClick={() => navigate(display.href)}
           >
             Open {source.targetType === "node" ? "branch" : source.targetType} →
+          </button>
+        )}
+        {onExpand && expandCount > 0 && (
+          <button
+            className="tw:w-full tw:py-2 tw:px-3 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:text-ink tw:bg-bg-3 tw:hover:border-ink-3"
+            onClick={onExpand}
+            title="Spread this subtree's branches onto the canvas as cards you can prune"
+          >
+            Unfold {expandCount} branch{expandCount === 1 ? "" : "es"}
           </button>
         )}
         {display.stale && (
