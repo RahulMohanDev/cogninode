@@ -251,6 +251,12 @@
     box-shadow: 0 0 0 8px transparent;
   }
 }
+/* Matched terms inside the deep-linked message (CSS Custom Highlight API,
+   registered by lib/domHighlight.ts). */
+::highlight(cogninode-search) {
+  background-color: color-mix(in oklab, var(--butter) 60%, transparent);
+  color: var(--ink);
+}
 /* ====== Loading dots ====== */
 .thinking {
   display: inline-flex; gap: 4px; padding: 6px 0;

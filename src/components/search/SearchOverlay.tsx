@@ -175,9 +175,14 @@ export function SearchOverlay() {
 
   const openHit = useCallback((hit: ResolvedHit) => {
     switch (hit.kind) {
-      case "message":
-        navigate(`/chat/${hit.chatId}?node=${hit.nodeId}&msg=${hit.rawId}`);
+      case "message": {
+        // ?q= drives in-message term highlighting at the destination.
+        const params = new URLSearchParams({ node: hit.nodeId, msg: hit.rawId });
+        const needle = q.trim();
+        if (needle) params.set("q", needle);
+        navigate(`/chat/${hit.chatId}?${params.toString()}`);
         break;
+      }
       case "reflection":
         navigate(`/reflections?open=${hit.rawId}`);
         break;
@@ -189,7 +194,7 @@ export function SearchOverlay() {
         break;
     }
     close();
-  }, [navigate, close]);
+  }, [navigate, close, q]);
 
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === "ArrowDown") {

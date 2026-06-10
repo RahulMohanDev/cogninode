@@ -16,7 +16,7 @@ import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
 import { anyModalOpen }                 from "../../hooks/useModalStack";
 import { useSearchState }               from "../../hooks/useSearchState";
-import { searchService }                from "../../lib/search/service";
+import { searchService, type ResolvedHit } from "../../lib/search/service";
 
 export interface SidebarProps {
   activeChatId:   string | null;
@@ -198,7 +198,13 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
 
   const branchRows = useMemo(() => {
     if (!activeChatId) return [];
-    return flattenTree(buildTree(activeNodes), collapsed);
+    // Skip the root row: its label mirrors the chat title (renameChat keeps
+    // them in sync), so rendering it added a duplicate line + one useless
+    // nesting level. The root's children ARE the top-level branches;
+    // clicking the active chat row selects the root.
+    const roots = buildTree(activeNodes);
+    const topLevel = roots.flatMap(r => r.children);
+    return flattenTree(topLevel, collapsed);
   }, [activeChatId, activeNodes, collapsed]);
 
   const toggleNode = (nodeId: string): void => {
@@ -217,6 +223,12 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   };
 
   const handleSelectChat = (chatId: string): void => {
+    // Re-clicking the ACTIVE chat returns to the root branch — the role the
+    // removed duplicate root row used to play.
+    if (chatId === activeChatId && activeChat) {
+      void handleSelectNode(activeChat.rootNodeId);
+      return;
+    }
     navigate(`/chat/${chatId}`);
   };
 
@@ -315,7 +327,11 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   // Chat filtering goes through the search service, so matches come from
   // full message bodies and reflections (and meaning, once the semantic
   // layer is up) — not just title substrings. Results are relevance-ranked.
-  const [ranked, setRanked] = useState<{ q: string; chatIds: string[] } | null>(null);
+  const [ranked, setRanked] = useState<{
+    q: string;
+    chatIds: string[];
+    byChat: Map<string, ResolvedHit[]>;
+  } | null>(null);
   useEffect(() => {
     const needle = search.trim();
     if (!needle) {
@@ -327,14 +343,32 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
       void searchService.search(needle, 60).then(res => {
         if (cancelled) return;
         const chatIds: string[] = [];
+        const byChat = new Map<string, ResolvedHit[]>();
         for (const h of res.hits) {
           if (!chatIds.includes(h.chatId)) chatIds.push(h.chatId);
+          const arr = byChat.get(h.chatId) ?? [];
+          // Up to 3 match previews per chat keep the list scannable.
+          if (arr.length < 3) arr.push(h);
+          byChat.set(h.chatId, arr);
         }
-        setRanked({ q: needle, chatIds });
+        setRanked({ q: needle, chatIds, byChat });
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(t); };
   }, [search]);
+
+  // Open a search preview at its exact location: the branch, and for
+  // message hits the exact message — scrolled to, flashed, and with the
+  // matched terms highlighted (the ?q= param drives the term highlight).
+  const openSearchHit = (h: ResolvedHit): void => {
+    const params = new URLSearchParams({ node: h.nodeId });
+    if (h.kind === "message") {
+      params.set("msg", h.rawId);
+      const needle = search.trim();
+      if (needle) params.set("q", needle);
+    }
+    navigate(`/chat/${h.chatId}?${params.toString()}`);
+  };
 
   const visibleChats = useMemo(() => {
     if (!chats) return [];
@@ -433,6 +467,10 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
           const isRenaming = renamingId?.kind === "chat" && renamingId.id === chat._id;
+          const hitPreviews =
+            search.trim() && ranked && ranked.q === search.trim()
+              ? ranked.byChat.get(chat._id)
+              : undefined;
           return (
             <div key={chat._id}>
               <div
@@ -503,7 +541,31 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                 />
               )}
 
-              {isActive && branchRows.length > 0 && (
+              {/* While searching: matched-text previews under the chat —
+                  click lands on the exact branch/message. */}
+              {hitPreviews && hitPreviews.length > 0 && (
+                <div className="tw:mt-0.5 tw:mb-1.5 tw:ml-[22px] tw:flex tw:flex-col">
+                  {hitPreviews.map(h => (
+                    <button
+                      key={h.docId}
+                      className="tw:flex tw:items-start tw:gap-1.5 tw:text-left tw:py-1 tw:px-2 tw:rounded-[6px] tw:text-[11.5px] tw:text-ink-3 tw:cursor-pointer tw:hover:bg-bg-2 tw:hover:text-ink"
+                      onClick={(e) => { e.stopPropagation(); openSearchHit(h); }}
+                      title={h.snippet?.text || h.title}
+                      type="button"
+                    >
+                      <svg className="tw:flex-none tw:mt-[2px] tw:opacity-70" width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.8" />
+                        <path d="M10.5 10.5 L14 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                      <span className="tw:flex-1 tw:min-w-0 tw:truncate">
+                        {h.snippet?.text || h.title || "match"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {isActive && !search.trim() && branchRows.length > 0 && (
                 <div className="tw:mt-0.5 tw:mb-1.5 tw:ml-[22px] tw:flex tw:flex-col tw:gap-0">
                   {branchRows.map(row => {
                     const rowActive = activeChat?.currentNodeId === row.node._id;
@@ -515,7 +577,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                       <div key={row.node._id}>
                         <div
                           className={`tw:group/row tw:flex tw:items-stretch tw:gap-1.5 tw:pl-0 tw:pr-2 tw:min-h-[26px] tw:rounded-[6px] tw:text-[12px] tw:cursor-pointer tw:relative ${rowActive ? "tw:bg-coral-tint tw:text-ink tw:font-medium" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-                          data-depth={Math.min(3, row.depth)}
+                          data-depth={Math.min(3, row.node.depth)}
                           onClick={() => {
                             if (!isRowRenaming) void handleSelectNode(row.node._id);
                           }}
@@ -545,7 +607,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                           ) : (
                             <span className="tw:w-4 tw:flex-none" />
                           )}
-                          <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none tw:self-center ${DEPTH_DOT[Math.min(3, row.depth)]}`} />
+                          <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none tw:self-center ${DEPTH_DOT[Math.min(3, row.node.depth)]}`} />
                           {isRowRenaming ? (
                             <input
                               className="tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink tw:bg-bg tw:border tw:border-line tw:rounded-[5px] tw:px-1.5 tw:py-0.5 tw:outline-none tw:transition-[border-color,box-shadow] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac tw:focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--lilac)_22%,transparent)]"

@@ -10,6 +10,8 @@
 import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
+import { highlightTermsInElement, clearSearchHighlight } from "../../lib/domHighlight";
+import { tokenizeQuery }     from "../../lib/search/service";
 import { Message }           from "./Message";
 import { MarkdownBody }      from "./MarkdownBody";
 import { Reasoning }         from "./Reasoning";
@@ -19,6 +21,8 @@ export interface StreamProps {
   currentNodeId:        string;
   /** Scroll to + flash this message once it's rendered (search deep link). */
   focusMessageId?:      string;
+  /** Search terms to highlight inside the focused message. */
+  focusQuery?:          string;
   streamState:          "idle" | "streaming" | "error";
   streamingText:        string;
   streamingReasoning?:  string;
@@ -42,6 +46,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   {
     currentNodeId,
     focusMessageId,
+    focusQuery,
     streamState,
     streamingText,
     streamingReasoning,
@@ -73,12 +78,14 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   }, [pathMessages.length, streamingText, streamState]);
 
   // Search deep link: once the target message is rendered, center + flash
-  // it. Runs in rAF so it lands after the bottom-scroll effect above and
-  // wins the scroll position.
+  // it, and highlight the matched terms inside it (semantic-only hits may
+  // have no literal term — then only the flash shows). Runs in rAF so it
+  // lands after the bottom-scroll effect above and wins the scroll
+  // position.
   const focusedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!focusMessageId || focusedRef.current === focusMessageId) return;
-    if (!pathMessages.some(m => m._id === focusMessageId)) return;
+    if (!focusMessageId || focusedRef.current === focusMessageId) return undefined;
+    if (!pathMessages.some(m => m._id === focusMessageId)) return undefined;
     focusedRef.current = focusMessageId;
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-msg-id="${CSS.escape(focusMessageId)}"]`);
@@ -86,9 +93,11 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
         el.scrollIntoView({ block: "center", behavior: "smooth" });
         el.classList.add("search-flash");
         setTimeout(() => el.classList.remove("search-flash"), 1600);
+        if (focusQuery) highlightTermsInElement(el, tokenizeQuery(focusQuery));
       }
     });
-  }, [focusMessageId, pathMessages]);
+    return () => clearSearchHighlight();
+  }, [focusMessageId, focusQuery, pathMessages]);
 
   const isEmpty = pathMessages.length === 0 && streamState !== "streaming";
 

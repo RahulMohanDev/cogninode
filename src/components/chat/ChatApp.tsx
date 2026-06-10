@@ -28,9 +28,11 @@ export interface ChatAppProps {
   initialPrefill: string | null;
   /** Message to scroll to + flash after load (search deep link). */
   focusMessageId?: string | null;
+  /** Search terms to highlight inside the focused message. */
+  focusQuery?: string | null;
 }
 
-export function ChatApp({ chatId, initialPrefill, focusMessageId }: ChatAppProps) {
+export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: ChatAppProps) {
   const { prefs, clearApiKey } = useSettings();
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
@@ -372,6 +374,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId }: ChatAppProps
           chatId={chatId}
           currentNodeId={currentNodeId}
           {...(focusMessageId ? { focusMessageId } : {})}
+          {...(focusQuery ? { focusQuery } : {})}
           streamState={state}
           streamingText={streamingText}
           streamingReasoning={streamingReasoning}
