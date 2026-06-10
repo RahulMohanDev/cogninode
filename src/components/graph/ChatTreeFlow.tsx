@@ -12,7 +12,7 @@
 // Default-exported for React.lazy: @xyflow/react stays out of the main
 // bundle until the first ⌃T.
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -21,8 +21,11 @@ import {
   MiniMap,
   Handle,
   Position,
+  useNodesState,
+  useEdgesState,
   type NodeProps,
   type Node as FlowNode,
+  type Edge as FlowEdge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -33,7 +36,22 @@ import type { Node as DbNode } from "../../lib/db";
 // Depth accents — same scale as the sidebar dots / QuickJump / legend.
 const BORDER = ["tw:border-coral", "tw:border-teal", "tw:border-lilac", "tw:border-butter"];
 const DOT    = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
-const MINIMAP_COLORS = ["var(--coral)", "var(--teal)", "var(--lilac)", "var(--butter)"];
+
+// The MiniMap paints nodeColor/maskColor into SVG *attributes*, where
+// var()/color-mix() are invalid (CSS functions only resolve in style
+// properties) — passing them produced an empty brown box. Resolve the
+// design tokens to concrete values per theme instead.
+function readToken(name: string, fallback: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+function withAlpha(color: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return color;
+  const n = parseInt(m[1]!, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 
 type BranchFlowNode = FlowNode<BranchNodeData, "branch">;
 
@@ -87,10 +105,35 @@ export default function ChatTreeFlow({ dbNodes, currentNodeId, onPick }: ChatTre
     [dbNodes, currentNodeId],
   );
 
+  // React Flow's measured node dimensions arrive as node *changes* — with a
+  // fully-controlled `nodes` prop and no onNodesChange they were dropped,
+  // and the MiniMap (which only draws measured nodes) rendered nothing.
+  // useNodesState applies them; the effects re-sync when the data changes.
+  const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes as BranchFlowNode[]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges as FlowEdge[]);
+  useEffect(() => { setNodes(graph.nodes as BranchFlowNode[]); }, [graph.nodes, setNodes]);
+  useEffect(() => { setEdges(graph.edges as FlowEdge[]); }, [graph.edges, setEdges]);
+
+  // Concrete colors for the MiniMap's SVG attributes, re-read per theme.
+  const mini = useMemo(() => ({
+    depths: [
+      readToken("--coral",  "#ff5e3a"),
+      readToken("--teal",   "#0e8a7b"),
+      readToken("--lilac",  "#7c5cff"),
+      readToken("--butter", "#ffd166"),
+    ],
+    mask:   withAlpha(readToken("--bg",   "#161413"), 0.72),
+    bg:     readToken("--bg-2", "#efe7d6"),
+    stroke: readToken("--line", "#d9cfba"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [prefs.theme]);
+
   return (
     <ReactFlow
-      nodes={graph.nodes}
-      edges={graph.edges}
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       colorMode={prefs.theme}
       fitView
@@ -111,10 +154,16 @@ export default function ChatTreeFlow({ dbNodes, currentNodeId, onPick }: ChatTre
       <MiniMap
         pannable
         zoomable
-        nodeColor={(n) => MINIMAP_COLORS[(n.data as BranchNodeData).depth] ?? "var(--ink-3)"}
+        nodeColor={(n) => mini.depths[(n.data as BranchNodeData).depth] ?? mini.stroke}
         nodeStrokeWidth={3}
-        style={{ backgroundColor: "var(--bg-2)" }}
-        maskColor="color-mix(in oklab, var(--bg) 65%, transparent)"
+        nodeBorderRadius={4}
+        maskColor={mini.mask}
+        style={{
+          backgroundColor: mini.bg,
+          borderRadius: 12,
+          border: `1px solid ${mini.stroke}`,
+          overflow: "hidden",
+        }}
       />
     </ReactFlow>
   );
