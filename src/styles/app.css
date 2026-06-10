@@ -1,6 +1,93 @@
 /* ============ cogninode app shell ============ */
 /* Builds on the landing tokens, adds product-shell layouts */
 
+/* The `tw` prefix is load-bearing: streamdown (and potentially other
+   libraries) emit bare Tailwind-looking classNames (`flex`, `italic`,
+   `border-collapse`, …) in their generated DOM. Those were inert before
+   Tailwind existed here and must STAY inert — the library DOM is styled by
+   the hand-written CSS below. Prefixing means only `tw:*` classes ever
+   resolve to utilities. */
+@import "tailwindcss" prefix(tw);
+
+/* Dark mode is driven by the [data-theme="dark"] attribute that index.html
+   sets on <html> before paint — not by prefers-color-scheme. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Bridge the design tokens below into Tailwind's theme. `inline` makes every
+   utility reference the var() expression directly (e.g. `bg-bg` emits
+   `background-color: var(--bg)`), so the [data-theme="dark"] token swap keeps
+   flipping the whole UI with no per-utility dark: rewrites. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-bg-tint: var(--bg-tint);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-coral: var(--coral);
+  --color-coral-soft: var(--coral-soft);
+  --color-coral-tint: var(--coral-tint);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
+  --color-teal-tint: var(--teal-tint);
+  --color-lilac: var(--lilac);
+  --color-lilac-soft: var(--lilac-soft);
+  --color-lilac-tint: var(--lilac-tint);
+  --color-butter: var(--butter);
+  --color-butter-tint: var(--butter-tint);
+
+  --font-display: var(--display);
+  --font-serif: var(--serif);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+
+  --radius-app: var(--radius);
+  --radius-app-sm: var(--radius-sm);
+  --radius-app-xs: var(--radius-xs);
+
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
+}
+
+/* ── Preflight compat ─────────────────────────────────────────────
+   Tailwind's Preflight zeroes the UA defaults the hand-written styles
+   below leaned on (heading scale + margins, paragraph/list/blockquote
+   spacing, inline media alignment). Restore the Chromium UA values in
+   @layer base: they beat Preflight (later in the same layer) but keep
+   losing to utilities — exactly the cascade slot UA styles occupied. */
+@layer base {
+  h1 { font-size: 2em;    margin-block: 0.67em; font-weight: bold; }
+  h2 { font-size: 1.5em;  margin-block: 0.83em; font-weight: bold; }
+  h3 { font-size: 1.17em; margin-block: 1em;    font-weight: bold; }
+  h4 { font-size: 1em;    margin-block: 1.33em; font-weight: bold; }
+  h5 { font-size: 0.83em; margin-block: 1.67em; font-weight: bold; }
+  h6 { font-size: 0.67em; margin-block: 2.33em; font-weight: bold; }
+  p  { margin-block: 1em; }
+  ul, ol { margin-block: 1em; padding-inline-start: 40px; }
+  ul { list-style-type: disc; }
+  ol { list-style-type: decimal; }
+  ul ul, ol ul { list-style-type: circle; margin-block: 0; }
+  ol ol, ul ol { margin-block: 0; }
+  blockquote { margin-block: 1em; margin-inline: 40px; }
+  pre { margin-block: 1em; }
+  hr { margin-block: 0.5em; border-style: inset; border-width: 1px; }
+  img, svg, video, canvas { display: inline; vertical-align: baseline; }
+  /* Chromium gives buttons 1px 6px padding; several icon buttons sized
+     their grid content boxes around it. */
+  button { padding: 1px 6px; }
+  input:not([type]), input[type="text"], input[type="search"], input[type="password"],
+  input[type="email"], input[type="url"], input[type="number"] { padding: 1px 2px; }
+  input[type="radio"], input[type="checkbox"] { margin: 3px 3px 0 5px; }
+  textarea { padding: 2px; }
+  input::placeholder, textarea::placeholder { color: #757575; opacity: 1; }
+  code, kbd, samp, pre { font-family: monospace; }
+}
+
 :root {
   --bg: #f7f1e6;
   --bg-2: #efe7d6;
