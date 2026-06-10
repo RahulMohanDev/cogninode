@@ -1,7 +1,9 @@
 // src/lib/flowGraph.test.ts
 import { describe, it, expect } from "vitest";
-import { buildChatFlowGraph, FLOW_X_GAP, FLOW_Y_GAP } from "./flowGraph";
-import type { Node as DbNode } from "./db";
+import {
+  buildChatFlowGraph, buildConceptFlowGraph, FLOW_X_GAP, FLOW_Y_GAP,
+} from "./flowGraph";
+import type { Concept, ConceptEdge, ConceptLink, Node as DbNode } from "./db";
 
 const node = (id: string, parentId: string | null, depth: number, label = id): DbNode => ({
   _id: id, chatId: "c1", parentId, depth, label, createdAt: depth,
@@ -61,5 +63,38 @@ describe("buildChatFlowGraph", () => {
     const g = buildChatFlowGraph([node("r", null, 0, ""), node("x", "r", 1, "")], "r");
     expect(g.nodes.find(n => n.id === "r")!.data.label).toBe("root");
     expect(g.nodes.find(n => n.id === "x")!.data.label).toBe("branch L1");
+  });
+});
+
+describe("buildConceptFlowGraph", () => {
+  const concept = (id: string, x = 0, y = 0): Concept => ({
+    _id: id, graphId: "g1", label: id, notes: "", color: "teal",
+    x, y, createdAt: 0, updatedAt: 0,
+  });
+  const edge = (id: string, source: string, target: string): ConceptEdge =>
+    ({ _id: id, graphId: "g1", source, target });
+  const link = (conceptId: string, targetType: "chat" | "reflection"): ConceptLink =>
+    ({ _id: `l-${conceptId}-${targetType}-${Math.random()}`, graphId: "g1", conceptId, targetType, targetId: "t", createdAt: 0 });
+
+  it("uses persisted positions and counts attachments per type", () => {
+    const g = buildConceptFlowGraph(
+      [concept("java", 120, 80), concept("oop")],
+      [],
+      [link("java", "chat"), link("java", "chat"), link("java", "reflection")],
+    );
+    const java = g.nodes.find(n => n.id === "java")!;
+    expect(java.position).toEqual({ x: 120, y: 80 });
+    expect(java.data.chatCount).toBe(2);
+    expect(java.data.reflectionCount).toBe(1);
+    expect(g.nodes.find(n => n.id === "oop")!.data.chatCount).toBe(0);
+  });
+
+  it("drops edges whose endpoints are missing", () => {
+    const g = buildConceptFlowGraph(
+      [concept("a"), concept("b")],
+      [edge("e1", "a", "b"), edge("e2", "a", "ghost")],
+      [],
+    );
+    expect(g.edges.map(e => e.id)).toEqual(["e1"]);
   });
 });

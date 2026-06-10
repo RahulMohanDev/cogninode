@@ -12,10 +12,11 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { db, type Reflection } from "../lib/db";
+import { db, deleteReflection, type Reflection } from "../lib/db";
 import { Sidebar }             from "../components/chat/Sidebar";
 import { SettingsModal }       from "../components/settings/SettingsModal";
 import { MarkdownBody }        from "../components/chat/MarkdownBody";
+import { AddToGraphDialog, type AddToGraphTarget } from "../components/graph/AddToGraphDialog";
 import { useSettings }         from "../hooks/useSettings";
 import { useSettingsHotkey }   from "../hooks/useSettingsHotkey";
 import { useToast }            from "../components/ui/Toast";
@@ -42,6 +43,7 @@ export default function Reflections() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch]             = useState("");
   const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [graphTarget, setGraphTarget]   = useState<AddToGraphTarget | null>(null);
 
   useSettingsHotkey(() => setSettingsOpen(true));
 
@@ -172,6 +174,7 @@ export default function Reflections() {
                     reflection={selected}
                     chatTitle={chatTitleById.get(selected.chatId) ?? "(deleted chat)"}
                     onOpenBranch={() => navigate(`/chat/${selected.chatId}?node=${selected.nodeId}`)}
+                    onAddToGraph={() => setGraphTarget({ type: "reflection", id: selected._id, title: selected.title })}
                     onDeleted={() => { setSelectedId(null); toast("Reflection deleted", { kind: "success" }); }}
                   />
                 ) : (
@@ -184,6 +187,11 @@ export default function Reflections() {
           </div>
         </div>
       </div>
+      <AddToGraphDialog
+        open={graphTarget !== null}
+        target={graphTarget}
+        onClose={() => setGraphTarget(null)}
+      />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
@@ -195,10 +203,11 @@ interface ReflectionDetailProps {
   reflection:   Reflection;
   chatTitle:    string;
   onOpenBranch: () => void;
+  onAddToGraph: () => void;
   onDeleted:    () => void;
 }
 
-function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onDeleted }: ReflectionDetailProps) {
+function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onAddToGraph, onDeleted }: ReflectionDetailProps) {
   const toast = useToast();
   const [editing, setEditing]       = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -250,7 +259,7 @@ function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onDeleted }: Re
   const handleDelete = async (): Promise<void> => {
     setConfirming(false);
     try {
-      await db.reflections.delete(reflection._id);
+      await deleteReflection(reflection._id);   // also drops knowledge-graph links
       onDeleted();
     } catch (err) {
       toast(`Couldn't delete: ${(err as Error).message}`, { kind: "error" });
@@ -280,6 +289,19 @@ function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onDeleted }: Re
         )}
 
         <div className="tw:flex tw:items-center tw:gap-1 tw:flex-none tw:pt-0.5">
+          <button
+            className="tw:w-[28px] tw:h-[28px] tw:grid tw:place-items-center tw:rounded-[7px] tw:text-ink-3 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-teal-tint tw:hover:text-teal"
+            title="Add to knowledge graph"
+            aria-label="Add to knowledge graph"
+            onClick={onAddToGraph}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.3" />
+              <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.3" />
+              <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
           <button
             className="tw:w-[28px] tw:h-[28px] tw:grid tw:place-items-center tw:rounded-[7px] tw:text-ink-3 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"
             title="Rename"

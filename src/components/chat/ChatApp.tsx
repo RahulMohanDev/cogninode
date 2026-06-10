@@ -21,6 +21,7 @@ import { Composer }            from "./Composer";
 import { SelectionPopup }      from "./SelectionPopup";
 import { Overlays }            from "./Overlays";
 import { SaveReflectionDialog } from "./SaveReflectionDialog";
+import { AddToGraphDialog }    from "../graph/AddToGraphDialog";
 import { SettingsModal }       from "../settings/SettingsModal";
 
 export interface ChatAppProps {
@@ -78,6 +79,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
   const [reflectionsMode,    setReflectionsMode]    = useState(false);
   const [collapseConfirm,    setCollapseConfirm]    = useState(false);
   const [saveReflectionOpen, setSaveReflectionOpen] = useState(false);
+  const [addToGraphOpen,     setAddToGraphOpen]     = useState(false);
   const streamRef = useRef<HTMLDivElement | null>(null);
 
   // ⌃, / ⌘, — advertised in the shortcuts sheet.
@@ -367,6 +369,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
           breadcrumb={breadcrumb}
           reflectionsActive={reflectionsMode}
           onToggleReflect={() => setReflectionsMode(v => !v)}
+          onAddToGraph={() => setAddToGraphOpen(true)}
         />
 
         <Stream
@@ -426,6 +429,12 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
         onClose={() => setSaveReflectionOpen(false)}
       />
 
+      <AddToGraphDialog
+        open={addToGraphOpen}
+        target={{ type: "chat", id: chatId, title: chat.title }}
+        onClose={() => setAddToGraphOpen(false)}
+      />
+
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -452,9 +461,10 @@ interface TopBarProps {
   breadcrumb:        DbNode[];      // root → currentNodeId, inclusive
   reflectionsActive: boolean;
   onToggleReflect:   () => void;
+  onAddToGraph:      () => void;
 }
 
-function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBarProps) {
+function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect, onAddToGraph }: TopBarProps) {
   const openTree = (): void => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "t", ctrlKey: true }));
   };
@@ -534,6 +544,21 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect }: TopBa
           </svg>
           Jump
           <span className="tw:font-mono tw:text-[10px] tw:py-px tw:px-[5px] tw:rounded-[3px] tw:bg-bg-2 tw:text-ink-3">⌃Q</span>
+        </button>
+
+        <button
+          className="tw:w-[34px] tw:h-[34px] tw:grid tw:place-items-center tw:rounded-[8px] tw:border tw:border-line tw:text-ink-2 tw:bg-bg-3 tw:transition-[border-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:border-ink-3 tw:hover:text-ink"
+          type="button"
+          onClick={onAddToGraph}
+          title="Add this chat to a knowledge graph"
+          aria-label="Add this chat to a knowledge graph"
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
     </div>

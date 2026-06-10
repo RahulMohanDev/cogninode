@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { ApiKeyGate } from "./components/setup/ApiKeyGate";
 import { SettingsProvider } from "./hooks/useSettings";
@@ -8,6 +9,10 @@ import { SearchOverlay } from "./components/search/SearchOverlay";
 import Chats from "./pages/Chats";
 import Chat from "./pages/Chat";
 import Reflections from "./pages/Reflections";
+import Graphs from "./pages/Graphs";
+
+// The graph editor pulls in React Flow — lazy so it loads on first visit.
+const GraphEditor = lazy(() => import("./pages/GraphEditor"));
 
 export default function App() {
     // SettingsProvider sits above everything so the shared apiKey it owns is
@@ -25,6 +30,15 @@ export default function App() {
                             <Routes>
                                 <Route path="/" element={<Chats />} />
                                 <Route path="/reflections" element={<Reflections />} />
+                                <Route path="/graphs" element={<Graphs />} />
+                                <Route
+                                    path="/graphs/:graphId"
+                                    element={
+                                        <Suspense fallback={<div className="tw:h-dvh tw:grid tw:place-items-center tw:text-ink-3 tw:text-[14px]">Loading graph…</div>}>
+                                            <GraphEditor />
+                                        </Suspense>
+                                    }
+                                />
                                 <Route path="/chat/:chatId" element={<Chat />} />
                             </Routes>
                             {/* ⌘K palette — global so it works on every page;

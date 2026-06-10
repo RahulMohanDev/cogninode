@@ -126,6 +126,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const { prefs, setTheme, setPref } = useSettings();
   const activeStreams = useActiveStreams();
   const onReflectionsPage = location.pathname.startsWith("/reflections");
+  const onGraphsPage      = location.pathname.startsWith("/graphs");
 
   // Collapsed = slim icon rail. Persisted in prefs so it survives reloads and
   // is shared with the .shell grid (which owns the column width).
@@ -427,6 +428,20 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
             <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          </svg>
+        </button>
+        <button
+          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onGraphsPage ? "tw:bg-teal-tint tw:text-teal tw:dark:bg-[color-mix(in_oklab,var(--teal)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+          title="Knowledge graphs"
+          aria-label="Knowledge graphs"
+          aria-current={onGraphsPage ? "page" : undefined}
+          onClick={() => navigate("/graphs")}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
         </button>
         <button

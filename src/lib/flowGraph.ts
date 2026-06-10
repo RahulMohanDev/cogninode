@@ -6,7 +6,9 @@
 // stacks on y.
 
 import { buildTree, layoutTree, findPath } from "./path";
-import type { Node as DbNode } from "./db";
+import type {
+  Concept, ConceptColor, ConceptEdge, ConceptLink, Node as DbNode,
+} from "./db";
 
 export const FLOW_X_GAP = 260;
 export const FLOW_Y_GAP = 170;
@@ -39,6 +41,68 @@ export interface FlowGraphEdge {
 export interface FlowGraph {
   nodes: FlowGraphNode[];
   edges: FlowGraphEdge[];
+}
+
+// ── concept maps (knowledge graphs) ────────────────────────────────────
+
+export interface ConceptNodeData {
+  label:           string;
+  notes:           string;
+  color:           ConceptColor;
+  chatCount:       number;
+  reflectionCount: number;
+  [key: string]: unknown;
+}
+
+export interface ConceptFlowNode {
+  id:       string;
+  type:     "concept";
+  position: { x: number; y: number };
+  data:     ConceptNodeData;
+}
+
+export interface ConceptFlowGraph {
+  nodes: ConceptFlowNode[];
+  edges: FlowGraphEdge[];
+}
+
+export function buildConceptFlowGraph(
+  concepts: Concept[],
+  edges:    ConceptEdge[],
+  links:    ConceptLink[],
+): ConceptFlowGraph {
+  const chatCounts = new Map<string, number>();
+  const reflCounts = new Map<string, number>();
+  for (const l of links) {
+    const map = l.targetType === "chat" ? chatCounts : reflCounts;
+    map.set(l.conceptId, (map.get(l.conceptId) ?? 0) + 1);
+  }
+
+  const nodes: ConceptFlowNode[] = concepts.map(c => ({
+    id:       c._id,
+    type:     "concept",
+    position: { x: c.x, y: c.y },
+    data: {
+      label:           c.label,
+      notes:           c.notes,
+      color:           c.color,
+      chatCount:       chatCounts.get(c._id) ?? 0,
+      reflectionCount: reflCounts.get(c._id) ?? 0,
+    },
+  }));
+
+  const placed = new Set(concepts.map(c => c._id));
+  const flowEdges: FlowGraphEdge[] = edges
+    .filter(e => placed.has(e.source) && placed.has(e.target))
+    .map(e => ({
+      id:       e._id,
+      source:   e.source,
+      target:   e.target,
+      animated: false,
+      style:    { stroke: "var(--line)", strokeWidth: 2 },
+    }));
+
+  return { nodes, edges: flowEdges };
 }
 
 export function buildChatFlowGraph(dbNodes: DbNode[], currentNodeId: string): FlowGraph {

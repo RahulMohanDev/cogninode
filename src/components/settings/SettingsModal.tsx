@@ -686,7 +686,10 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
     setStatus(null);
     try {
       const res = await importFromJson(file);
-      setStatus(`Imported ${res.chatsAdded} chat${res.chatsAdded === 1 ? "" : "s"}; ${res.skipped} skipped.`);
+      const graphsNote = res.graphsAdded > 0
+        ? ` ${res.graphsAdded} knowledge graph${res.graphsAdded === 1 ? "" : "s"} added.`
+        : "";
+      setStatus(`Imported ${res.chatsAdded} chat${res.chatsAdded === 1 ? "" : "s"}; ${res.skipped} skipped.${graphsNote}`);
     } catch (err) {
       setStatus(`Import failed: ${(err as Error).message}`);
     } finally {

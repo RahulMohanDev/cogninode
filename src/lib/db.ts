@@ -85,6 +85,49 @@ export interface MetaEntry {
   value: unknown;
 }
 
+// ── Knowledge graphs ───────────────────────────────────────────
+// User-curated concept maps: named graphs of concept nodes connected by
+// edges, with chats and reflections attachable to concepts — a personal
+// map of what's being learned, orthogonal to the chat trees.
+
+export type ConceptColor = "coral" | "teal" | "lilac" | "butter";
+
+export interface KnowledgeGraph {
+  _id:       string;
+  name:      string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Concept {
+  _id:       string;
+  graphId:   string;
+  label:     string;
+  notes:     string;        // freeform markdown-ish notes
+  color:     ConceptColor;
+  x:         number;        // canvas position, persisted on drag
+  y:         number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ConceptEdge {
+  _id:     string;
+  graphId: string;
+  source:  string;          // concept id
+  target:  string;          // concept id
+  label?:  string;
+}
+
+export interface ConceptLink {
+  _id:        string;
+  graphId:    string;
+  conceptId:  string;
+  targetType: "chat" | "reflection";
+  targetId:   string;
+  createdAt:  number;
+}
+
 // One embedding per searchable doc (message / reflection), keyed by the
 // search doc id ("m:<id>" / "r:<id>"). Vectors are pre-normalized so
 // cosine similarity reduces to a dot product. `textHash` detects content
@@ -113,6 +156,10 @@ export const db = new Dexie("cogninode") as Dexie & {
   models:      EntityTable<CatalogModel, "_id">;
   meta:        EntityTable<MetaEntry,   "key">;
   searchVectors: EntityTable<SearchVector, "_id">;
+  graphs:       EntityTable<KnowledgeGraph, "_id">;
+  concepts:     EntityTable<Concept,     "_id">;
+  conceptEdges: EntityTable<ConceptEdge, "_id">;
+  conceptLinks: EntityTable<ConceptLink, "_id">;
 };
 
 db.version(1).stores({
@@ -132,6 +179,14 @@ db.version(2).stores({
 // v3: semantic-search embeddings (cache — rebuildable from messages).
 db.version(3).stores({
   searchVectors: "_id, model, chatId",
+});
+
+// v4: knowledge graphs (concept maps with chat/reflection attachments).
+db.version(4).stores({
+  graphs:       "_id, updatedAt",
+  concepts:     "_id, graphId",
+  conceptEdges: "_id, graphId, source, target",
+  conceptLinks: "_id, graphId, conceptId, targetId",
 });
 
 // ── Meta helpers ───────────────────────────────────────────────
@@ -376,7 +431,7 @@ export async function deleteNodeSubtree(
 ): Promise<DeleteSubtreeResult> {
   return db.transaction(
     "rw",
-    [db.chats, db.nodes, db.messages, db.reflections, db.files],
+    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.conceptLinks],
     async () => {
       const chat = await db.chats.get(chatId);
       if (!chat) {
@@ -437,6 +492,12 @@ export async function deleteNodeSubtree(
       await db.reflections.where("nodeId").anyOf(doomedArr).delete();
       await db.nodes.bulkDelete(doomedArr);
       if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
+      // Knowledge-graph links to the deleted reflections.
+      if (doomedReflections.length > 0) {
+        await db.conceptLinks
+          .where("targetId").anyOf(doomedReflections.map(r => r._id))
+          .delete();
+      }
 
       // Repoint currentNodeId if it was inside the deleted subtree.
       const parentNodeId: string | null = target.parentId;
@@ -474,6 +535,14 @@ export async function deleteNodeSubtree(
   );
 }
 
+/** Delete one reflection plus any knowledge-graph links pointing at it. */
+export async function deleteReflection(reflectionId: string): Promise<void> {
+  await db.transaction("rw", db.reflections, db.conceptLinks, async () => {
+    await db.reflections.delete(reflectionId);
+    await db.conceptLinks.where("targetId").equals(reflectionId).delete();
+  });
+}
+
 export interface DeleteChatResult {
   nodesDeleted:    number;
   messagesDeleted: number;
@@ -488,7 +557,7 @@ export interface DeleteChatResult {
 export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
   return db.transaction(
     "rw",
-    [db.chats, db.nodes, db.messages, db.reflections, db.files],
+    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.conceptLinks],
     async () => {
       const chat = await db.chats.get(chatId);
       if (!chat) {
@@ -523,6 +592,10 @@ export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
       await db.nodes.where("chatId").equals(chatId).delete();
       await db.chats.delete(chatId);
       if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
+      // Knowledge-graph links to this chat and its reflections.
+      await db.conceptLinks
+        .where("targetId").anyOf([chatId, ...reflections.map(r => r._id)])
+        .delete();
 
       return {
         nodesDeleted:       nodes.length,

@@ -6,25 +6,32 @@
 
 import { db } from "../db";
 
-export type SearchDocKind = "message" | "reflection" | "node" | "chat";
+export type SearchDocKind = "message" | "reflection" | "node" | "chat" | "concept";
 
 export interface SearchDoc {
-  /** Namespaced id: "m:<id>" | "r:<id>" | "n:<id>" | "c:<id>". */
+  /** Namespaced id: "m:<id>" | "r:<id>" | "n:<id>" | "c:<id>" | "g:<id>". */
   id:     string;
   kind:   SearchDocKind;
+  /** Owning chat id — or the GRAPH id for concept docs (used the same way
+   *  for grouping/navigation). */
   chatId: string;
-  /** Node to open for this hit (chat docs use the chat's currentNodeId). */
+  /** Node to open for this hit (chat docs use the chat's currentNodeId;
+   *  empty for concepts). */
   nodeId: string;
-  /** Title-ish field (reflection title, node label, chat title). */
+  /** Title-ish field (reflection title, node label, chat title, concept label). */
   title:  string;
-  /** Body text (message content, reflection body). */
+  /** Body text (message content, reflection body, concept notes). */
   text:   string;
   /** Underlying record id without the namespace prefix. */
   rawId:  string;
 }
 
+const KIND_PREFIX: Record<SearchDocKind, string> = {
+  message: "m", reflection: "r", node: "n", chat: "c", concept: "g",
+};
+
 export const docId = (kind: SearchDocKind, rawId: string): string =>
-  `${kind === "message" ? "m" : kind === "reflection" ? "r" : kind === "node" ? "n" : "c"}:${rawId}`;
+  `${KIND_PREFIX[kind]}:${rawId}`;
 
 export function parseDocId(id: string): { kind: SearchDocKind; rawId: string } | null {
   const prefix = id.slice(0, 2);
@@ -35,6 +42,7 @@ export function parseDocId(id: string): { kind: SearchDocKind; rawId: string } |
     case "r:": return { kind: "reflection", rawId };
     case "n:": return { kind: "node",       rawId };
     case "c:": return { kind: "chat",       rawId };
+    case "g:": return { kind: "concept",    rawId };
     default:   return null;
   }
 }
@@ -52,11 +60,12 @@ export function textHash(s: string): string {
 /** Snapshot every searchable doc from Dexie. Used for the boot-time index
  *  build and for the embedding backfill diff. */
 export async function collectAllDocs(): Promise<SearchDoc[]> {
-  const [chats, nodes, messages, reflections] = await Promise.all([
+  const [chats, nodes, messages, reflections, concepts] = await Promise.all([
     db.chats.toArray(),
     db.nodes.toArray(),
     db.messages.toArray(),
     db.reflections.toArray(),
+    db.concepts.toArray(),
   ]);
 
   const docs: SearchDoc[] = [];
@@ -92,6 +101,12 @@ export async function collectAllDocs(): Promise<SearchDoc[]> {
       nodeId: r.nodeId, title: r.title, text: r.body, rawId: r._id,
     });
   }
+  for (const k of concepts) {
+    docs.push({
+      id: docId("concept", k._id), kind: "concept", chatId: k.graphId,
+      nodeId: "", title: k.label, text: k.notes, rawId: k._id,
+    });
+  }
 
   return docs;
 }
@@ -118,6 +133,11 @@ export async function loadDoc(kind: SearchDocKind, rawId: string): Promise<Searc
       const c = await db.chats.get(rawId);
       if (!c) return null;
       return { id: docId(kind, rawId), kind, chatId: c._id, nodeId: c.currentNodeId || c.rootNodeId, title: c.title, text: "", rawId };
+    }
+    case "concept": {
+      const k = await db.concepts.get(rawId);
+      if (!k) return null;
+      return { id: docId(kind, rawId), kind, chatId: k.graphId, nodeId: "", title: k.label, text: k.notes, rawId };
     }
   }
 }

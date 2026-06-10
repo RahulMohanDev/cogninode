@@ -159,8 +159,9 @@ class SearchService {
       this.scheduleFlush();
     };
 
-    const tables: Array<[SearchDocKind, "chats" | "nodes" | "messages" | "reflections"]> = [
-      ["chat", "chats"], ["node", "nodes"], ["message", "messages"], ["reflection", "reflections"],
+    const tables: Array<[SearchDocKind, "chats" | "nodes" | "messages" | "reflections" | "concepts"]> = [
+      ["chat", "chats"], ["node", "nodes"], ["message", "messages"],
+      ["reflection", "reflections"], ["concept", "concepts"],
     ];
     for (const [kind, table] of tables) {
       const up  = queueUp(kind);
@@ -451,16 +452,20 @@ class SearchService {
       byKind.set(parsed.kind, arr);
     }
 
-    const [messages, reflections, nodes, chats] = await Promise.all([
+    const [messages, reflections, nodes, concepts, chats, graphs] = await Promise.all([
       db.messages.bulkGet(byKind.get("message") ?? []),
       db.reflections.bulkGet(byKind.get("reflection") ?? []),
       db.nodes.bulkGet(byKind.get("node") ?? []),
+      db.concepts.bulkGet(byKind.get("concept") ?? []),
       db.chats.toArray(),
+      db.graphs.toArray(),
     ]);
-    const msgById  = new Map(messages.filter(Boolean).map(m => [m!._id, m!]));
-    const refById  = new Map(reflections.filter(Boolean).map(r => [r!._id, r!]));
-    const nodeById = new Map(nodes.filter(Boolean).map(n => [n!._id, n!]));
-    const chatById = new Map(chats.map(c => [c._id, c]));
+    const msgById   = new Map(messages.filter(Boolean).map(m => [m!._id, m!]));
+    const refById   = new Map(reflections.filter(Boolean).map(r => [r!._id, r!]));
+    const nodeById  = new Map(nodes.filter(Boolean).map(n => [n!._id, n!]));
+    const kById     = new Map(concepts.filter(Boolean).map(k => [k!._id, k!]));
+    const chatById  = new Map(chats.map(c => [c._id, c]));
+    const graphById = new Map(graphs.map(g => [g._id, g]));
 
     const out: ResolvedHit[] = [];
     for (const r of rows) {
@@ -485,6 +490,15 @@ class SearchService {
           ...base, kind: "reflection", chatId: ref.chatId, nodeId: ref.nodeId,
           chatTitle: chat.title, title: ref.title,
           snippet: makeSnippet(ref.body, r.terms),
+        });
+      } else if (parsed.kind === "concept") {
+        const k = kById.get(parsed.rawId);
+        const graph = k && graphById.get(k.graphId);
+        if (!k || !graph) continue;
+        out.push({
+          ...base, kind: "concept", chatId: k.graphId, nodeId: "",
+          chatTitle: graph.name, title: k.label,
+          snippet: k.notes ? makeSnippet(k.notes, r.terms) : null,
         });
       } else if (parsed.kind === "node") {
         const n = nodeById.get(parsed.rawId);
