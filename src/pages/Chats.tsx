@@ -191,7 +191,7 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
       }}
     >
       <button
-        className="tw:absolute tw:top-2.5 tw:right-2.5 tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:focus-visible:opacity-90 tw:hover:opacity-100 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
+        className="tw:absolute tw:top-2.5 tw:right-2.5 tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:focus-visible:opacity-90 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
         title="Delete chat"
         aria-label="Delete chat"
         onClick={(e) => { e.stopPropagation(); arm(); }}

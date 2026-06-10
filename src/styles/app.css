@@ -165,38 +165,6 @@
   .shell { transition: none; }
 }
 
-/* ====== Sidebar ====== */
-.side {
-  background: var(--bg);
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  position: relative;
-  /* Clip the full-width content while the grid track animates open/closed so
-     nothing bleeds into the main pane mid-transition. */
-  overflow: hidden;
-}
-.side-top {
-  padding: 16px 16px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.side-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: -0.02em;
-  /* Fill the row so the all-chats + collapse buttons group at the right. */
-  flex: 1;
-  min-width: 0;
-}
-.side-brand svg { flex: none; }
 .icon-btn {
   width: 30px; height: 30px;
   display: grid; place-items: center;
@@ -207,403 +175,13 @@
 .icon-btn:hover { background: var(--bg-2); color: var(--ink); }
 .icon-btn.active { background: var(--ink); color: var(--bg); }
 
-.side-search {
-  margin: 0 12px 8px;
-  position: relative;
-}
-.side-search input {
-  width: 100%;
-  padding: 9px 12px 9px 34px;
-  border: 1px solid var(--line);
-  background: var(--bg-3);
-  border-radius: 10px;
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.12s;
-}
-.side-search input:focus { border-color: var(--ink-3); }
-.side-search input::placeholder { color: var(--ink-3); }
-.side-search .s-icon {
-  position: absolute;
-  left: 11px; top: 50%; transform: translateY(-50%);
-  color: var(--ink-3);
-  pointer-events: none;
-}
-.side-search .s-kbd {
-  position: absolute;
-  right: 8px; top: 50%; transform: translateY(-50%);
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.side-new {
-  margin: 0 12px 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--ink);
-  color: var(--bg);
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.12s;
-}
-.side-new:hover { background: #2a2522; }
-.side-new .plus {
-  width: 18px; height: 18px;
-  display: grid; place-items: center;
-  border-radius: 6px;
-  background: color-mix(in oklab, white 14%, transparent);
-  font-size: 14px;
-  line-height: 1;
-}
-.side-new .kbd {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 10px;
-  background: color-mix(in oklab, white 14%, transparent);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: color-mix(in oklab, white 80%, transparent);
-}
-
-.side-section-h {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  padding: 10px 18px 6px;
-}
-
-.side-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
-}
 .side-list::-webkit-scrollbar { width: 6px; }
 .side-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 
-.chat-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--ink-2);
-  cursor: pointer;
-  position: relative;
-  transition: background 0.1s, color 0.1s;
-}
-.chat-row:hover { background: var(--bg-2); color: var(--ink); }
-.chat-row.active { background: var(--ink); color: var(--bg); }
-.chat-row .chevron {
-  width: 14px; height: 14px;
-  flex: none;
-  display: grid; place-items: center;
-  transition: transform 0.2s;
-  color: var(--ink-3);
-}
-.chat-row.active .chevron { color: color-mix(in oklab, var(--bg) 70%, transparent); }
-.chat-row.expanded .chevron { transform: rotate(90deg); }
-.chat-row .c-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.chat-row .c-count {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  background: var(--bg-2);
-  padding: 1px 6px;
-  border-radius: 999px;
-  flex: none;
-}
-.chat-row.active .c-count {
-  background: color-mix(in oklab, white 14%, transparent);
-  color: color-mix(in oklab, var(--bg) 80%, transparent);
-}
-.chat-row .c-actions {
-  display: none;
-  position: absolute;
-  right: 6px; top: 50%; transform: translateY(-50%);
-  background: inherit;
-  align-items: center;
-  gap: 2px;
-}
-.chat-row:hover .c-actions { display: flex; }
-.chat-row .c-actions button {
-  width: 22px; height: 22px;
-  display: grid; place-items: center;
-  border-radius: 5px;
-  color: var(--ink-3);
-}
-.chat-row .c-actions button:hover { background: rgba(0,0,0,0.06); color: var(--ink); }
-.chat-row.active .c-actions button { color: color-mix(in oklab, var(--bg) 70%, transparent); }
-
-/* Tree branches under a chat (sidebar) */
-.branch-list {
-  margin: 2px 0 6px 22px;
-  padding-left: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-.branch-row {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  padding: 0 8px 0 0;
-  min-height: 26px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--ink-2);
-  cursor: pointer;
-  position: relative;
-}
-.branch-row:hover { background: var(--bg-2); color: var(--ink); }
-.branch-row.active { background: var(--coral-tint); color: var(--ink); font-weight: 500; }
-
-/* Guide columns — one per ancestor depth. Drawn with thin lines. */
-.branch-row .b-guides {
-  display: flex;
-  align-self: stretch;
-  flex: none;
-}
-.branch-row .b-guides .bg {
-  width: 14px;
-  flex: none;
-  position: relative;
-}
-/* trunk = ancestor at this column still has more siblings below — full vertical line */
-.branch-row .b-guides .bg.trunk::before,
-.branch-row .b-guides .bg.tee::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: -1px;
-  bottom: -1px;
-  width: 1px;
-  background: var(--line);
-  transform: translateX(-0.5px);
-}
-/* elbow = this row IS the last child — vertical line stops at the middle */
-.branch-row .b-guides .bg.elbow::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: -1px;
-  height: calc(50% + 1px);
-  width: 1px;
-  background: var(--line);
-  transform: translateX(-0.5px);
-}
-/* horizontal tick from the trunk to the row's content */
-.branch-row .b-guides .bg.tee::after,
-.branch-row .b-guides .bg.elbow::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 7px;
-  height: 1px;
-  background: var(--line);
-}
-
-/* Per-node chevron (collapsible at any level) */
-.branch-row .b-chev {
-  align-self: center;
-  width: 16px; height: 16px;
-  display: grid; place-items: center;
-  flex: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  border-radius: 4px;
-  color: var(--ink-3);
-  cursor: pointer;
-  transition: transform 0.12s, background 0.12s, color 0.12s;
-}
-.branch-row .b-chev:hover { background: rgba(0,0,0,0.06); color: var(--ink); }
-.branch-row .b-chev.open { transform: rotate(90deg); }
-.branch-row .b-chev-spacer { width: 16px; flex: none; }
-
-.branch-row .b-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex: none;
-  align-self: center;
-}
-.branch-row[data-depth="0"] .b-dot { background: var(--coral); }
-.branch-row[data-depth="1"] .b-dot { background: var(--teal); }
-.branch-row[data-depth="2"] .b-dot { background: var(--lilac); }
-.branch-row[data-depth="3"] .b-dot { background: var(--butter); }
-.branch-row .b-label {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  align-self: center;
-  padding: 5px 0;
-}
-.branch-row .b-count {
-  align-self: center;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  background: var(--bg-2);
-  padding: 1px 6px;
-  border-radius: 4px;
-  flex: none;
-  line-height: 1.5;
-}
-.branch-row:hover .b-count { background: rgba(0,0,0,0.06); }
-.branch-row.active .b-count {
-  background: color-mix(in oklab, var(--coral) 22%, transparent);
-  color: var(--ink);
-}
-
-/* User footer */
-.side-foot {
-  border-top: 1px solid var(--line);
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  position: relative;
-}
-.avatar {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--bg);
-  display: grid; place-items: center;
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 14px;
-  flex: none;
-}
-.avatar.coral { background: var(--coral); }
-.avatar.teal { background: var(--teal); }
-.avatar.lilac { background: var(--lilac); }
-.side-foot .who {
-  flex: 1; min-width: 0;
-  display: flex; flex-direction: column;
-}
-.side-foot .who .name {
-  font-size: 13px; font-weight: 500; color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.side-foot .who .credits {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.side-foot .who .credits .cred-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--teal);
-}
-
-.user-menu {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 12px; right: 12px;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: var(--shadow-3);
-  z-index: 20;
-  animation: popUp 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
 @keyframes popUp {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.user-menu a, .user-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 7px;
-  font-size: 13px;
-  color: var(--ink);
-  width: 100%;
-  text-align: left;
-}
-.user-menu a:hover, .user-menu button:hover { background: var(--bg-2); }
-.user-menu .um-sep {
-  height: 1px; background: var(--line); margin: 4px 0;
-}
-.user-menu .um-icon {
-  width: 16px; height: 16px;
-  color: var(--ink-3);
-  flex: none;
-}
-
-/* ── Collapsible icon rail ──────────────────────────────────────────
-   When .side.collapsed (driven by prefs.sidebarCollapsed) the sidebar slims
-   to a 60px rail: search, the chat list, and all text labels hide, leaving
-   only the core icon affordances stacked and centered. The width itself is
-   animated by the .shell grid track. */
-
-/* Chevron points "«" (collapse) when open; flips to "»" when collapsed so the
-   one glyph reads as expand. */
-.collapse-toggle svg { transition: transform 0.2s ease; }
-.side.collapsed .collapse-toggle svg { transform: scaleX(-1); }
-
-.side.collapsed .side-top {
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 14px 0 10px;
-}
-.side.collapsed .collapse-toggle { order: -1; }   /* expand button at the top */
-.side.collapsed .side-brand { flex: none; justify-content: center; }
-.side.collapsed .side-brand span { display: none; }
-
-.side.collapsed .side-search,
-.side.collapsed .side-section-h,
-.side.collapsed .side-list { display: none; }
-
-/* New-chat collapses to a centered "+" square. */
-.side.collapsed .side-new {
-  margin: 2px auto 8px;
-  width: 38px;
-  height: 38px;
-  padding: 0;
-  justify-content: center;
-}
-.side.collapsed .side-new .sn-label,
-.side.collapsed .side-new .kbd { display: none; }
-
-/* Footer drops the identity block, stacks its two icon buttons, and pins to
-   the bottom (the chat list — normally the flex spacer — is hidden). */
-.side.collapsed .side-foot {
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 0;
-  margin-top: auto;
-}
-.side.collapsed .side-foot .avatar,
-.side.collapsed .side-foot .who { display: none; }
-
 /* ====== Main pane ====== */
 .main {
   display: flex;
@@ -1954,8 +1532,7 @@
 [data-theme="dark"] .topup-tile,
 [data-theme="dark"] .field input,
 [data-theme="dark"] .field select,
-[data-theme="dark"] .field textarea,
-[data-theme="dark"] .side-search input {
+[data-theme="dark"] .field textarea {
   background: var(--bg-3);
 }
 [data-theme="dark"] .topup-tile:hover { background: var(--bg-2); border-color: var(--coral); }
@@ -1985,9 +1562,6 @@
 [data-theme="dark"] .btn-google { background: var(--bg-3); }
 [data-theme="dark"] .btn-google:hover { background: var(--bg-2); border-color: var(--ink-3); }
 
-/* Inline sidebar variant of theme toggle (no fixed positioning). */
-.theme-toggle-inline svg { width: 14px; height: 14px; }
-.theme-toggle-inline:hover { transform: rotate(-12deg); }
 
 /* Theme toggle (floating sun/moon) — used by pages that opt in. */
 .theme-toggle {
@@ -2018,7 +1592,6 @@
    plan cards in light don't suddenly look like a slab of charcoal. */
 /* Hover states that hardcoded a near-black colour now need to be
    slightly-off-cream (since --ink is cream in dark). */
-[data-theme="dark"] .side-new:hover    { background: color-mix(in oklab, var(--ink) 88%, var(--bg)); }
 [data-theme="dark"] .btn-primary:hover { background: color-mix(in oklab, var(--ink) 88%, var(--bg)); }
 
 /* The "code" file-chip icon is hardcoded #2c2c2c, almost invisible on
@@ -2080,45 +1653,8 @@
 /* ============================================================ */
 
 /* Beta tag in brand wordmark */
-.beta-tag {
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--coral);
-  background: var(--coral-tint);
-  padding: 2px 6px;
-  border-radius: 4px;
-  vertical-align: 2px;
-  margin-left: 4px;
-}
-[data-theme="dark"] .beta-tag { background: var(--coral-tint); color: var(--coral); }
 
 /* ── Sidebar footer — API key indicator ──────────────────────── */
-.side-foot .avatar.key-avatar {
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-}
-[data-theme="dark"] .side-foot .avatar.key-avatar {
-  background: var(--bg-3);
-  border-color: var(--line);
-}
-.side-foot .who .key-line { display: flex; align-items: center; gap: 6px; }
-.side-foot .who .key-line .key-mono {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 130px;
-}
-.side-foot .who .key-line .cred-dot.ok  { background: var(--teal);  }
-.side-foot .who .key-line .cred-dot.bad { background: var(--coral); }
-
-/* ── Cost pill (replaces credit-pill) ────────────────────────── */
 .cost-pill {
   font-family: var(--mono);
   font-size: 11px;
@@ -2546,75 +2082,6 @@
 .msg.reflecting .m-body { transition: outline-color 0.12s; }
 
 /* ── nav delete + theme toggle ─────────────── */
-/* Per-row trash icons live inside .chat-row / .branch-row / .chat-card
-   markup added by Sidebar + Chats. They fade in on hover so the resting
-   state stays calm. Confirm pills auto-revert after 4s (handled in TS). */
-
-.chat-row.has-delete,
-.branch-row.has-delete { position: relative; }
-
-.row-del {
-  opacity: 0;
-  width: 22px;
-  height: 22px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 6px;
-  color: var(--ink-3);
-  margin-left: 4px;
-  flex: none;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
-}
-.chat-row:hover .row-del,
-.branch-row:hover .row-del,
-.row-del:focus-visible { opacity: 0.85; }
-.row-del:hover {
-  opacity: 1;
-  background: color-mix(in oklab, var(--coral) 18%, transparent);
-  color: var(--coral);
-}
-.chat-row.active .row-del { color: color-mix(in oklab, var(--bg) 75%, transparent); }
-.chat-row.active .row-del:hover {
-  background: color-mix(in oklab, var(--coral) 26%, transparent);
-  color: var(--bg);
-}
-
-/* The branch-row variant nudges the trash to the right edge — the row's
-   flex layout pushes b-label to fill, so a margin-left:auto pins it. */
-.row-del-branch { margin-left: auto; }
-
-.confirm-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 10px 6px;
-  padding: 6px 10px;
-  background: color-mix(in oklab, var(--coral) 12%, var(--bg-3));
-  border: 1px solid color-mix(in oklab, var(--coral) 30%, var(--line));
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--ink);
-}
-.confirm-pill .cp-label { flex: 1; min-width: 0; }
-.confirm-pill .cp-yes,
-.confirm-pill .cp-no {
-  font: inherit;
-  padding: 2px 6px;
-  border-radius: 5px;
-  transition: background 0.1s, color 0.1s;
-}
-.confirm-pill .cp-yes { color: var(--coral); font-weight: 600; }
-.confirm-pill .cp-yes:hover { background: var(--coral); color: white; }
-.confirm-pill .cp-no { color: var(--ink-3); }
-.confirm-pill .cp-no:hover { background: var(--bg-2); color: var(--ink); }
-.confirm-pill .cp-sep { color: var(--ink-4); }
-
-/* Chats grove card delete: floats top-right, mirrors row-del feel. */
-/* Branch-row layout: the row uses flex; ensure b-label stretches so the
-   trash icon ends up flush right without changing the existing dot/chevron
-   positions. The existing .branch-row rules in this file don't pin a width
-   on b-label, so this is a no-op for legacy rows. */
-.branch-row.has-delete .b-label { flex: 1 1 auto; min-width: 0; }
 
 /* ── topbar + composer affordances ─────── */
 
@@ -3157,7 +2624,7 @@
 /* ============ Sidebar stream pulse ============ */
 /* Tiny lilac dot rendered next to a branch row when its node is
    currently producing tokens. Per-row only — no global indicator. */
-.branch-row .b-stream-pulse {
+.b-stream-pulse {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -3173,7 +2640,7 @@
   100% { box-shadow: 0 0 0 8px transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .branch-row .b-stream-pulse {
+  .b-stream-pulse {
     animation: none;
     opacity: 0.85;
   }
@@ -3479,65 +2946,3 @@
 }
 
 /* ── chat rename ─────────────────────────── */
-/* Pencil affordance sits beside .row-del on each chat row. It fades in
-   on hover exactly like .row-del, but in a neutral/lilac hover tone —
-   coral is reserved for the destructive delete action. */
-
-.row-rename {
-  opacity: 0;
-  width: 22px;
-  height: 22px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 6px;
-  color: var(--ink-3);
-  margin-left: 4px;
-  flex: none;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
-}
-.chat-row:hover .row-rename,
-.branch-row:hover .row-rename,
-.row-rename:focus-visible { opacity: 0.85; }
-.row-rename:hover {
-  opacity: 1;
-  background: color-mix(in oklab, var(--lilac) 18%, transparent);
-  color: var(--lilac);
-}
-.chat-row.active .row-rename { color: color-mix(in oklab, var(--bg) 75%, transparent); }
-.chat-row.active .row-rename:hover {
-  background: color-mix(in oklab, var(--lilac) 30%, transparent);
-  color: var(--bg);
-}
-
-/* Inline editor that replaces the .c-label title span while renaming. */
-.chat-rename-input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 13px;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 2px 6px;
-  outline: none;
-  transition: border-color 0.12s, box-shadow 0.12s;
-}
-.chat-rename-input:focus {
-  border-color: var(--lilac);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--lilac) 22%, transparent);
-}
-
-/* ── branch-node rename ──────────────────── */
-/* Branch rows get the same hover pencil + inline-edit affordance as chat
-   rows. The branch row's flex layout pushes b-label to fill; the trash
-   uses .row-del-branch { margin-left: auto } to pin flush-right. With a
-   pencil added just left of the trash, the PENCIL takes margin-left:auto
-   instead (it's the first of the icon pair), and the trash falls back to
-   the plain .row-del margin-left:4px so the two icons sit flush-right
-   without overlap. */
-.row-rename-branch { margin-left: auto; }
-.branch-row .row-del-branch { margin-left: 4px; }
-
-/* The branch-row coral.active background tints the pencil like the trash. */
-.branch-row.active .row-rename { color: var(--ink); }

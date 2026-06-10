@@ -22,7 +22,7 @@ export function SetupHero() {
             >
                 <Glyph size={22} />
                 <span>
-                    cogninode <span className="beta-tag">beta</span>
+                    cogninode <span className="tw:inline-block tw:font-mono tw:text-[9px] tw:font-medium tw:tracking-[0.14em] tw:uppercase tw:text-coral tw:bg-coral-tint tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:align-[2px] tw:ml-1">beta</span>
                 </span>
             </a>
 

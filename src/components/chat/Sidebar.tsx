@@ -98,6 +98,22 @@ function flattenTree(
   return out;
 }
 
+
+// Connector-guide utility sets, one per guide kind. trunk = ancestor still
+// has siblings below (full vertical line); tee = branch point (line + tick);
+// elbow = last child (half line + tick); blank = spacer under a finished
+// ancestor column.
+const GUIDE_LINE = "tw:before:content-[''] tw:before:absolute tw:before:left-1/2 tw:before:-top-px tw:before:w-px tw:before:bg-line tw:before:-translate-x-[0.5px]";
+const GUIDE_TICK = "tw:after:content-[''] tw:after:absolute tw:after:left-1/2 tw:after:top-1/2 tw:after:w-[7px] tw:after:h-px tw:after:bg-line";
+const GUIDE: Record<string, string> = {
+  trunk: `${GUIDE_LINE} tw:before:-bottom-px`,
+  tee:   `${GUIDE_LINE} tw:before:-bottom-px ${GUIDE_TICK}`,
+  elbow: `${GUIDE_LINE} tw:before:h-[calc(50%+1px)] ${GUIDE_TICK}`,
+  blank: "",
+};
+
+const DEPTH_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
+
 // ── component ─────────────────────────────────────────────────────
 
 export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
@@ -282,19 +298,19 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   const isDark = prefs.theme === "dark";
 
   return (
-    <aside className={`side ${isCollapsed ? "collapsed" : ""}`}>
-      <div className="side-top">
+    <aside className="tw:bg-bg tw:border-r tw:border-line tw:flex tw:flex-col tw:min-h-0 tw:relative tw:overflow-hidden">
+      <div className={`tw:flex tw:items-center tw:justify-between ${isCollapsed ? "tw:flex-col tw:gap-1.5 tw:pt-3.5 tw:px-0 tw:pb-2.5" : "tw:gap-2 tw:pt-4 tw:px-4 tw:pb-2.5"}`}>
         <a
           href="/"
-          className="side-brand"
+          className={`tw:flex tw:items-center tw:gap-2 tw:font-display tw:font-semibold tw:text-[17px] tw:tracking-[-0.02em] tw:[&_svg]:flex-none tw:min-w-0 ${isCollapsed ? "tw:flex-none tw:justify-center" : "tw:flex-1"}`}
           title="cogninode — all chats"
           onClick={(e) => { e.preventDefault(); navigate("/"); }}
         >
           <Glyph size={22} />
-          <span>cogninode <span className="beta-tag">beta</span></span>
+          <span className={isCollapsed ? "tw:hidden" : undefined}>cogninode <span className={`tw:font-mono tw:text-[9px] tw:font-medium tw:tracking-[0.14em] tw:uppercase tw:text-coral tw:bg-coral-tint tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:align-[2px] tw:ml-1 ${isCollapsed ? "tw:hidden" : "tw:inline-block"}`}>beta</span></span>
         </a>
         <button
-          className="icon-btn side-allchats"
+          className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
           title="All chats"
           aria-label="All chats"
           onClick={() => navigate("/")}
@@ -307,13 +323,13 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           </svg>
         </button>
         <button
-          className="icon-btn collapse-toggle"
+          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink ${isCollapsed ? "tw:-order-1" : ""}`}
           onClick={toggleCollapsed}
           title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-expanded={!isCollapsed}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <svg className={`tw:transition-transform tw:duration-200 tw:ease-[ease] ${isCollapsed ? "tw:[transform:scaleX(-1)]" : ""}`} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M8.5 4 L4.5 8 L8.5 12 M12 4 L8 8 L12 12"
                   stroke="currentColor" strokeWidth="1.5"
                   strokeLinecap="round" strokeLinejoin="round" />
@@ -321,12 +337,13 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         </button>
       </div>
 
-      <div className="side-search">
-        <svg className="s-icon" width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <div className={`tw:mx-3 tw:mt-0 tw:mb-2 tw:relative ${isCollapsed ? "tw:hidden" : ""}`}>
+        <svg className="tw:absolute tw:left-[11px] tw:top-1/2 tw:[transform:translateY(-50%)] tw:text-ink-3 tw:pointer-events-none" width="14" height="14" viewBox="0 0 16 16" fill="none">
           <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
           <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
         <input
+          className="tw:w-full tw:py-[9px] tw:pr-3 tw:pl-[34px] tw:border tw:border-line tw:bg-bg-3 tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
           type="text"
           placeholder="Search chats…"
           value={search}
@@ -334,15 +351,15 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         />
       </div>
 
-      <button className="side-new" onClick={handleNewChat} title="New chat (⌃N)">
-        <span className="plus">+</span>
-        <span className="sn-label">New chat</span>
-        <span className="kbd">⌃N</span>
+      <button className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`} onClick={handleNewChat} title="New chat (⌃N)">
+        <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-[14px] tw:leading-none">+</span>
+        <span className={isCollapsed ? "tw:hidden" : undefined}>New chat</span>
+        <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[color-mix(in_oklab,white_80%,transparent)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
       </button>
 
-      <div className="side-section-h">Recent chats</div>
+      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>Recent chats</div>
 
-      <div className="side-list">
+      <div className={`side-list tw:flex-1 tw:overflow-y-auto tw:pt-0 tw:px-2 tw:pb-2 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent] ${isCollapsed ? "tw:hidden" : ""}`}>
         {visibleChats.map(chat => {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
@@ -350,12 +367,12 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           return (
             <div key={chat._id}>
               <div
-                className={`chat-row ${isActive ? "active expanded" : ""} has-delete`}
+                className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
                 onClick={() => { if (!isRenaming) handleSelectChat(chat._id); }}
               >
                 {isRenaming ? (
                   <input
-                    className="chat-rename-input"
+                    className="tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink tw:bg-bg tw:border tw:border-line tw:rounded-[5px] tw:px-1.5 tw:py-0.5 tw:outline-none tw:transition-[border-color,box-shadow] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac tw:focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--lilac)_22%,transparent)]"
                     value={renameDraft}
                     onChange={(e) => setRenameDraft(e.target.value)}
                     autoFocus
@@ -376,14 +393,14 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                     onBlur={() => { void commitRename({ kind: "chat", id: chat._id }); }}
                   />
                 ) : (
-                  <span className="c-label">{chat.title || "Untitled"}</span>
+                  <span className="tw:flex-1 tw:truncate">{chat.title || "Untitled"}</span>
                 )}
                 {!isRenaming && (
-                  <span className="c-count">{relativeTime(chat.updatedAt)}</span>
+                  <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[color-mix(in_oklab,white_14%,transparent)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(chat.updatedAt)}</span>
                 )}
                 {!isRenaming && (
                   <button
-                    className="row-rename"
+                    className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--lilac)_30%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"}`}
                     title="Rename chat"
                     aria-label="Rename chat"
                     onClick={(e) => {
@@ -396,7 +413,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                 )}
                 {!isRenaming && (
                   <button
-                    className="row-del"
+                    className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--coral)_26%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"}`}
                     title="Delete chat"
                     aria-label="Delete chat"
                     onClick={(e) => {
@@ -418,7 +435,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
               )}
 
               {isActive && branchRows.length > 0 && (
-                <div className="branch-list">
+                <div className="tw:mt-0.5 tw:mb-1.5 tw:ml-[22px] tw:flex tw:flex-col tw:gap-0">
                   {branchRows.map(row => {
                     const rowActive = activeChat?.currentNodeId === row.node._id;
                     const isRoot    = row.node._id === activeChat?.rootNodeId;
@@ -428,26 +445,26 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                     return (
                       <div key={row.node._id}>
                         <div
-                          className={`branch-row ${rowActive ? "active" : ""} has-delete`}
+                          className={`tw:group/row tw:flex tw:items-stretch tw:gap-1.5 tw:pl-0 tw:pr-2 tw:min-h-[26px] tw:rounded-[6px] tw:text-[12px] tw:cursor-pointer tw:relative ${rowActive ? "tw:bg-coral-tint tw:text-ink tw:font-medium" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
                           data-depth={Math.min(3, row.depth)}
                           onClick={() => {
                             if (!isRowRenaming) void handleSelectNode(row.node._id);
                           }}
                         >
                           {row.lastFlags.length > 0 && (
-                            <div className="b-guides">
+                            <div className="tw:flex tw:self-stretch tw:flex-none">
                               {row.lastFlags.map((isLast, i) => {
                                 const isElbow = i === row.lastFlags.length - 1;
                                 const cls = isElbow
                                   ? (isLast ? "elbow" : "tee")
                                   : (isLast ? "blank" : "trunk");
-                                return <span key={i} className={`bg ${cls}`} />;
+                                return <span key={i} className={`tw:w-3.5 tw:flex-none tw:relative ${GUIDE[cls]}`} />;
                               })}
                             </div>
                           )}
                           {row.hasChildren ? (
                             <button
-                              className={`b-chev ${!row.isCollapsed ? "open" : ""}`}
+                              className={`tw:self-center tw:w-4 tw:h-4 tw:grid tw:place-items-center tw:flex-none tw:bg-transparent tw:border-0 tw:p-0 tw:rounded-[4px] tw:text-ink-3 tw:cursor-pointer tw:transition-[transform,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[rgba(0,0,0,0.06)] tw:hover:text-ink ${!row.isCollapsed ? "tw:[transform:rotate(90deg)]" : ""}`}
                               onClick={(e) => { e.stopPropagation(); toggleNode(row.node._id); }}
                               title={row.isCollapsed ? "Expand" : "Collapse"}
                             >
@@ -457,12 +474,12 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                               </svg>
                             </button>
                           ) : (
-                            <span className="b-chev-spacer" />
+                            <span className="tw:w-4 tw:flex-none" />
                           )}
-                          <span className="b-dot" />
+                          <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none tw:self-center ${DEPTH_DOT[Math.min(3, row.depth)]}`} />
                           {isRowRenaming ? (
                             <input
-                              className="chat-rename-input"
+                              className="tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink tw:bg-bg tw:border tw:border-line tw:rounded-[5px] tw:px-1.5 tw:py-0.5 tw:outline-none tw:transition-[border-color,box-shadow] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac tw:focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--lilac)_22%,transparent)]"
                               value={renameDraft}
                               onChange={(e) => setRenameDraft(e.target.value)}
                               autoFocus
@@ -485,7 +502,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                               }}
                             />
                           ) : (
-                            <span className="b-label">{row.node.label || "(no label)"}</span>
+                            <span className="tw:flex-[1_1_auto] tw:min-w-0 tw:truncate tw:self-center tw:py-[5px] tw:px-0">{row.node.label || "(no label)"}</span>
                           )}
                           {!isRowRenaming && activeStreams.has(row.node._id) && (
                             <span
@@ -496,7 +513,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                           )}
                           {!isRowRenaming && (
                             <button
-                              className="row-rename row-rename-branch"
+                              className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-auto ${rowActive ? "tw:text-ink tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"}`}
                               title={isRoot ? "Rename chat" : "Rename branch"}
                               aria-label={isRoot ? "Rename chat" : "Rename branch"}
                               onClick={(e) => {
@@ -512,7 +529,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
                           )}
                           {!isRowRenaming && (
                             <button
-                              className="row-del row-del-branch"
+                              className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral`}
                               title={isRoot ? "Delete chat" : "Delete branch"}
                               aria-label={isRoot ? "Delete chat" : "Delete branch"}
                               onClick={(e) => {
@@ -549,25 +566,25 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         })}
 
         {visibleChats.length === 0 && (
-          <div style={{ padding: "20px 12px", color: "var(--ink-3)", fontSize: 13, textAlign: "center" }}>
+          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
             {search ? `No chats match "${search}"` : "No chats yet — start one above."}
           </div>
         )}
       </div>
 
-      <div className="side-foot">
-        <div className="avatar key-avatar" title="cogninode beta">
+      <div className={`tw:border-t tw:border-line tw:flex tw:items-center tw:relative ${isCollapsed ? "tw:flex-col tw:gap-1 tw:py-2.5 tw:px-0 tw:mt-auto" : "tw:gap-2.5 tw:p-3"}`}>
+        <div className={`tw:w-[34px] tw:h-[34px] tw:rounded-[50%] tw:text-bg tw:grid tw:place-items-center tw:font-display tw:font-semibold tw:text-[14px] tw:flex-none tw:bg-bg-2 tw:border tw:border-line tw:dark:bg-bg-3 ${isCollapsed ? "tw:hidden" : ""}`} title="cogninode beta">
           <Glyph size={20} color="var(--ink)" accent="var(--coral)" />
         </div>
-        <div className="who">
-          <span className="name">cogninode</span>
-          <span className="credits">
-            <span className="cred-dot" style={{ background: "var(--teal)" }} />
+        <div className={`tw:flex-1 tw:min-w-0 tw:flex tw:flex-col ${isCollapsed ? "tw:hidden" : ""}`}>
+          <span className="tw:text-[13px] tw:font-medium tw:text-ink tw:truncate">cogninode</span>
+          <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:flex tw:items-center tw:gap-1">
+            <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%]" style={{ background: "var(--teal)" }} />
             local
           </span>
         </div>
         <button
-          className="icon-btn theme-toggle-inline"
+          className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink tw:[&_svg]:w-3.5 tw:[&_svg]:h-3.5 tw:hover:[transform:rotate(-12deg)]"
           onClick={() => setTheme(isDark ? "light" : "dark")}
           title={isDark ? "Switch to light mode" : "Switch to dark mode"}
           aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
@@ -589,7 +606,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
             </svg>
           )}
         </button>
-        <button className="icon-btn" onClick={onOpenSettings} title="Settings (⌃,)">
+        <button className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink" onClick={onOpenSettings} title="Settings (⌃,)">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
             <path d="M2.5 4 H13.5 M2.5 8 H13.5 M2.5 12 H13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             <circle cx="10"  cy="4"  r="1.8" fill="var(--bg)" stroke="currentColor" strokeWidth="1.4" />
@@ -636,19 +653,19 @@ interface ConfirmPillProps {
 function ConfirmPill({ label, onConfirm, onCancel, indent = 0 }: ConfirmPillProps) {
   return (
     <div
-      className="confirm-pill"
+      className="tw:flex tw:items-center tw:gap-1.5 tw:mt-1 tw:mx-2.5 tw:mb-1.5 tw:px-2.5 tw:py-1.5 tw:bg-[color-mix(in_oklab,var(--coral)_12%,var(--bg-3))] tw:border tw:border-[color-mix(in_oklab,var(--coral)_30%,var(--line))] tw:rounded-[8px] tw:text-[12px] tw:text-ink"
       style={indent > 0 ? { marginLeft: 12 + indent * 14 } : undefined}
     >
-      <span className="cp-label">{label}</span>
+      <span className="tw:flex-1 tw:min-w-0">{label}</span>
       <button
-        className="cp-yes"
+        className="tw:px-1.5 tw:py-0.5 tw:rounded-[5px] tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] tw:text-coral tw:font-semibold tw:hover:bg-coral tw:hover:text-white"
         onClick={(e) => { e.stopPropagation(); onConfirm(); }}
       >
         yes
       </button>
-      <span className="cp-sep">·</span>
+      <span className="tw:text-ink-4">·</span>
       <button
-        className="cp-no"
+        className="tw:px-1.5 tw:py-0.5 tw:rounded-[5px] tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink"
         onClick={(e) => { e.stopPropagation(); onCancel(); }}
       >
         cancel
