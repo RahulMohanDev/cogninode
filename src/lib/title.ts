@@ -18,8 +18,6 @@ const TITLE_MODEL_ID = "flash";
 const TITLE_MAX = 60;
 const QUESTION_CLIP = 600;
 const ANSWER_CLIP   = 500;
-/** Cap on the stored first question (hover tooltip context). */
-export const FIRST_QUESTION_MAX = 280;
 
 /** Clean an LLM-produced title down to a display-ready single line: first
  *  line only, wrapping quotes/backticks and markdown emphasis stripped,
@@ -43,15 +41,6 @@ export function buildTitlePrompt(question: string, answer: string): string {
     "Reply with the title only — no quotes, no trailing punctuation.\n\n" +
     `Question:\n${q}\n\nStart of the answer:\n${a}`
   );
-}
-
-/** Tooltip for a chat row: the full title, plus the original first question
- *  when it adds context beyond the (possibly auto-generated) title. */
-export function chatHoverTitle(chat: { title: string; firstQuestion?: string }): string {
-  const title = chat.title || "Untitled";
-  const q = chat.firstQuestion?.trim();
-  if (q && q !== title) return `${title}\n\n${q}`;
-  return title;
 }
 
 interface GenerateParams {

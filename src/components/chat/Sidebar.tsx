@@ -10,7 +10,6 @@ import {
 } from "../../lib/db";
 import { deleteGraph, renameGraph }     from "../../lib/knowledge";
 import { buildTree, type TreeNode }     from "../../lib/path";
-import { chatHoverTitle }               from "../../lib/title";
 import { Glyph }                        from "../Glyph";
 import { NewGraphDialog }               from "../graph/NewGraphDialog";
 import { useSettings }                  from "../../hooks/useSettings";
@@ -785,7 +784,7 @@ export function Sidebar({
                     onBlur={() => { void commitRename({ kind: "chat", id: chat._id }); }}
                   />
                 ) : (
-                  <span className="tw:flex-1 tw:truncate" title={chatHoverTitle(chat)}>{chat.title || "Untitled"}</span>
+                  <span className="tw:flex-1 tw:truncate" title={chat.title || "Untitled"}>{chat.title || "Untitled"}</span>
                 )}
                 {!isRenaming && (
                   <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(chat.updatedAt)}</span>

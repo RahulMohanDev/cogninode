@@ -16,9 +16,6 @@ export interface Chat {
    *  auto-titling never overwrites a user-chosen name. Absent on rows from
    *  before auto-titling — treated like "derived". */
   titleSource?:  "derived" | "auto" | "manual";
-  /** The user's first message, clamped — hover context for rows whose
-   *  auto-title no longer quotes the question (non-indexed, no migration). */
-  firstQuestion?: string;
   rootNodeId:    string;
   currentNodeId: string;
   /** Set ⇒ this is a graph's hidden dock chat (the "ask this graph"

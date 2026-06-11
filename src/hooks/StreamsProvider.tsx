@@ -19,7 +19,7 @@ import {
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
 import { resolveModelSync }               from "../lib/models";
-import { autoTitleChat, FIRST_QUESTION_MAX } from "../lib/title";
+import { autoTitleChat } from "../lib/title";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
 import { useSettings }                    from "./useSettings";
 
@@ -273,20 +273,14 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
               // undefined; renames: "manual") are never touched. The guard
               // is re-checked inside a transaction so a rename committing
               // mid-send can't be clobbered — or downgraded to "derived",
-              // which would let the LLM title overwrite it. firstQuestion
-              // is stored regardless — it's hover context, not a title.
-              const firstQuestion = params.composerText.replace(/\s+/g, " ").trim()
-                .slice(0, FIRST_QUESTION_MAX);
+              // which would let the LLM title overwrite it.
               autoTitleExpected = await db.transaction("rw", db.chats, db.nodes, async () => {
                 const chat = await db.chats.get(chatId);
                 if (!chat) return null;
-                if (chat.title !== "New chat" && chat.titleSource !== "derived") {
-                  await db.chats.update(chatId, { firstQuestion });
-                  return null;
-                }
+                if (chat.title !== "New chat" && chat.titleSource !== "derived") return null;
                 const next = title || chat.title;
                 await db.chats.update(chatId, {
-                  title: next, titleSource: "derived", firstQuestion, updatedAt: Date.now(),
+                  title: next, titleSource: "derived", updatedAt: Date.now(),
                 });
                 if (title) await db.nodes.update(chat.rootNodeId, { label: title });
                 return next;

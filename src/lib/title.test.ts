@@ -1,6 +1,6 @@
 // src/lib/title.test.ts
 import { describe, expect, it } from "vitest";
-import { buildTitlePrompt, chatHoverTitle, sanitizeTitle } from "./title";
+import { buildTitlePrompt, sanitizeTitle } from "./title";
 
 describe("sanitizeTitle", () => {
   it("passes a clean title through", () => {
@@ -57,25 +57,5 @@ describe("buildTitlePrompt", () => {
   it("clips oversized inputs", () => {
     const p = buildTitlePrompt("q".repeat(2000), "a".repeat(2000));
     expect(p.length).toBeLessThan(1400);
-  });
-});
-
-describe("chatHoverTitle", () => {
-  it("returns just the title when no first question is stored", () => {
-    expect(chatHoverTitle({ title: "Dexie Bug" })).toBe("Dexie Bug");
-  });
-
-  it("appends the first question when it differs from the title", () => {
-    expect(chatHoverTitle({ title: "Dexie Bug", firstQuestion: "why does my dexie v6 migration fail?" }))
-      .toBe("Dexie Bug\n\nwhy does my dexie v6 migration fail?");
-  });
-
-  it("does not duplicate a derived title that equals the question", () => {
-    expect(chatHoverTitle({ title: "short question", firstQuestion: "short question" }))
-      .toBe("short question");
-  });
-
-  it("falls back to Untitled for empty titles", () => {
-    expect(chatHoverTitle({ title: "" })).toBe("Untitled");
   });
 });
