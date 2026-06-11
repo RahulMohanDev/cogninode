@@ -550,8 +550,9 @@ async function detachAttachmentsByTargets(
     });
 }
 
-/** Collect a node and all its descendants in a chat into an id set. */
-function collectSubtreeIds(nodes: Node[], rootId: string): Set<string> {
+/** Collect a node and all its descendants in a chat into an id set.
+ *  (Also used by graphrag corpus resolution for subtree attachments.) */
+export function collectSubtreeIds(nodes: Node[], rootId: string): Set<string> {
   const childrenByParent = new Map<string, string[]>();
   for (const n of nodes) {
     if (n.parentId === null) continue;

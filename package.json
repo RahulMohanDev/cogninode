@@ -38,6 +38,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^4",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
     "tailwindcss": "^4.3.0",

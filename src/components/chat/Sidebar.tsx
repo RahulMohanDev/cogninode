@@ -171,7 +171,8 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   }, [navigate]);
 
   const chats = useLiveQuery(
-    () => db.chats.orderBy("updatedAt").reverse().toArray(),
+    // Graph dock chats render only inside their graph's editor.
+    () => db.chats.orderBy("updatedAt").reverse().filter(c => !c.graphId).toArray(),
     [],
   );
 

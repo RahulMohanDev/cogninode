@@ -23,8 +23,9 @@ import {
 } from "../lib/db";
 import { renameGraph, unfoldNode } from "../lib/knowledge";
 import { planSubtreeSources } from "../lib/flowGraph";
-import type { SourceResolvers } from "../lib/graphFlow";
+import { displayTitle, type SourceResolvers } from "../lib/graphFlow";
 import { GraphCanvas } from "../components/graph/GraphCanvas";
+import { GraphDock } from "../components/graph/GraphDock";
 import { LibraryDrawer } from "../components/graph/LibraryDrawer";
 import { NodePanel } from "../components/graph/NodePanel";
 import { Sidebar } from "../components/chat/Sidebar";
@@ -87,6 +88,8 @@ export default function GraphEditor() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   // Nodes the latest dock answer retrieved from (set by GraphDock).
   const [glowIds, setGlowIds] = useState<Set<string> | null>(null);
+  // One-shot "center this node" requests (citation chips → canvas).
+  const [centerRequest, setCenterRequest] = useState<{ id: string; nonce: number } | null>(null);
 
   useEffect(() => {
     if (!glowIds) return undefined;
@@ -236,9 +239,23 @@ export default function GraphEditor() {
                   onToggleLibrary={() => setLibraryOpen(v => !v)}
                   onUnfold={doUnfold}
                   glowIds={glowIds}
+                  centerRequest={centerRequest}
                 />
               </ReactFlowProvider>
             </div>
+            <GraphDock
+              graphId={graphId}
+              graphName={graph?.name ?? "this graph"}
+              getNodeLabel={id => {
+                const n = graphNodes.find(x => x._id === id);
+                return n ? displayTitle(n, resolvers).title : "(removed node)";
+              }}
+              onGlow={setGlowIds}
+              onFocusNode={id => {
+                setSelectedId(id);
+                setCenterRequest({ id, nonce: Date.now() });
+              }}
+            />
           </div>
 
           {selectedNode && (

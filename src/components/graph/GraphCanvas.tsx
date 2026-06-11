@@ -74,12 +74,14 @@ export interface GraphCanvasProps {
   onUnfold:        (graphNodeId: string) => void;
   /** Nodes graph-RAG just cited — rendered with a pulsing ring. */
   glowIds:         Set<string> | null;
+  /** One-shot pan-to-node requests (nonce re-fires for the same node). */
+  centerRequest:   { id: string; nonce: number } | null;
 }
 
 export function GraphCanvas({
   graphId, rootNodeId, graphNodes, graphEdges, resolvers,
   selectedId, onSelect, focusNodeId, libraryOpen, onToggleLibrary,
-  onUnfold, glowIds,
+  onUnfold, glowIds, centerRequest,
 }: GraphCanvasProps) {
   const { prefs } = useSettings();
   const toast = useToast();
@@ -111,6 +113,14 @@ export function GraphCanvas({
     );
   }, [graphData.nodes, selectedId, setNodes]);
   useEffect(() => { setEdges(graphData.edges as FlowEdge[]); }, [graphData.edges, setEdges]);
+
+  // Citation chips / dock → pan to a node (nonce re-fires for repeats).
+  useEffect(() => {
+    if (!centerRequest) return;
+    const n = nodeById.get(centerRequest.id);
+    if (!n) return;
+    flow.setCenter(n.x + 100, n.y + 40, { zoom: 1, duration: 500 });
+  }, [centerRequest, nodeById, flow]);
 
   // ?node= deep link (from ⌘K): select + center once.
   const focusedRef = useRef(false);

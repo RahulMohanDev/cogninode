@@ -17,7 +17,7 @@ import {
   useRef, useSyncExternalStore, type ReactNode,
 } from "react";
 import { streamMessage, type Citation }   from "../lib/stream";
-import { buildPathMessages, db }          from "../lib/db";
+import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
 import { resolveModelSync }               from "../lib/models";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
 import { useSettings }                    from "./useSettings";
@@ -47,7 +47,15 @@ export interface SendParams {
   /** Run an OpenRouter web search for this message. Captured at send time
    *  so the per-message toggle value sticks to this specific stream. */
   webSearch?:   boolean;
+  /** Graph-RAG injection (dock chats): retrieval-built system context plus
+   *  the [S#]→canvas-node map, persisted onto the assistant message. */
+  graphContext?: { text: string; sources: RagSourceRef[] };
 }
+
+/** Dock chats grow forever on one node — cap the history sent upstream.
+ *  The just-persisted user message is last in the path, so it always
+ *  survives the slice. */
+const GRAPH_CHAT_HISTORY_MAX = 16;
 
 // Derive a chat/root-node title from the user's first message. Drops any
 // auto-appended file blocks (PDF excerpts or code fences added by storeFile)
@@ -236,9 +244,10 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         // Auto-title from the first user message on this node. A node's
         // label should reflect the user's question, not — for branch
         // nodes created from a text selection — a snippet of the prior
-        // reply or the "New branch" placeholder.
+        // reply or the "New branch" placeholder. Graph dock chats keep
+        // their fixed "<graph> — graph chat" title.
         const chatRecord = await db.chats.get(chatId);
-        if (chatRecord) {
+        if (chatRecord && !chatRecord.graphId) {
           // "First user message on this node" = the message we just added
           // is the only user-role message under this nodeId.
           const nodeMsgs    = await db.messages.where("nodeId").equals(nodeId).toArray();
@@ -269,7 +278,10 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         // Build full path context from Dexie. The user message we just
         // added is the CURRENT request — it must be the last message in
         // the request body, not dropped.
-        const pathMessages = await buildPathMessages(chatId, nodeId);
+        let pathMessages = await buildPathMessages(chatId, nodeId);
+        if (params.graphContext) {
+          pathMessages = pathMessages.slice(-GRAPH_CHAT_HISTORY_MAX);
+        }
 
         let fullContent   = "";
         let fullReasoning = "";
@@ -279,6 +291,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           apiKey: apiKeyRef.current,
           openRouterId: model.openRouterId,
           messages: pathMessages,
+          ...(params.graphContext ? { systemExtra: params.graphContext.text } : {}),
           model,
           signal: controller.signal,
           webSearch: params.webSearch ?? false,
@@ -316,6 +329,9 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
               content:      fullContent,
               ...(fullReasoning ? { reasoning: fullReasoning } : {}),
               ...(citations.length ? { citations } : {}),
+              ...(params.graphContext?.sources.length
+                ? { ragSources: params.graphContext.sources }
+                : {}),
               modelId:      params.modelId,
               costUsd,
               inputTokens,

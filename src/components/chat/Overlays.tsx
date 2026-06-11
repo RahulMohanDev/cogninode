@@ -164,6 +164,7 @@ function QuickJump({
     const makeRow = (n: Node, visited: boolean): QuickJumpRow | null => {
       const c = chatById.get(n.chatId);
       if (!c) return null;          // orphan node — parent chat gone
+      if (c.graphId) return null;   // dock chats live inside their graph editor
       return { node: n, chat: c, visited, isRoot: c.rootNodeId === n._id };
     };
 
