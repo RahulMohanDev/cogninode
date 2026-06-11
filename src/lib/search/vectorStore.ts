@@ -15,7 +15,7 @@ export interface VectorHit {
 
 export interface VectorRowInput {
   docId:    string;
-  kind:     "message" | "reflection";
+  kind:     "message" | "reflection" | "graphNode";
   chatId:   string;
   nodeId:   string;
   textHash: string;
@@ -112,6 +112,16 @@ export class VectorStore {
 
   search(query: Float32Array, k: number): VectorHit[] {
     return topKByDot(query, this.rows.values(), k);
+  }
+
+  /** Top-k restricted to an allowed doc-id set — graph-scoped retrieval
+   *  ranks ONLY the content attached to one graph's nodes. */
+  searchScoped(query: Float32Array, allowed: Set<string>, k: number): VectorHit[] {
+    const filtered: Array<{ id: string; vector: Float32Array }> = [];
+    for (const row of this.rows.values()) {
+      if (allowed.has(row.id)) filtered.push(row);
+    }
+    return topKByDot(query, filtered, k);
   }
 
   /** Wipe ALL stored vectors (every model) — used by "disable semantic". */

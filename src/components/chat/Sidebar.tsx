@@ -7,11 +7,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate }     from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
-  db, createChat, deleteChat, deleteNodeSubtree, renameChat, renameNode,
-  type Node,
+  db, createChat, deleteChat, deleteNodeSubtree, deleteReflection,
+  renameChat, renameNode,
+  type Chat, type KnowledgeGraph, type Node, type Reflection,
 } from "../../lib/db";
+import { deleteGraph, renameGraph }     from "../../lib/knowledge";
 import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
+import { NewGraphDialog }               from "../graph/NewGraphDialog";
 import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
 import { anyModalOpen }                 from "../../hooks/useModalStack";
@@ -21,6 +24,11 @@ import { searchService, type ResolvedHit } from "../../lib/search/service";
 export interface SidebarProps {
   activeChatId:   string | null;
   onOpenSettings: () => void;
+  /** Page-scoped lists: "graphs" and "reflections" swap the chat list for
+   *  their own — chats make no sense as sidebar content on those pages. */
+  mode?:          "chats" | "graphs" | "reflections";
+  activeGraphId?: string | null;
+  activeReflectionId?: string | null;
 }
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -119,10 +127,16 @@ const DEPTH_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
 
 // ── component ─────────────────────────────────────────────────────
 
-export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
+export function Sidebar({
+  activeChatId, onOpenSettings, mode = "chats",
+  activeGraphId = null, activeReflectionId = null,
+}: SidebarProps) {
+  const graphMode = mode === "graphs";
+  const reflMode  = mode === "reflections";
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
+  const [creatingGraph, setCreatingGraph] = useState(false);
   const { prefs, setTheme, setPref } = useSettings();
   const activeStreams = useActiveStreams();
   const onReflectionsPage = location.pathname.startsWith("/reflections");
@@ -171,8 +185,30 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   }, [navigate]);
 
   const chats = useLiveQuery(
-    () => db.chats.orderBy("updatedAt").reverse().toArray(),
-    [],
+    // Graph dock chats render only inside their graph's editor; in graph/
+    // reflection mode the whole chat list stands down for that mode's list.
+    () => mode !== "chats"
+      ? Promise.resolve([] as Chat[])
+      : db.chats.orderBy("updatedAt").reverse().filter(c => !c.graphId).toArray(),
+    [mode],
+  );
+
+  const graphs = useLiveQuery(
+    () => graphMode
+      ? db.graphs.orderBy("updatedAt").reverse().toArray()
+      : Promise.resolve([] as KnowledgeGraph[]),
+    [graphMode],
+  );
+
+  const reflections = useLiveQuery(
+    async () => {
+      if (!reflMode) return [] as Reflection[];
+      // No updatedAt index on reflections — sort in memory; counts stay
+      // small (hand-curated snapshots, not messages).
+      const all = await db.reflections.toArray();
+      return all.sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    [reflMode],
   );
 
   // For the active chat: read its nodes and currentNodeId so we can render
@@ -242,8 +278,10 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   // We track at most one in-flight confirm at a time, identified by
   // its kind + id. Auto-reverts after 4s.
   type Pending =
-    | { kind: "chat";   id: string }
-    | { kind: "branch"; id: string };
+    | { kind: "chat";       id: string }
+    | { kind: "branch";     id: string }
+    | { kind: "graph";      id: string }
+    | { kind: "reflection"; id: string };
 
   const [pending, setPending] = useState<Pending | null>(null);
   const revertTimer = useRef<number | null>(null);
@@ -277,6 +315,18 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     if (chatId === activeChatId) navigate("/");
   };
 
+  const confirmDeleteGraph = async (graphId: string): Promise<void> => {
+    cancelConfirm();
+    await deleteGraph(graphId);
+    if (graphId === activeGraphId) navigate("/graphs");
+  };
+
+  const confirmDeleteReflection = async (reflectionId: string): Promise<void> => {
+    cancelConfirm();
+    await deleteReflection(reflectionId);   // also detaches graph nodes
+    if (reflectionId === activeReflectionId) navigate("/reflections");
+  };
+
   const confirmDeleteBranch = async (nodeId: string): Promise<void> => {
     if (!activeChatId || !activeChat) return;
     // If this is the root, delegate to chat-level delete.
@@ -297,7 +347,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   // commit, which also blurs the input → onBlur would fire a second
   // commit). The flag is set on the first commit and cleared once the
   // row leaves edit mode.
-  type RenameTarget = { kind: "chat" | "node"; id: string };
+  type RenameTarget = { kind: "chat" | "node" | "graph"; id: string };
 
   const [renamingId, setRenamingId] = useState<RenameTarget | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -320,8 +370,9 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     const t = renameDraft.trim();
     setRenamingId(null);
     if (t) {
-      if (target.kind === "chat") await renameChat(target.id, t);
-      else await renameNode(target.id, t);
+      if (target.kind === "chat")       await renameChat(target.id, t);
+      else if (target.kind === "graph") await renameGraph(target.id, t);
+      else                              await renameNode(target.id, t);
     }
   };
 
@@ -335,7 +386,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   } | null>(null);
   useEffect(() => {
     const needle = search.trim();
-    if (!needle) {
+    if (mode !== "chats" || !needle) {
       setRanked(null);
       return undefined;
     }
@@ -360,7 +411,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [search]);
+  }, [search, mode]);
 
   // Open a search preview at its exact location: the branch, and for
   // message hits the exact message — scrolled to, flashed, and with the
@@ -391,73 +442,115 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     return chats.filter(c => c.title.toLowerCase().includes(q));
   }, [chats, search, ranked]);
 
+  const visibleGraphs = useMemo(() => {
+    if (!graphMode || !graphs) return [];
+    const q = search.trim().toLowerCase();
+    return q ? graphs.filter(g => g.name.toLowerCase().includes(q)) : graphs;
+  }, [graphMode, graphs, search]);
+
+  const visibleReflections = useMemo(() => {
+    if (!reflMode || !reflections) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return reflections;
+    return reflections.filter(r =>
+      r.title.toLowerCase().includes(q) || r.body.toLowerCase().includes(q));
+  }, [reflMode, reflections, search]);
+
   const isDark = prefs.theme === "dark";
+
+  // Header pieces, shared by both layouts. Expanded = TWO rows (brand +
+  // collapse, then the nav icons): the wordmark, beta pill, and four
+  // 30px buttons never fit one 268px row — the pill used to wrap under
+  // the logo and the icons crowded it. Collapsed keeps the icon rail.
+  const collapseButton = (
+    <button
+      className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
+      onClick={toggleCollapsed}
+      title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
+      aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-expanded={!isCollapsed}
+    >
+      <svg className={`tw:transition-transform tw:duration-200 tw:ease-[ease] ${isCollapsed ? "tw:[transform:scaleX(-1)]" : ""}`} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M8.5 4 L4.5 8 L8.5 12 M12 4 L8 8 L12 12"
+              stroke="currentColor" strokeWidth="1.5"
+              strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+  const brand = (
+    <a
+      href="/"
+      className={`tw:flex tw:items-center tw:gap-2 tw:font-display tw:font-semibold tw:text-[17px] tw:tracking-[-0.02em] tw:[&_svg]:flex-none tw:min-w-0 ${isCollapsed ? "tw:flex-none tw:justify-center" : "tw:flex-1"}`}
+      title="cogninode — all chats"
+      onClick={(e) => { e.preventDefault(); navigate("/"); }}
+    >
+      <Glyph size={22} />
+      <span className={isCollapsed ? "tw:hidden" : "tw:truncate tw:whitespace-nowrap"}>cogninode <span className="tw:font-mono tw:text-[9px] tw:font-medium tw:tracking-[0.14em] tw:uppercase tw:text-coral tw:bg-coral-tint tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:align-[2px] tw:ml-1 tw:inline-block">beta</span></span>
+    </a>
+  );
+  const navButtons = (
+    <>
+      <button
+        className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
+        title="All chats"
+        aria-label="All chats"
+        onClick={() => navigate("/")}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="9" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="2" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="9" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+      <button
+        className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onReflectionsPage ? "tw:bg-lilac-tint tw:text-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+        title="Reflections"
+        aria-label="Reflections"
+        aria-current={onReflectionsPage ? "page" : undefined}
+        onClick={() => navigate("/reflections")}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+      <button
+        className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onGraphsPage ? "tw:bg-teal-tint tw:text-teal tw:dark:bg-[color-mix(in_oklab,var(--teal)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+        title="Knowledge graphs"
+        aria-label="Knowledge graphs"
+        aria-current={onGraphsPage ? "page" : undefined}
+        onClick={() => navigate("/graphs")}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      </button>
+    </>
+  );
 
   return (
     <aside className="tw:bg-bg tw:border-r tw:border-line tw:flex tw:flex-col tw:min-h-0 tw:relative tw:overflow-hidden">
-      <div className={`tw:flex tw:items-center tw:justify-between ${isCollapsed ? "tw:flex-col tw:gap-1.5 tw:pt-3.5 tw:px-0 tw:pb-2.5" : "tw:gap-2 tw:pt-4 tw:px-4 tw:pb-2.5"}`}>
-        <a
-          href="/"
-          className={`tw:flex tw:items-center tw:gap-2 tw:font-display tw:font-semibold tw:text-[17px] tw:tracking-[-0.02em] tw:[&_svg]:flex-none tw:min-w-0 ${isCollapsed ? "tw:flex-none tw:justify-center" : "tw:flex-1"}`}
-          title="cogninode — all chats"
-          onClick={(e) => { e.preventDefault(); navigate("/"); }}
-        >
-          <Glyph size={22} />
-          <span className={isCollapsed ? "tw:hidden" : undefined}>cogninode <span className={`tw:font-mono tw:text-[9px] tw:font-medium tw:tracking-[0.14em] tw:uppercase tw:text-coral tw:bg-coral-tint tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:align-[2px] tw:ml-1 ${isCollapsed ? "tw:hidden" : "tw:inline-block"}`}>beta</span></span>
-        </a>
-        <button
-          className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
-          title="All chats"
-          aria-label="All chats"
-          onClick={() => navigate("/")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            <rect x="9" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            <rect x="2" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            <rect x="9" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
-          </svg>
-        </button>
-        <button
-          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onReflectionsPage ? "tw:bg-lilac-tint tw:text-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-          title="Reflections"
-          aria-label="Reflections"
-          aria-current={onReflectionsPage ? "page" : undefined}
-          onClick={() => navigate("/reflections")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-          </svg>
-        </button>
-        <button
-          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onGraphsPage ? "tw:bg-teal-tint tw:text-teal tw:dark:bg-[color-mix(in_oklab,var(--teal)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-          title="Knowledge graphs"
-          aria-label="Knowledge graphs"
-          aria-current={onGraphsPage ? "page" : undefined}
-          onClick={() => navigate("/graphs")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button
-          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink ${isCollapsed ? "tw:-order-1" : ""}`}
-          onClick={toggleCollapsed}
-          title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!isCollapsed}
-        >
-          <svg className={`tw:transition-transform tw:duration-200 tw:ease-[ease] ${isCollapsed ? "tw:[transform:scaleX(-1)]" : ""}`} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8.5 4 L4.5 8 L8.5 12 M12 4 L8 8 L12 12"
-                  stroke="currentColor" strokeWidth="1.5"
-                  strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </div>
+      {isCollapsed ? (
+        <div className="tw:flex tw:flex-col tw:items-center tw:gap-1.5 tw:pt-3.5 tw:px-0 tw:pb-2.5">
+          {collapseButton}
+          {brand}
+          {navButtons}
+        </div>
+      ) : (
+        <div className="tw:pt-4 tw:px-4 tw:pb-2">
+          <div className="tw:flex tw:items-center tw:gap-2">
+            {brand}
+            {collapseButton}
+          </div>
+          <div className="tw:flex tw:items-center tw:gap-1 tw:mt-2 tw:-ml-1.5">
+            {navButtons}
+          </div>
+        </div>
+      )}
 
       <div className={`tw:mx-3 tw:mt-0 tw:mb-2 tw:relative ${isCollapsed ? "tw:hidden" : ""}`}>
         <svg className="tw:absolute tw:left-[11px] tw:top-1/2 tw:[transform:translateY(-50%)] tw:text-ink-3 tw:pointer-events-none" width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -467,7 +560,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         <input
           className="tw:w-full tw:py-[9px] tw:pr-8 tw:pl-[34px] tw:border tw:border-line tw:bg-bg-3 tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
           type="text"
-          placeholder="Search chats…"
+          placeholder={graphMode ? "Search graphs…" : reflMode ? "Search reflections…" : "Search chats…"}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -486,16 +579,149 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         )}
       </div>
 
-      <button className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`} onClick={handleNewChat} title="New chat (⌃N)">
-        <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[var(--veil-white-14)] tw:text-[14px] tw:leading-none">+</span>
-        <span className={isCollapsed ? "tw:hidden" : undefined}>New chat</span>
-        <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
-      </button>
+      {/* Reflections can only be saved FROM a chat (⌃R) — no create button. */}
+      {!reflMode && (
+        <button
+          className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`}
+          onClick={() => { if (graphMode) setCreatingGraph(true); else void handleNewChat(); }}
+          title={graphMode ? "New graph" : "New chat (⌃N)"}
+        >
+          <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[var(--veil-white-14)] tw:text-[14px] tw:leading-none">+</span>
+          <span className={isCollapsed ? "tw:hidden" : undefined}>{graphMode ? "New graph" : "New chat"}</span>
+          {!graphMode && (
+            <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
+          )}
+        </button>
+      )}
 
-      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>Recent chats</div>
+      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>{graphMode ? "Your graphs" : reflMode ? "Your reflections" : "Recent chats"}</div>
 
       <div className={`side-list tw:flex-1 tw:overflow-y-auto tw:pt-0 tw:px-2 tw:pb-2 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent] ${isCollapsed ? "tw:hidden" : ""}`}>
-        {visibleChats.map(chat => {
+        {graphMode && visibleGraphs.map(g => {
+          const isActive   = g._id === activeGraphId;
+          const isPending  = pending?.kind === "graph" && pending.id === g._id;
+          const isRenaming = renamingId?.kind === "graph" && renamingId.id === g._id;
+          return (
+            <div key={g._id}>
+              <div
+                className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                onClick={() => { if (!isRenaming) navigate(`/graphs/${g._id}`); }}
+              >
+                {isRenaming ? (
+                  <input
+                    className="tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink tw:bg-bg tw:border tw:border-line tw:rounded-[5px] tw:px-1.5 tw:py-0.5 tw:outline-none tw:transition-[border-color,box-shadow] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac tw:focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--lilac)_22%,transparent)]"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void commitRename({ kind: "graph", id: g._id });
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        cancelRename();
+                      }
+                    }}
+                    onBlur={() => { void commitRename({ kind: "graph", id: g._id }); }}
+                  />
+                ) : (
+                  <span className="tw:flex-1 tw:truncate">{g.name || "Untitled graph"}</span>
+                )}
+                {!isRenaming && (
+                  <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(g.updatedAt)}</span>
+                )}
+                {!isRenaming && (
+                  <button
+                    className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--lilac)_30%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"}`}
+                    title="Rename graph"
+                    aria-label="Rename graph"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startRename({ kind: "graph", id: g._id }, g.name || "");
+                    }}
+                  >
+                    <PencilIcon />
+                  </button>
+                )}
+                {!isRenaming && (
+                  <button
+                    className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--coral)_26%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"}`}
+                    title="Delete graph"
+                    aria-label="Delete graph"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      armConfirm({ kind: "graph", id: g._id });
+                    }}
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
+              </div>
+
+              {isPending && (
+                <ConfirmPill
+                  label="Delete this graph (and its dock chat)?"
+                  onConfirm={() => { void confirmDeleteGraph(g._id); }}
+                  onCancel={cancelConfirm}
+                />
+              )}
+            </div>
+          );
+        })}
+        {graphMode && visibleGraphs.length === 0 && (
+          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
+            {search ? `No graphs match "${search}"` : "No graphs yet — create one above."}
+          </div>
+        )}
+
+        {reflMode && visibleReflections.map(r => {
+          const isActive  = r._id === activeReflectionId;
+          const isPending = pending?.kind === "reflection" && pending.id === r._id;
+          return (
+            <div key={r._id}>
+              <div
+                className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                onClick={() => navigate(`/reflections?open=${r._id}`)}
+              >
+                <span className="tw:flex-1 tw:truncate">{r.title || "Untitled reflection"}</span>
+                <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(r.updatedAt)}</span>
+                <button
+                  className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--coral)_26%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"}`}
+                  title="Delete reflection"
+                  aria-label="Delete reflection"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    armConfirm({ kind: "reflection", id: r._id });
+                  }}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+
+              {isPending && (
+                <ConfirmPill
+                  label="Delete this reflection?"
+                  onConfirm={() => { void confirmDeleteReflection(r._id); }}
+                  onCancel={cancelConfirm}
+                />
+              )}
+            </div>
+          );
+        })}
+        {reflMode && visibleReflections.length === 0 && (
+          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
+            {search
+              ? `No reflections match "${search}"`
+              : "No reflections yet — in a chat, press ⌃R → Save as reflection."}
+          </div>
+        )}
+
+        {!graphMode && !reflMode && visibleChats.map(chat => {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
           const isRenaming = renamingId?.kind === "chat" && renamingId.id === chat._id;
@@ -728,7 +954,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           );
         })}
 
-        {visibleChats.length === 0 && (
+        {!graphMode && !reflMode && visibleChats.length === 0 && (
           <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
             {search ? `No chats match "${search}"` : "No chats yet — start one above."}
           </div>
@@ -781,6 +1007,14 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           </svg>
         </button>
       </div>
+
+      {graphMode && (
+        <NewGraphDialog
+          open={creatingGraph}
+          onClose={() => setCreatingGraph(false)}
+          onCreated={id => { setCreatingGraph(false); navigate(`/graphs/${id}`); }}
+        />
+      )}
     </aside>
   );
 }

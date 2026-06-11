@@ -703,13 +703,17 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
     try {
       await db.transaction(
         "rw",
-        [db.chats, db.nodes, db.messages, db.reflections, db.files],
+        [db.chats, db.nodes, db.messages, db.reflections, db.files,
+         db.graphs, db.graphNodes, db.graphEdges],
         async () => {
           await db.chats.clear();
           await db.nodes.clear();
           await db.messages.clear();
           await db.reflections.clear();
           await db.files.clear();
+          await db.graphs.clear();
+          await db.graphNodes.clear();
+          await db.graphEdges.clear();
         },
       );
       setConfirmOpen(false);

@@ -71,11 +71,11 @@ const KIND_LABEL: Record<ResolvedHit["kind"], string> = {
   reflection: "reflection",
   node:       "branch",
   chat:       "chat",
-  concept:    "concept",
+  graphNode:  "graph node",
 };
 
 function KindIcon({ kind }: { kind: ResolvedHit["kind"] }) {
-  if (kind === "concept") {
+  if (kind === "graphNode") {
     return (
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.3" />
@@ -204,9 +204,9 @@ export function SearchOverlay() {
       case "chat":
         navigate(`/chat/${hit.chatId}`);
         break;
-      case "concept":
-        // chatId carries the graph id for concept hits.
-        navigate(`/graphs/${hit.chatId}?concept=${hit.rawId}`);
+      case "graphNode":
+        // chatId carries the graph id for graph-node hits.
+        navigate(`/graphs/${hit.chatId}?node=${hit.rawId}`);
         break;
     }
     close();

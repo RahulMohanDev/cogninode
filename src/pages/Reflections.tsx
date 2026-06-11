@@ -41,7 +41,6 @@ export default function Reflections() {
   const toast = useToast();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [search, setSearch]             = useState("");
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [graphTarget, setGraphTarget]   = useState<AddToGraphTarget | null>(null);
 
@@ -70,121 +69,64 @@ export default function Reflections() {
     [chats],
   );
 
-  const filtered = useMemo(() => {
-    const list = reflections ?? [];
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(r =>
-      r.title.toLowerCase().includes(q) ||
-      r.body.toLowerCase().includes(q),
-    );
-  }, [reflections, search]);
-
   const selected = useMemo(
     () => (reflections ?? []).find(r => r._id === selectedId) ?? null,
     [reflections, selectedId],
   );
 
+  // The sidebar owns browsing/search now — this page is the full-width
+  // reader. Land on the newest reflection by default, and fall back to it
+  // when the open one disappears (deleted from the sidebar).
+  useEffect(() => {
+    if (!reflections) return;
+    if (selectedId && reflections.some(r => r._id === selectedId)) return;
+    setSelectedId(reflections[0]?._id ?? null);
+  }, [reflections, selectedId]);
+
   return (
     <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
-      <Sidebar activeChatId={null} onOpenSettings={() => setSettingsOpen(true)} />
+      <Sidebar
+        activeChatId={null}
+        mode="reflections"
+        activeReflectionId={selectedId}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
-        <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:pt-8 tw:px-10 tw:pb-20 tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--lilac)_6%,transparent),transparent_60%),var(--bg-3)]">
-          <div className="tw:max-w-[1040px] tw:mx-auto tw:mt-0 tw:mb-7">
-            <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:inline-flex tw:items-center tw:gap-2">
-              <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:bg-lilac" />
-              Reflections
-            </span>
-            <h1 className="tw:font-display tw:font-semibold tw:text-[44px] tw:tracking-[-0.025em] tw:my-2 tw:mx-0 tw:leading-none">
-              Your <em className="tw:font-serif tw:italic tw:text-lilac tw:font-normal">reflections</em>.
-            </h1>
-            <p className="tw:text-ink-2 tw:m-0 tw:max-w-[560px] tw:text-[16px]">
-              Distilled snapshots of branches worth keeping. Save one from any
-              chat with ⌃R → "Save as reflection".
-            </p>
-          </div>
-
-          <div className="tw:max-w-[1040px] tw:mx-auto">
-            {(reflections?.length ?? 0) === 0 ? (
+        <div className={`tw:flex-1 tw:min-h-0 tw:overflow-y-auto ${selected ? "tw:p-5" : "tw:pt-8 tw:px-10 tw:pb-20"} tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--lilac)_6%,transparent),transparent_60%),var(--bg-3)]`}>
+          {/* The sidebar is the list + search; the page is the reader and
+              gets ALL the space — the card spans the column and stretches
+              to full height. The hero only shows when there's nothing to
+              read. */}
+          {selected ? (
+            <ReflectionDetail
+              key={selected._id}
+              reflection={selected}
+              chatTitle={chatTitleById.get(selected.chatId) ?? "(deleted chat)"}
+              onOpenBranch={() => navigate(`/chat/${selected.chatId}?node=${selected.nodeId}`)}
+              onAddToGraph={() => setGraphTarget({ type: "reflection", id: selected._id, title: selected.title })}
+              onDeleted={() => { setSelectedId(null); toast("Reflection deleted", { kind: "success" }); }}
+            />
+          ) : (
+            <div className="tw:max-w-[920px] tw:mx-auto">
+              <div className="tw:mt-0 tw:mb-7">
+                <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:inline-flex tw:items-center tw:gap-2">
+                  <span className="tw:w-1.5 tw:h-1.5 tw:rounded-[50%] tw:bg-lilac" />
+                  Reflections
+                </span>
+                <h1 className="tw:font-display tw:font-semibold tw:text-[44px] tw:tracking-[-0.025em] tw:my-2 tw:mx-0 tw:leading-none">
+                  Your <em className="tw:font-serif tw:italic tw:text-lilac tw:font-normal">reflections</em>.
+                </h1>
+                <p className="tw:text-ink-2 tw:m-0 tw:max-w-[560px] tw:text-[16px]">
+                  Distilled snapshots of branches worth keeping. Save one from any
+                  chat with ⌃R → "Save as reflection".
+                </p>
+              </div>
               <div className="tw:border tw:border-dashed tw:border-line tw:rounded-[16px] tw:py-12 tw:px-8 tw:text-center tw:text-ink-3 tw:text-[14px]">
                 No reflections yet. Open a chat, press <kbd className="tw:font-mono tw:text-[11px] tw:bg-bg-2 tw:border tw:border-line tw:py-0.5 tw:px-1.5 tw:rounded-[5px] tw:text-ink">⌃R</kbd> to
                 enter reflections mode, tidy the path, then choose <span className="tw:text-ink">Save as reflection</span>.
               </div>
-            ) : (
-              <div className="tw:grid tw:grid-cols-[300px_1fr] tw:gap-5 tw:items-start">
-                {/* ── list pane ── */}
-                <div className="tw:flex tw:flex-col tw:gap-2 tw:min-w-0">
-                  <div className="tw:relative">
-                    <svg className="tw:absolute tw:left-[11px] tw:top-1/2 tw:[transform:translateY(-50%)] tw:text-ink-3 tw:pointer-events-none" width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
-                      <path d="M10.5 10.5 L13.5 13.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                    </svg>
-                    <input
-                      className="tw:w-full tw:py-[9px] tw:pr-8 tw:pl-[34px] tw:border tw:border-line tw:bg-bg tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
-                      type="text"
-                      placeholder="Search reflections…"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                    />
-                    {search && (
-                      <button
-                        className="tw:absolute tw:right-[7px] tw:top-1/2 tw:[transform:translateY(-50%)] tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-[50%] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink"
-                        onClick={() => setSearch("")}
-                        title="Clear search"
-                        aria-label="Clear search"
-                        type="button"
-                      >
-                        <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                          <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="tw:flex tw:flex-col tw:gap-1.5">
-                    {filtered.map(r => {
-                      const active = r._id === selectedId;
-                      return (
-                        <button
-                          key={r._id}
-                          className={`tw:text-left tw:border tw:rounded-[12px] tw:py-2.5 tw:px-3.5 tw:cursor-pointer tw:transition-[border-color,background-color] tw:duration-[120ms] tw:ease-[ease] ${active ? "tw:bg-lilac-tint tw:border-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_16%,transparent)]" : "tw:bg-bg tw:border-line tw:hover:border-ink-3"}`}
-                          onClick={() => setSelectedId(r._id)}
-                        >
-                          <div className="tw:font-display tw:font-semibold tw:text-[14px] tw:tracking-[-0.01em] tw:text-ink tw:truncate">{r.title || "Untitled reflection"}</div>
-                          <div className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:mt-1 tw:flex tw:items-center tw:gap-1.5 tw:min-w-0">
-                            <span className="tw:truncate">{chatTitleById.get(r.chatId) ?? "(deleted chat)"}</span>
-                            <span style={{ opacity: 0.4 }}>·</span>
-                            <span className="tw:flex-none">{relativeTime(r.updatedAt)}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                    {filtered.length === 0 && (
-                      <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
-                        No reflections match "{search}".
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* ── detail pane ── */}
-                {selected ? (
-                  <ReflectionDetail
-                    key={selected._id}
-                    reflection={selected}
-                    chatTitle={chatTitleById.get(selected.chatId) ?? "(deleted chat)"}
-                    onOpenBranch={() => navigate(`/chat/${selected.chatId}?node=${selected.nodeId}`)}
-                    onAddToGraph={() => setGraphTarget({ type: "reflection", id: selected._id, title: selected.title })}
-                    onDeleted={() => { setSelectedId(null); toast("Reflection deleted", { kind: "success" }); }}
-                  />
-                ) : (
-                  <div className="tw:border tw:border-dashed tw:border-line tw:rounded-[16px] tw:py-16 tw:px-8 tw:text-center tw:text-ink-3 tw:text-[14px]">
-                    Select a reflection to read it.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
       <AddToGraphDialog
@@ -267,7 +209,7 @@ function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onAddToGraph, o
   };
 
   return (
-    <div className="tw:bg-bg tw:border tw:border-line tw:rounded-[16px] tw:p-6 tw:min-w-0">
+    <div className="tw:bg-bg tw:border tw:border-line tw:rounded-[16px] tw:py-6 tw:px-8 tw:min-w-0 tw:min-h-full">
       <div className="tw:flex tw:items-start tw:gap-2.5 tw:mb-1">
         {renaming ? (
           <input

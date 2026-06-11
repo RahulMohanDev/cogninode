@@ -18,10 +18,10 @@ import {
   collectAllDocs, loadDoc, parseDocId, textHash, docId as makeDocId,
   type SearchDoc, type SearchDocKind,
 } from "./docs";
-import { KeywordIndex }            from "./keywordIndex";
+import { KeywordIndex, type KeywordHit } from "./keywordIndex";
 import { rrfFuse }                 from "./fusion";
 import { makeSnippet, type Snippet } from "./snippets";
-import { VectorStore }             from "./vectorStore";
+import { VectorStore, type VectorHit } from "./vectorStore";
 import { LocalEmbedder, type Embedder } from "./embedding/embedder";
 import { getEmbeddingModel }       from "./embedding/models";
 
@@ -80,6 +80,10 @@ function embedText(doc: SearchDoc): string {
 }
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+/** Doc kinds that get vectors (everything else is keyword-only). */
+const EMBEDDED_KINDS = new Set<SearchDocKind>(["message", "reflection", "graphNode"]);
+type EmbeddedKind = "message" | "reflection" | "graphNode";
 
 class SearchService {
   private keyword = new KeywordIndex();
@@ -159,9 +163,9 @@ class SearchService {
       this.scheduleFlush();
     };
 
-    const tables: Array<[SearchDocKind, "chats" | "nodes" | "messages" | "reflections" | "concepts"]> = [
+    const tables: Array<[SearchDocKind, "chats" | "nodes" | "messages" | "reflections" | "graphNodes"]> = [
       ["chat", "chats"], ["node", "nodes"], ["message", "messages"],
-      ["reflection", "reflections"], ["concept", "concepts"],
+      ["reflection", "reflections"], ["graphNode", "graphNodes"],
     ];
     for (const [kind, table] of tables) {
       const up  = queueUp(kind);
@@ -204,7 +208,7 @@ class SearchService {
       }
       this.keyword.upsert(doc);
       if (
-        (doc.kind === "message" || doc.kind === "reflection") &&
+        EMBEDDED_KINDS.has(doc.kind) &&
         this.vectors &&
         this.vectors.hashOf(id) !== textHash(embedText(doc))
       ) {
@@ -330,7 +334,7 @@ class SearchService {
   private async backfill(run: number): Promise<void> {
     if (!this.vectors || !this.embedder) return;
     const docs = (await collectAllDocs())
-      .filter(d => d.kind === "message" || d.kind === "reflection");
+      .filter(d => EMBEDDED_KINDS.has(d.kind));
 
     const liveIds = new Set(docs.map(d => d.id));
     const orphans = this.vectors.ids().filter(id => !liveIds.has(id));
@@ -350,7 +354,7 @@ class SearchService {
         if (!vec) continue;
         await this.vectors.upsert({
           docId:    doc.id,
-          kind:     doc.kind as "message" | "reflection",
+          kind:     doc.kind as EmbeddedKind,
           chatId:   doc.chatId,
           nodeId:   doc.nodeId,
           textHash: textHash(embedText(doc)),
@@ -378,7 +382,7 @@ class SearchService {
           const parsed = parseDocId(id);
           if (!parsed) continue;
           const doc = await loadDoc(parsed.kind, parsed.rawId);
-          if (doc && (doc.kind === "message" || doc.kind === "reflection")) docs.push(doc);
+          if (doc && EMBEDDED_KINDS.has(doc.kind)) docs.push(doc);
         }
         if (docs.length > 0) {
           const vecs = await this.embedder.embedDocs(docs.map(embedText));
@@ -388,7 +392,7 @@ class SearchService {
             if (!vec) continue;
             await this.vectors.upsert({
               docId:    doc.id,
-              kind:     doc.kind as "message" | "reflection",
+              kind:     doc.kind as EmbeddedKind,
               chatId:   doc.chatId,
               nodeId:   doc.nodeId,
               textHash: textHash(embedText(doc)),
@@ -403,6 +407,39 @@ class SearchService {
       console.warn("[search] incremental embed failed:", err);
     } finally {
       this.pumping = false;
+    }
+  }
+
+  // ── graph-scoped retrieval primitives (lib/graphrag) ───────────
+
+  /** Raw keyword hits for corpus-scoped retrieval. The default limit is
+   *  high because the caller filters down to a (possibly tiny) corpus —
+   *  a global top-80 could be entirely out-of-corpus. */
+  async keywordHits(query: string, limit = 200): Promise<KeywordHit[]> {
+    await this.initKeyword();
+    return this.keyword.search(query, limit);
+  }
+
+  /** Semantic hits restricted to `allowed` doc ids — or null when the
+   *  semantic layer is off / still warming / empty, so callers degrade
+   *  to keyword-only ranking. */
+  async semanticHitsScoped(
+    query: string,
+    allowed: Set<string>,
+    k = 50,
+  ): Promise<VectorHit[] | null> {
+    if (
+      this.state.semantic !== "ready" ||
+      !this.embedder || !this.vectors || this.vectors.size === 0
+    ) {
+      return null;
+    }
+    try {
+      const qVec = await this.embedder.embedQuery(query);
+      return this.vectors.searchScoped(qVec, allowed, k);
+    } catch (err) {
+      console.warn("[search] scoped query embedding failed — keyword only:", err);
+      return null;
     }
   }
 
@@ -452,18 +489,18 @@ class SearchService {
       byKind.set(parsed.kind, arr);
     }
 
-    const [messages, reflections, nodes, concepts, chats, graphs] = await Promise.all([
+    const [messages, reflections, nodes, graphNodes, chats, graphs] = await Promise.all([
       db.messages.bulkGet(byKind.get("message") ?? []),
       db.reflections.bulkGet(byKind.get("reflection") ?? []),
       db.nodes.bulkGet(byKind.get("node") ?? []),
-      db.concepts.bulkGet(byKind.get("concept") ?? []),
+      db.graphNodes.bulkGet(byKind.get("graphNode") ?? []),
       db.chats.toArray(),
       db.graphs.toArray(),
     ]);
     const msgById   = new Map(messages.filter(Boolean).map(m => [m!._id, m!]));
     const refById   = new Map(reflections.filter(Boolean).map(r => [r!._id, r!]));
     const nodeById  = new Map(nodes.filter(Boolean).map(n => [n!._id, n!]));
-    const kById     = new Map(concepts.filter(Boolean).map(k => [k!._id, k!]));
+    const gnById    = new Map(graphNodes.filter(Boolean).map(g => [g!._id, g!]));
     const chatById  = new Map(chats.map(c => [c._id, c]));
     const graphById = new Map(graphs.map(g => [g._id, g]));
 
@@ -491,14 +528,14 @@ class SearchService {
           chatTitle: chat.title, title: ref.title,
           snippet: makeSnippet(ref.body, r.terms),
         });
-      } else if (parsed.kind === "concept") {
-        const k = kById.get(parsed.rawId);
-        const graph = k && graphById.get(k.graphId);
-        if (!k || !graph) continue;
+      } else if (parsed.kind === "graphNode") {
+        const g = gnById.get(parsed.rawId);
+        const graph = g && graphById.get(g.graphId);
+        if (!g || !graph) continue;
         out.push({
-          ...base, kind: "concept", chatId: k.graphId, nodeId: "",
-          chatTitle: graph.name, title: k.label,
-          snippet: k.notes ? makeSnippet(k.notes, r.terms) : null,
+          ...base, kind: "graphNode", chatId: g.graphId, nodeId: "",
+          chatTitle: graph.name, title: g.label,
+          snippet: g.notes ? makeSnippet(g.notes, r.terms) : null,
         });
       } else if (parsed.kind === "node") {
         const n = nodeById.get(parsed.rawId);

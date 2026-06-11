@@ -1,14 +1,16 @@
 // src/pages/Graphs.tsx
 // Knowledge-graph list: cards with a tiny constellation preview of each
-// graph's concepts, plus create / rename / delete. Mirrors the Chats
-// "grove" page conventions.
+// graph's nodes (root drawn bigger, in coral), plus create / rename /
+// delete. Creation is name-first — the name becomes the root node, the
+// anchor retrieval starts from. Mirrors the Chats "grove" page.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
-import { db, type Concept, type ConceptEdge, type GraphSource, type KnowledgeGraph } from "../lib/db";
-import { createGraph, deleteGraph, renameGraph } from "../lib/knowledge";
+import { db, type GraphEdge, type GraphNode, type KnowledgeGraph } from "../lib/db";
+import { deleteGraph, renameGraph } from "../lib/knowledge";
+import { NewGraphDialog } from "../components/graph/NewGraphDialog";
 import { Sidebar } from "../components/chat/Sidebar";
 import { SettingsModal } from "../components/settings/SettingsModal";
 import { useSettings } from "../hooks/useSettings";
@@ -29,37 +31,31 @@ export default function Graphs() {
   const navigate = useNavigate();
   const { prefs } = useSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   useSettingsHotkey(() => setSettingsOpen(true));
 
   const graphs = useLiveQuery(
     () => db.graphs.orderBy("updatedAt").reverse().toArray(),
     [],
   );
-  const concepts = useLiveQuery(() => db.concepts.toArray(), [], [] as Concept[]);
-  const edges    = useLiveQuery(() => db.conceptEdges.toArray(), [], [] as ConceptEdge[]);
-  const sources  = useLiveQuery(() => db.graphSources.toArray(), [], [] as GraphSource[]);
+  const nodes = useLiveQuery(() => db.graphNodes.toArray(), [], [] as GraphNode[]);
+  const edges = useLiveQuery(() => db.graphEdges.toArray(), [], [] as GraphEdge[]);
 
   const byGraph = useMemo(() => {
-    const map = new Map<string, { concepts: Concept[]; edges: ConceptEdge[]; sources: GraphSource[] }>();
+    const map = new Map<string, { nodes: GraphNode[]; edges: GraphEdge[] }>();
     const entry = (id: string) => {
-      const e = map.get(id) ?? { concepts: [], edges: [], sources: [] };
+      const e = map.get(id) ?? { nodes: [], edges: [] };
       map.set(id, e);
       return e;
     };
-    for (const c of concepts) entry(c.graphId).concepts.push(c);
-    for (const ed of edges)   entry(ed.graphId).edges.push(ed);
-    for (const s of sources)  entry(s.graphId).sources.push(s);
+    for (const n of nodes) entry(n.graphId).nodes.push(n);
+    for (const ed of edges) entry(ed.graphId).edges.push(ed);
     return map;
-  }, [concepts, edges, sources]);
-
-  const startNewGraph = async (): Promise<void> => {
-    const id = await createGraph("New graph");
-    navigate(`/graphs/${id}`);
-  };
+  }, [nodes, edges]);
 
   return (
     <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
-      <Sidebar activeChatId={null} onOpenSettings={() => setSettingsOpen(true)} />
+      <Sidebar activeChatId={null} mode="graphs" onOpenSettings={() => setSettingsOpen(true)} />
       <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
         <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:pt-8 tw:px-10 tw:pb-20 tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--teal)_6%,transparent),transparent_60%),var(--bg-3)]">
           <div className="tw:max-w-[880px] tw:mx-auto tw:mt-0 tw:mb-9">
@@ -71,8 +67,9 @@ export default function Graphs() {
               Your <em className="tw:font-serif tw:italic tw:text-teal tw:font-normal">map</em>.
             </h1>
             <p className="tw:text-ink-2 tw:m-0 tw:max-w-[560px] tw:text-[16px]">
-              Concepts you're learning, connected — with the chats and
-              reflections behind them attached. A replica of your brain.
+              Each graph is a topic anchored by a root — drag the chats
+              behind it in, wire them up, then ask the graph questions.
+              Hand-built retrieval, your way.
             </p>
           </div>
 
@@ -80,20 +77,20 @@ export default function Graphs() {
             <div className="tw:grid tw:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] tw:gap-4">
               <div
                 className="tw:border tw:border-line tw:rounded-[16px] tw:p-[18px] tw:cursor-pointer tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:min-h-[160px] tw:relative tw:overflow-hidden tw:bg-bg-3 tw:border-dashed tw:grid tw:place-items-center tw:text-center tw:hover:border-ink-3 tw:hover:-translate-y-0.5"
-                onClick={() => void startNewGraph()}
+                onClick={() => setCreating(true)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={e => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    void startNewGraph();
+                    setCreating(true);
                   }
                 }}
               >
                 <div>
                   <div className="tw:w-11 tw:h-11 tw:grid tw:place-items-center tw:rounded-[50%] tw:bg-teal tw:text-white tw:text-[22px] tw:font-light tw:leading-none tw:mb-3 tw:mx-auto">+</div>
                   <div className="tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em]">New graph</div>
-                  <div className="tw:text-[12px] tw:text-ink-3 tw:mt-1">map a topic you're learning</div>
+                  <div className="tw:text-[12px] tw:text-ink-3 tw:mt-1">name a topic — get its root</div>
                 </div>
               </div>
 
@@ -101,23 +98,28 @@ export default function Graphs() {
                 <GraphCard
                   key={g._id}
                   graph={g}
-                  concepts={byGraph.get(g._id)?.concepts ?? []}
+                  nodes={byGraph.get(g._id)?.nodes ?? []}
                   edges={byGraph.get(g._id)?.edges ?? []}
-                  sources={byGraph.get(g._id)?.sources ?? []}
                   onOpen={() => navigate(`/graphs/${g._id}`)}
                 />
               ))}
 
               {graphs && graphs.length === 0 && (
                 <div className="tw:col-span-full tw:text-ink-3 tw:text-[13px] tw:px-1 tw:py-3">
-                  No graphs yet. Create one, add concepts, then attach the
-                  chats where you learned them.
+                  No graphs yet. Create one, drag in the chats where you
+                  learned the topic, and ask it questions.
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      <NewGraphDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={id => { setCreating(false); navigate(`/graphs/${id}`); }}
+      />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
@@ -126,13 +128,12 @@ export default function Graphs() {
 // ── per-graph card ─────────────────────────────────────────────────────
 
 function GraphCard({
-  graph, concepts, edges, sources, onOpen,
+  graph, nodes, edges, onOpen,
 }: {
-  graph:    KnowledgeGraph;
-  concepts: Concept[];
-  edges:    ConceptEdge[];
-  sources:  GraphSource[];
-  onOpen:   () => void;
+  graph: KnowledgeGraph;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  onOpen: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming]     = useState(false);
@@ -156,6 +157,8 @@ function GraphCard({
     setRenaming(false);
     void renameGraph(graph._id, draft);
   };
+
+  const attached = nodes.filter(n => n.attachment).length;
 
   return (
     <div
@@ -212,11 +215,11 @@ function GraphCard({
       )}
 
       <div className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mb-4 tw:flex tw:items-center tw:gap-2.5">
-        <span>{concepts.length} concept{concepts.length === 1 ? "" : "s"}</span>
-        {sources.length > 0 && (
+        <span>{nodes.length} node{nodes.length === 1 ? "" : "s"}</span>
+        {attached > 0 && (
           <>
             <span style={{ opacity: 0.3 }}>·</span>
-            <span>{sources.length} source{sources.length === 1 ? "" : "s"}</span>
+            <span>{attached} attached</span>
           </>
         )}
         <span style={{ opacity: 0.3 }}>·</span>
@@ -224,7 +227,7 @@ function GraphCard({
       </div>
 
       <div className="tw:flex-1 tw:relative tw:mt-auto">
-        <MiniConstellation concepts={concepts} edges={edges} sources={sources} />
+        <MiniConstellation nodes={nodes} edges={edges} />
       </div>
 
       {confirming && (
@@ -252,16 +255,20 @@ const ACCENT_VAR: Record<string, string> = {
 };
 
 function MiniConstellation({
-  concepts, edges, sources,
+  nodes, edges,
 }: {
-  concepts: Concept[];
-  edges:    ConceptEdge[];
-  sources:  GraphSource[];
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }) {
-  const points = [
-    ...concepts.map(c => ({ id: c._id, x: c.x, y: c.y, fill: ACCENT_VAR[c.color] ?? "var(--ink-3)", r: 2.6 })),
-    ...sources.map(s => ({ id: s._id, x: s.x, y: s.y, fill: "var(--ink-3)", r: 1.9 })),
-  ];
+  const points = nodes.map(n => ({
+    id:   n._id,
+    x:    n.x,
+    y:    n.y,
+    fill: n.kind === "root"
+      ? "var(--coral)"
+      : n.attachment ? "var(--ink-3)" : (ACCENT_VAR[n.color] ?? "var(--ink-3)"),
+    r:    n.kind === "root" ? 3.4 : n.attachment ? 1.9 : 2.6,
+  }));
   if (points.length === 0) {
     return <svg width={THUMB_W} height={THUMB_H} aria-hidden="true" />;
   }

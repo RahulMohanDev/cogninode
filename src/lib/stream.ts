@@ -25,6 +25,10 @@ interface StreamParams {
   apiKey:       string;
   openRouterId: string;        // e.g. "anthropic/claude-sonnet-4.5"
   messages:     Array<{ role: string; content: unknown }>;
+  /** Extra system context appended to the base system prompt (graph-RAG
+   *  retrieval block). Concatenated rather than sent as a second system
+   *  message — some OpenRouter providers mishandle multiple. */
+  systemExtra?: string;
   onChunk:      (text: string) => void;
   /** Reasoning chunks from reasoning models (DeepSeek R1, Tencent HY3,
    *  OpenAI o1-style, etc). Separate from onChunk so the UI can render
@@ -65,7 +69,8 @@ export async function streamMessage(params: StreamParams): Promise<void> {
               "ambiguous; make reasonable assumptions and proceed. Use " +
               "markdown formatting (headings, lists, tables, fenced code " +
               "blocks) when it improves clarity. Be thorough when the " +
-              "question is broad and concise when it is narrow.",
+              "question is broad and concise when it is narrow." +
+              (params.systemExtra ? "\n\n" + params.systemExtra : ""),
           },
           ...params.messages,
         ],

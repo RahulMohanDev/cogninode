@@ -1,10 +1,10 @@
 // src/lib/flowGraph.test.ts
 import { describe, it, expect } from "vitest";
 import {
-  buildChatFlowGraph, buildConceptFlowGraph, planSubtreeSources,
+  buildChatFlowGraph, planSubtreeSources,
   FLOW_X_GAP, FLOW_Y_GAP, SOURCE_X_GAP, SOURCE_Y_GAP,
 } from "./flowGraph";
-import type { Concept, ConceptEdge, GraphSource, Node as DbNode } from "./db";
+import type { Node as DbNode } from "./db";
 
 const node = (id: string, parentId: string | null, depth: number, label = id): DbNode => ({
   _id: id, chatId: "c1", parentId, depth, label, createdAt: depth,
@@ -64,99 +64,6 @@ describe("buildChatFlowGraph", () => {
     const g = buildChatFlowGraph([node("r", null, 0, ""), node("x", "r", 1, "")], "r");
     expect(g.nodes.find(n => n.id === "r")!.data.label).toBe("root");
     expect(g.nodes.find(n => n.id === "x")!.data.label).toBe("branch L1");
-  });
-});
-
-describe("buildConceptFlowGraph", () => {
-  const concept = (id: string, x = 0, y = 0): Concept => ({
-    _id: id, graphId: "g1", label: id, notes: "", color: "teal",
-    x, y, createdAt: 0, updatedAt: 0,
-  });
-  const edge = (id: string, source: string, target: string): ConceptEdge =>
-    ({ _id: id, graphId: "g1", source, target });
-  const source = (id: string, targetType: GraphSource["targetType"], targetId: string, x = 0, y = 0): GraphSource =>
-    ({ _id: id, graphId: "g1", targetType, targetId, x, y, createdAt: 0 });
-
-  const resolvers = {
-    chatTitle: (id: string) => (id === "c1" ? "Java learning" : undefined),
-    nodeInfo:  (id: string) =>
-      id === "n1" ? { label: "generics deep dive", chatId: "c1", chatTitle: "Java learning", isRoot: false }
-      : id === "root1" ? { label: "Java learning", chatId: "c1", chatTitle: "Java learning", isRoot: true }
-      : undefined,
-    reflectionTitle: (id: string) => (id === "r1" ? "PECS rule" : undefined),
-  };
-
-  it("emits concept and source nodes; badges count connected sources by type", () => {
-    const g = buildConceptFlowGraph(
-      [concept("java", 120, 80)],
-      [source("s1", "chat", "c1", 400, 80), source("s2", "node", "n1"), source("s3", "reflection", "r1")],
-      [edge("e1", "java", "s1"), edge("e2", "s2", "java"), edge("e3", "java", "s3")],
-      resolvers,
-    );
-    const java = g.nodes.find(n => n.id === "java")!;
-    expect(java.position).toEqual({ x: 120, y: 80 });
-    expect(java.data.chatCount).toBe(2);          // chat + branch sources
-    expect(java.data.reflectionCount).toBe(1);
-    const s1 = g.nodes.find(n => n.id === "s1")!;
-    expect(s1.type).toBe("source");
-    expect(s1.data.title).toBe("Java learning");
-    expect((s1.data as { href: string }).href).toBe("/chat/c1");
-    const s2 = g.nodes.find(n => n.id === "s2")!;
-    expect(s2.data.subtitle).toBe("branch · Java learning");
-    expect((s2.data as { href: string }).href).toBe("/chat/c1?node=n1");
-    expect(g.edges).toHaveLength(3);
-  });
-
-  it("marks sources whose targets are gone as stale", () => {
-    const g = buildConceptFlowGraph(
-      [],
-      [source("s1", "chat", "ghost"), source("s2", "node", "ghost2")],
-      [],
-      resolvers,
-    );
-    const s1 = g.nodes.find(n => n.id === "s1")!;
-    expect((s1.data as { stale: boolean }).stale).toBe(true);
-    expect(s1.data.title).toBe("(deleted chat)");
-    expect((g.nodes.find(n => n.id === "s2")!.data as { stale: boolean }).stale).toBe(true);
-  });
-
-  it("drops edges whose endpoints are missing", () => {
-    const g = buildConceptFlowGraph(
-      [concept("a"), concept("b")],
-      [],
-      [edge("e1", "a", "b"), edge("e2", "a", "ghost")],
-      resolvers,
-    );
-    expect(g.edges.map(e => e.id)).toEqual(["e1"]);
-  });
-
-  it("dashes only kind:'lineage' edges — user-drawn edges are equal and solid", () => {
-    const g = buildConceptFlowGraph(
-      [concept("k1")],
-      [source("s1", "chat", "c1"), source("s2", "node", "n1")],
-      [
-        { ...edge("e1", "s1", "s2"), kind: "lineage" as const },
-        edge("e2", "s1", "s2"),       // user-drawn source↔source: solid
-        edge("e3", "k1", "s1"),
-      ],
-      resolvers,
-    );
-    expect(g.edges.find(e => e.id === "e1")!.style.strokeDasharray).toBe("6 4");
-    expect(g.edges.find(e => e.id === "e2")!.style.strokeDasharray).toBeUndefined();
-    expect(g.edges.find(e => e.id === "e3")!.style.strokeDasharray).toBeUndefined();
-  });
-
-  it("displays a chat's root node AS the chat (no wrapper semantics)", () => {
-    const g = buildConceptFlowGraph(
-      [],
-      [source("s1", "node", "root1")],
-      [],
-      resolvers,
-    );
-    const s1 = g.nodes.find(n => n.id === "s1")!;
-    expect(s1.data.subtitle).toBe("chat");
-    expect(s1.data.title).toBe("Java learning");
-    expect((s1.data as { href: string }).href).toBe("/chat/c1");
   });
 });
 
