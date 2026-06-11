@@ -1,6 +1,7 @@
 // src/lib/db.ts
 import Dexie, { type EntityTable } from "dexie";
 import { abortNodes }              from "./streamAborts";
+import { migrateGraphsToV6 }       from "./graphMigration";
 import type { Citation }           from "./stream";
 
 // Re-export so message consumers can pull the Citation shape from `db`.
@@ -13,6 +14,10 @@ export interface Chat {
   title:         string;
   rootNodeId:    string;
   currentNodeId: string;
+  /** Set ⇒ this is a graph's hidden dock chat (the "ask this graph"
+   *  transcript). Excluded from the grove, sidebar, QuickJump, and the
+   *  search index — it renders only inside its graph's editor. */
+  graphId?:      string;
   createdAt:     number;
   updatedAt:     number;
 }
@@ -24,6 +29,13 @@ export interface Node {
   depth:     number;
   label:     string;         // first 60 chars of quote or first message
   createdAt: number;
+}
+
+/** One graph-RAG context group cited in an assistant reply: the prompt
+ *  tag ("S2") and the canvas node whose attached content fed it. */
+export interface RagSourceRef {
+  tag:         string;
+  graphNodeId: string;
 }
 
 export interface Message {
@@ -41,6 +53,7 @@ export interface Message {
   quote?:       string;        // text that triggered this branch
   fileIds?:     string[];      // references to files table
   citations?:   Citation[];    // web-search sources (non-indexed, no migration)
+  ragSources?:  RagSourceRef[]; // graph-RAG citations (non-indexed, no migration)
   createdAt:    number;
 }
 
@@ -86,46 +99,84 @@ export interface MetaEntry {
 }
 
 // ── Knowledge graphs ───────────────────────────────────────────
-// User-curated concept maps: named graphs of concept nodes connected by
-// edges, with chats and reflections attachable to concepts — a personal
-// map of what's being learned, orthogonal to the chat trees.
+// User-engineered RAG corpora: every graph is anchored by a ROOT node
+// (the retrieval entry point) and holds unified nodes — each a label +
+// notes + color, optionally carrying ATTACHED DATA (a chat, a branch
+// subtree, or a reflection). Edges connect anything to anything; the
+// resulting structure is exactly what graph-scoped retrieval walks.
 
-export type ConceptColor = "coral" | "teal" | "lilac" | "butter";
+export type GraphNodeColor = "coral" | "teal" | "lilac" | "butter";
 
 export interface KnowledgeGraph {
-  _id:       string;
-  name:      string;
-  createdAt: number;
-  updatedAt: number;
+  _id:        string;
+  name:       string;
+  /** The graph's root node — created with the graph, undeletable. */
+  rootNodeId: string;
+  createdAt:  number;
+  updatedAt:  number;
 }
 
-export interface Concept {
+export interface GraphNodeAttachment {
+  type:     "chat" | "node" | "reflection";
+  targetId: string;
+  /** Branch ("node") attachments only — how much of the chat tree this
+   *  node's data covers: the whole subtree (default for fresh drops) or
+   *  exactly one chat-tree node (cards produced by Unfold). */
+  scope?:   "subtree" | "single";
+}
+
+export interface GraphNode {
   _id:       string;
   graphId:   string;
+  kind:      "root" | "node";
+  /** "" ⇒ derive the display title from the attachment (tracks renames). */
   label:     string;
   notes:     string;        // freeform markdown-ish notes
-  color:     ConceptColor;
+  color:     GraphNodeColor;
   x:         number;        // canvas position, persisted on drag
   y:         number;
+  /** The node's data: the underlying messages/reflection become this
+   *  node's retrieval corpus. Absent ⇒ purely organizational node. */
+  attachment?: GraphNodeAttachment;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface ConceptEdge {
+export interface GraphEdge {
   _id:     string;
   graphId: string;
-  source:  string;          // concept OR source-node id
-  target:  string;          // concept OR source-node id
+  source:  string;          // graph-node id (undirected — source/target read symmetric)
+  target:  string;
   label?:  string;
   /** "lineage" = created by unfolding a chat subtree (mirrors branch
    *  parentage, rendered dashed). User-drawn edges carry no kind. */
   kind?:   "lineage";
 }
 
-// A chat, branch (subtree root), or reflection placed ON the canvas as a
-// first-class node — connectable to concepts (and anything else) by
-// edges. This is the granularity layer for traversal-RAG: the user drags
-// exactly the trees/subtrees they want classified.
+// ── Legacy graph shapes (schema ≤5 / export ≤3) ────────────────
+// Kept only for the v6 upgrade migration and the backup importer.
+
+/** @deprecated v5 name for {@link GraphNodeColor}. */
+export type ConceptColor = GraphNodeColor;
+
+/** Legacy (schema ≤5 / export ≤3) concept row — merged into graphNodes in v6. */
+export interface Concept {
+  _id:       string;
+  graphId:   string;
+  label:     string;
+  notes:     string;
+  color:     ConceptColor;
+  x:         number;
+  y:         number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Legacy (schema ≤5 / export ≤3) edge row — copied to graphEdges in v6. */
+export type ConceptEdge = GraphEdge;
+
+/** Legacy (schema ≤5 / export ≤3) canvas source — merged into graphNodes
+ *  (as attachment-bearing nodes) in v6. */
 export interface GraphSource {
   _id:        string;
   graphId:    string;
@@ -138,7 +189,7 @@ export interface GraphSource {
 
 /** Legacy (schema ≤4 / export v2) panel-attachment shape. The table was
  *  replaced by graphSources + edges in v5; this type remains for the
- *  import converter and the upgrade migration. */
+ *  import converter. */
 export interface ConceptLink {
   _id:        string;
   graphId:    string;
@@ -148,14 +199,15 @@ export interface ConceptLink {
   createdAt:  number;
 }
 
-// One embedding per searchable doc (message / reflection), keyed by the
-// search doc id ("m:<id>" / "r:<id>"). Vectors are pre-normalized so
-// cosine similarity reduces to a dot product. `textHash` detects content
-// edits that require re-embedding; `model` scopes rows to the embedding
-// model that produced them (switching models wipes + rebuilds).
+// One embedding per searchable doc (message / reflection / graph node),
+// keyed by the search doc id ("m:<id>" / "r:<id>" / "g:<id>"). Vectors are
+// pre-normalized so cosine similarity reduces to a dot product. `textHash`
+// detects content edits that require re-embedding; `model` scopes rows to
+// the embedding model that produced them (switching models wipes + rebuilds).
 export interface SearchVector {
   _id:       string;     // search doc id, e.g. "m:<messageId>"
-  kind:      "message" | "reflection";
+  kind:      "message" | "reflection" | "graphNode";
+  /** Owning chat id — or the GRAPH id for graphNode docs. */
   chatId:    string;
   nodeId:    string;
   model:     string;     // embedding model id from EMBEDDING_MODELS
@@ -176,10 +228,9 @@ export const db = new Dexie("cogninode") as Dexie & {
   models:      EntityTable<CatalogModel, "_id">;
   meta:        EntityTable<MetaEntry,   "key">;
   searchVectors: EntityTable<SearchVector, "_id">;
-  graphs:       EntityTable<KnowledgeGraph, "_id">;
-  concepts:     EntityTable<Concept,     "_id">;
-  conceptEdges: EntityTable<ConceptEdge, "_id">;
-  graphSources: EntityTable<GraphSource, "_id">;
+  graphs:     EntityTable<KnowledgeGraph, "_id">;
+  graphNodes: EntityTable<GraphNode,     "_id">;
+  graphEdges: EntityTable<GraphEdge,     "_id">;
 };
 
 db.version(1).stores({
@@ -246,6 +297,36 @@ db.version(5).stores({
       source:  l.conceptId,
       target:  sourceId,
     });
+  }
+});
+
+// v6: the unified-node model. concepts + graphSources merge into ONE
+// graphNodes table (a node = label/notes/color + optional attached data),
+// conceptEdges copy to graphEdges, and every graph gains an undeletable
+// ROOT node that anchors graph-scoped retrieval. chats gains a graphId
+// index so each graph can own a hidden "ask this graph" dock chat.
+db.version(6).stores({
+  chats:        "_id, updatedAt, graphId",
+  graphNodes:   "_id, graphId, attachment.targetId",
+  graphEdges:   "_id, graphId, source, target",
+  concepts:     null,
+  conceptEdges: null,
+  graphSources: null,
+}).upgrade(async tx => {
+  const [graphs, concepts, sources, edges] = await Promise.all([
+    tx.table("graphs").toArray()        as Promise<Array<{ _id: string; name: string }>>,
+    tx.table("concepts").toArray()      as Promise<Concept[]>,
+    tx.table("graphSources").toArray()  as Promise<GraphSource[]>,
+    tx.table("conceptEdges").toArray()  as Promise<ConceptEdge[]>,
+  ]);
+  const out = migrateGraphsToV6({
+    graphs, concepts, sources, edges,
+    now: Date.now(), newId: () => crypto.randomUUID(),
+  });
+  if (out.graphNodes.length > 0) await tx.table("graphNodes").bulkAdd(out.graphNodes);
+  if (out.graphEdges.length > 0) await tx.table("graphEdges").bulkAdd(out.graphEdges);
+  for (const [graphId, rootNodeId] of out.rootIdByGraph) {
+    await tx.table("graphs").update(graphId, { rootNodeId });
   }
 });
 
@@ -448,17 +529,25 @@ export async function buildPathMessages(
 // re-attached across branches and we don't want to orphan a still-used
 // blob.
 
-/** Remove knowledge-graph source nodes whose underlying chat/branch/
- *  reflection is being deleted, along with any edges touching them.
- *  Must run inside a transaction that includes graphSources + conceptEdges. */
-async function purgeSourcesByTargets(targetIds: string[]): Promise<void> {
-  if (targetIds.length === 0) return;
-  const doomed = await db.graphSources.where("targetId").anyOf(targetIds).toArray();
-  if (doomed.length === 0) return;
-  const ids = doomed.map(s => s._id);
-  await db.conceptEdges.where("source").anyOf(ids).delete();
-  await db.conceptEdges.where("target").anyOf(ids).delete();
-  await db.graphSources.bulkDelete(ids);
+/** DETACH graph-node attachments whose underlying chat/branch/reflection
+ *  is being deleted. The node itself survives — notes, color, position,
+ *  and every edge stay on the canvas — with the last-known title baked
+ *  into the label when the user never set one. Must run inside a
+ *  transaction that includes graphNodes. Returns how many were detached. */
+async function detachAttachmentsByTargets(
+  titleByTargetId: Map<string, string>,
+): Promise<number> {
+  if (titleByTargetId.size === 0) return 0;
+  const targetIds = [...titleByTargetId.keys()];
+  return db.graphNodes
+    .where("attachment.targetId").anyOf(targetIds)
+    .modify(node => {
+      const baked = (node.attachment && titleByTargetId.get(node.attachment.targetId))
+        || "(deleted source)";
+      delete node.attachment;
+      if (!node.label.trim()) node.label = baked;
+      node.updatedAt = Date.now();
+    });
 }
 
 /** Collect a node and all its descendants in a chat into an id set. */
@@ -486,6 +575,8 @@ export interface DeleteSubtreeResult {
   messagesDeleted: number;
   reflectionsDeleted: number;
   filesDeleted:    number;
+  /** Graph nodes that kept living on a canvas but lost their attached data. */
+  detachedGraphNodes: number;
   /** The parent node of the deleted subtree, or null when the root was deleted. */
   parentNodeId:    string | null;
 }
@@ -504,20 +595,20 @@ export async function deleteNodeSubtree(
 ): Promise<DeleteSubtreeResult> {
   return db.transaction(
     "rw",
-    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.graphSources, db.conceptEdges],
+    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.graphNodes],
     async () => {
       const chat = await db.chats.get(chatId);
       if (!chat) {
         return {
-          nodesDeleted: 0, messagesDeleted: 0,
-          reflectionsDeleted: 0, filesDeleted: 0, parentNodeId: null,
+          nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0,
+          filesDeleted: 0, detachedGraphNodes: 0, parentNodeId: null,
         };
       }
       const target = await db.nodes.get(nodeId);
       if (!target || target.chatId !== chatId) {
         return {
-          nodesDeleted: 0, messagesDeleted: 0,
-          reflectionsDeleted: 0, filesDeleted: 0, parentNodeId: null,
+          nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0,
+          filesDeleted: 0, detachedGraphNodes: 0, parentNodeId: null,
         };
       }
 
@@ -565,11 +656,17 @@ export async function deleteNodeSubtree(
       await db.reflections.where("nodeId").anyOf(doomedArr).delete();
       await db.nodes.bulkDelete(doomedArr);
       if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
-      // Knowledge-graph sources for the deleted branches + reflections.
-      await purgeSourcesByTargets([
-        ...doomedArr,
-        ...doomedReflections.map(r => r._id),
-      ]);
+      // Graph nodes that held these branches/reflections as data keep
+      // living on their canvases — detached, titles baked in.
+      const nodeLabelById = new Map(allNodes.map(n => [n._id, n.label]));
+      const detachTitles = new Map<string, string>();
+      for (const id of doomedArr) {
+        detachTitles.set(id, nodeLabelById.get(id) || "(deleted branch)");
+      }
+      for (const r of doomedReflections) {
+        detachTitles.set(r._id, r.title || "(deleted reflection)");
+      }
+      const detachedGraphNodes = await detachAttachmentsByTargets(detachTitles);
 
       // Repoint currentNodeId if it was inside the deleted subtree.
       const parentNodeId: string | null = target.parentId;
@@ -601,17 +698,22 @@ export async function deleteNodeSubtree(
         messagesDeleted:    doomedMessages.length,
         reflectionsDeleted: doomedReflections.length,
         filesDeleted:       orphanFileIds.length,
+        detachedGraphNodes,
         parentNodeId,
       };
     },
   );
 }
 
-/** Delete one reflection plus any knowledge-graph sources pointing at it. */
+/** Delete one reflection; graph nodes that held it as data are detached
+ *  (the reflection's title is read BEFORE deleting so it can be baked in). */
 export async function deleteReflection(reflectionId: string): Promise<void> {
-  await db.transaction("rw", db.reflections, db.graphSources, db.conceptEdges, async () => {
+  await db.transaction("rw", db.reflections, db.graphNodes, async () => {
+    const refl = await db.reflections.get(reflectionId);
     await db.reflections.delete(reflectionId);
-    await purgeSourcesByTargets([reflectionId]);
+    await detachAttachmentsByTargets(new Map([
+      [reflectionId, refl?.title || "(deleted reflection)"],
+    ]));
   });
 }
 
@@ -620,6 +722,8 @@ export interface DeleteChatResult {
   messagesDeleted: number;
   reflectionsDeleted: number;
   filesDeleted:    number;
+  /** Graph nodes that kept living on a canvas but lost their attached data. */
+  detachedGraphNodes: number;
 }
 
 /**
@@ -629,11 +733,14 @@ export interface DeleteChatResult {
 export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
   return db.transaction(
     "rw",
-    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.graphSources, db.conceptEdges],
+    [db.chats, db.nodes, db.messages, db.reflections, db.files, db.graphNodes],
     async () => {
       const chat = await db.chats.get(chatId);
       if (!chat) {
-        return { nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0, filesDeleted: 0 };
+        return {
+          nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0,
+          filesDeleted: 0, detachedGraphNodes: 0,
+        };
       }
 
       const nodes = await db.nodes.where("chatId").equals(chatId).toArray();
@@ -664,19 +771,20 @@ export async function deleteChat(chatId: string): Promise<DeleteChatResult> {
       await db.nodes.where("chatId").equals(chatId).delete();
       await db.chats.delete(chatId);
       if (orphanFileIds.length > 0) await db.files.bulkDelete(orphanFileIds);
-      // Knowledge-graph sources for this chat, its branches, and its
-      // reflections.
-      await purgeSourcesByTargets([
-        chatId,
-        ...nodes.map(n => n._id),
-        ...reflections.map(r => r._id),
-      ]);
+      // Graph nodes that held this chat, its branches, or its reflections
+      // as data keep living on their canvases — detached, titles baked in.
+      const detachTitles = new Map<string, string>();
+      detachTitles.set(chatId, chat.title || "(deleted chat)");
+      for (const n of nodes) detachTitles.set(n._id, n.label || "(deleted branch)");
+      for (const r of reflections) detachTitles.set(r._id, r.title || "(deleted reflection)");
+      const detachedGraphNodes = await detachAttachmentsByTargets(detachTitles);
 
       return {
         nodesDeleted:       nodes.length,
         messagesDeleted:    messages.length,
         reflectionsDeleted: reflections.length,
         filesDeleted:       orphanFileIds.length,
+        detachedGraphNodes,
       };
     },
   );

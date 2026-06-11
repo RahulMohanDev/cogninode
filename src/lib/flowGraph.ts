@@ -1,14 +1,13 @@
 // src/lib/flowGraph.ts
 // Pure mapping from the chat's node tree to React Flow graph data — kept
-// out of the component so layout/flagging logic is unit-testable and so
-// Phase 5's concept-graph editor can share the conventions. Positions
-// reuse the existing DFS layout (lib/path.ts): leaves spread on x, depth
-// stacks on y.
+// out of the component so layout/flagging logic is unit-testable.
+// Positions reuse the existing DFS layout (lib/path.ts): leaves spread on
+// x, depth stacks on y. The knowledge-graph canvas mapping lives in
+// lib/graphFlow.ts; this module keeps the chat TreeMap + the pure
+// subtree-unfold planner the graph editor reuses.
 
 import { buildTree, layoutTree, findPath } from "./path";
-import type {
-  Concept, ConceptColor, ConceptEdge, GraphSource, Node as DbNode,
-} from "./db";
+import type { Node as DbNode } from "./db";
 
 export const FLOW_X_GAP = 260;
 export const FLOW_Y_GAP = 170;
@@ -35,6 +34,7 @@ export interface FlowGraphEdge {
   source:   string;
   target:   string;
   animated: boolean;
+  label?:   string;
   style:    { stroke: string; strokeWidth: number; strokeDasharray?: string };
 }
 
@@ -43,162 +43,10 @@ export interface FlowGraph {
   edges: FlowGraphEdge[];
 }
 
-// ── concept maps (knowledge graphs) ────────────────────────────────────
-
-export interface ConceptNodeData {
-  label:           string;
-  notes:           string;
-  color:           ConceptColor;
-  /** Connected chat + branch sources (via edges). */
-  chatCount:       number;
-  reflectionCount: number;
-  [key: string]: unknown;
-}
-
-export interface SourceNodeData {
-  title:      string;
-  subtitle:   string;        // "chat" | "branch · <chat>" | "reflection"
-  targetType: GraphSource["targetType"];
-  targetId:   string;
-  /** Open destination, precomputed: /chat/… or /reflections?open=… */
-  href:       string;
-  stale:      boolean;       // underlying chat/branch/reflection is gone
-  [key: string]: unknown;
-}
-
-export interface ConceptFlowNode {
-  id:       string;
-  type:     "concept";
-  position: { x: number; y: number };
-  data:     ConceptNodeData;
-}
-
-export interface SourceFlowNode {
-  id:       string;
-  type:     "source";
-  position: { x: number; y: number };
-  data:     SourceNodeData;
-}
-
-export interface ConceptFlowGraph {
-  nodes: Array<ConceptFlowNode | SourceFlowNode>;
-  edges: FlowGraphEdge[];
-}
-
-export interface SourceResolvers {
-  chatTitle:       (chatId: string) => string | undefined;
-  /** Branch label + owning chat (undefined when the node is gone). */
-  nodeInfo:        (nodeId: string) => { label: string; chatId: string; chatTitle: string; isRoot: boolean } | undefined;
-  reflectionTitle: (reflectionId: string) => string | undefined;
-}
-
-export function resolveSourceDisplay(s: GraphSource, resolve: SourceResolvers): SourceNodeData {
-  return sourceData(s, resolve);
-}
-
-function sourceData(s: GraphSource, resolve: SourceResolvers): SourceNodeData {
-  if (s.targetType === "chat") {
-    const title = resolve.chatTitle(s.targetId);
-    return {
-      title: title ?? "(deleted chat)", subtitle: "chat",
-      targetType: s.targetType, targetId: s.targetId,
-      href: `/chat/${s.targetId}`, stale: title === undefined,
-    };
-  }
-  if (s.targetType === "node") {
-    const info = resolve.nodeInfo(s.targetId);
-    // A chat's root node IS the chat (labels stay in sync) — display it as
-    // one, so unfolded trees don't carry a redundant wrapper card.
-    if (info?.isRoot) {
-      return {
-        title: info.label, subtitle: "chat",
-        targetType: s.targetType, targetId: s.targetId,
-        href: `/chat/${info.chatId}`, stale: false,
-      };
-    }
-    return {
-      title:    info?.label ?? "(deleted branch)",
-      subtitle: info ? `branch · ${info.chatTitle}` : "branch",
-      targetType: s.targetType, targetId: s.targetId,
-      href:  info ? `/chat/${info.chatId}?node=${s.targetId}` : "",
-      stale: info === undefined,
-    };
-  }
-  const title = resolve.reflectionTitle(s.targetId);
-  return {
-    title: title ?? "(deleted reflection)", subtitle: "reflection",
-    targetType: s.targetType, targetId: s.targetId,
-    href: `/reflections?open=${s.targetId}`, stale: title === undefined,
-  };
-}
-
-export function buildConceptFlowGraph(
-  concepts: Concept[],
-  sources:  GraphSource[],
-  edges:    ConceptEdge[],
-  resolve:  SourceResolvers,
-): ConceptFlowGraph {
-  const sourceById  = new Map(sources.map(s => [s._id, s]));
-  const conceptIds  = new Set(concepts.map(c => c._id));
-
-  // Per-concept attachment badges = connected sources, via edges.
-  const chatCounts = new Map<string, number>();
-  const reflCounts = new Map<string, number>();
-  for (const e of edges) {
-    const pairs: Array<[string, string]> = [[e.source, e.target], [e.target, e.source]];
-    for (const [maybeConcept, maybeSource] of pairs) {
-      if (!conceptIds.has(maybeConcept)) continue;
-      const s = sourceById.get(maybeSource);
-      if (!s) continue;
-      const map = s.targetType === "reflection" ? reflCounts : chatCounts;
-      map.set(maybeConcept, (map.get(maybeConcept) ?? 0) + 1);
-    }
-  }
-
-  const nodes: Array<ConceptFlowNode | SourceFlowNode> = [
-    ...concepts.map((c): ConceptFlowNode => ({
-      id:       c._id,
-      type:     "concept",
-      position: { x: c.x, y: c.y },
-      data: {
-        label:           c.label,
-        notes:           c.notes,
-        color:           c.color,
-        chatCount:       chatCounts.get(c._id) ?? 0,
-        reflectionCount: reflCounts.get(c._id) ?? 0,
-      },
-    })),
-    ...sources.map((s): SourceFlowNode => ({
-      id:       s._id,
-      type:     "source",
-      position: { x: s.x, y: s.y },
-      data:     sourceData(s, resolve),
-    })),
-  ];
-
-  const placed = new Set([...conceptIds, ...sourceById.keys()]);
-  const flowEdges: FlowGraphEdge[] = edges
-    .filter(e => placed.has(e.source) && placed.has(e.target))
-    .map(e => ({
-      id:       e._id,
-      source:   e.source,
-      target:   e.target,
-      animated: false,
-      // Lineage edges (laid down by unfolding a chat tree) render dashed;
-      // every edge the USER draws is an equal, solid connection.
-      style: e.kind === "lineage"
-        ? { stroke: "var(--line)", strokeWidth: 1.5, strokeDasharray: "6 4" }
-        : { stroke: "var(--line)", strokeWidth: 2 },
-    }));
-
-  return { nodes, edges: flowEdges };
-}
-
 // ── unfolding chat subtrees onto the canvas ────────────────────────────
-// Dropping a chat/branch from the Library expands the WHOLE subtree into
-// individual source cards (lineage edges mirroring parentage) so the user
-// can prune branches they don't want classified. Pure planning — the
-// editor persists the result.
+// "Unfold" expands a chat/branch node into one card per chat-tree node
+// (lineage edges mirroring parentage) so the user can prune branches they
+// don't want in the corpus. Pure planning — knowledge.ts persists it.
 
 export const SOURCE_X_GAP = 230;
 export const SOURCE_Y_GAP = 130;

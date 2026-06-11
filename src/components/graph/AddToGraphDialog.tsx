@@ -1,16 +1,16 @@
 // src/components/graph/AddToGraphDialog.tsx
 // "Add to knowledge graph" — attach the current chat (TopBar) or a
-// reflection (Reflections page) to a concept: pick a graph (or create
-// one), pick an existing concept (or create one named after your text /
-// the target's title), done. Toasts confirm; opening the graph after is
-// one click away.
+// reflection (Reflections page) into a graph: pick a graph (or create
+// one — that names its root), pick the node to wire it under (root by
+// default, or create a fresh node named after your text / the target's
+// title), done. Toasts confirm; opening the graph after is one click away.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db } from "../../lib/db";
 import {
-  attachToConcept, createConcept, createGraph, nextConceptPosition,
+  attachTargetToNode, createGraph, createNode, nextNodePosition,
 } from "../../lib/knowledge";
 import { useModalBehavior } from "../../hooks/useModalStack";
 import { useToast } from "../ui/Toast";
@@ -40,7 +40,7 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
   const [graphId, setGraphId] = useState("");
   const [newGraphName, setNewGraphName] = useState("");
   const [creatingGraph, setCreatingGraph] = useState(false);
-  const [conceptQuery, setConceptQuery] = useState("");
+  const [nodeQuery, setNodeQuery] = useState("");
   const [busy, setBusy] = useState(false);
 
   // Reset per open; default to the most recent graph.
@@ -49,7 +49,7 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
     setGraphId("");
     setNewGraphName("");
     setCreatingGraph(false);
-    setConceptQuery("");
+    setNodeQuery("");
     setBusy(false);
   }, [open]);
   useEffect(() => {
@@ -58,34 +58,49 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
     else setCreatingGraph(true);
   }, [open, graphId, graphs]);
 
-  const concepts = useLiveQuery(
-    () => (graphId ? db.concepts.where("graphId").equals(graphId).toArray() : []),
+  const graphNodes = useLiveQuery(
+    () => (graphId ? db.graphNodes.where("graphId").equals(graphId).toArray() : []),
     [graphId],
     [],
   );
 
+  // Only nameable anchors make sense to wire under: the root plus every
+  // labeled node. (Label-less attached cards derive their titles — odd
+  // targets for a picker.)
+  const candidates = useMemo(
+    () => graphNodes.filter(n => n.kind === "root" || n.label.trim()),
+    [graphNodes],
+  );
+
   const suggestions = useMemo(() => {
-    const needle = conceptQuery.trim().toLowerCase();
+    const needle = nodeQuery.trim().toLowerCase();
     const base = needle
-      ? concepts.filter(c => c.label.toLowerCase().includes(needle))
-      : concepts;
-    return [...base].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6);
-  }, [concepts, conceptQuery]);
+      ? candidates.filter(n => n.label.toLowerCase().includes(needle))
+      : candidates;
+    return [...base]
+      .sort((a, b) =>
+        (a.kind === "root" ? -1 : 0) - (b.kind === "root" ? -1 : 0) ||
+        b.updatedAt - a.updatedAt)
+      .slice(0, 6);
+  }, [candidates, nodeQuery]);
 
   if (!open || !target) return null;
 
   const graphName = graphs?.find(g => g._id === graphId)?.name ?? "";
 
-  const finish = (conceptLabel: string): void => {
-    toast(`Attached to ${graphName || "graph"} › ${conceptLabel}`, { kind: "success" });
+  const finish = (nodeLabel: string): void => {
+    toast(`Attached to ${graphName || "graph"} › ${nodeLabel}`, { kind: "success" });
     onClose();
   };
 
-  const attachExisting = async (conceptId: string, label: string): Promise<void> => {
+  const attachExisting = async (nodeId: string, label: string): Promise<void> => {
     if (busy) return;
     setBusy(true);
     try {
-      await attachToConcept({ graphId, conceptId, targetType: target.type, targetId: target.id });
+      await attachTargetToNode({
+        graphId, nodeId,
+        attachment: { type: target.type, targetId: target.id },
+      });
       finish(label);
     } catch (err) {
       toast(`Couldn't attach: ${(err as Error).message}`, { kind: "error" });
@@ -95,12 +110,15 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
 
   const createAndAttach = async (): Promise<void> => {
     if (busy || !graphId) return;
-    const label = conceptQuery.trim() || target.title.slice(0, 60) || "New concept";
+    const label = nodeQuery.trim() || target.title.slice(0, 60) || "New node";
     setBusy(true);
     try {
-      const pos = nextConceptPosition(concepts.length);
-      const conceptId = await createConcept(graphId, { label, ...pos });
-      await attachToConcept({ graphId, conceptId, targetType: target.type, targetId: target.id });
+      const pos = nextNodePosition(graphNodes.length);
+      const nodeId = await createNode(graphId, { label, ...pos });
+      await attachTargetToNode({
+        graphId, nodeId,
+        attachment: { type: target.type, targetId: target.id },
+      });
       finish(label);
     } catch (err) {
       toast(`Couldn't attach: ${(err as Error).message}`, { kind: "error" });
@@ -116,7 +134,7 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
   };
 
   const exactMatch = suggestions.some(
-    c => c.label.toLowerCase() === conceptQuery.trim().toLowerCase() && conceptQuery.trim() !== "",
+    n => n.label.toLowerCase() === nodeQuery.trim().toLowerCase() && nodeQuery.trim() !== "",
   );
 
   return (
@@ -209,27 +227,30 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
 
           {graphId && !creatingGraph && (
             <div className="tw:flex tw:flex-col tw:gap-1">
-              <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Concept</label>
+              <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Wire under</label>
               <input
                 className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:text-ink tw:focus:border-teal"
-                value={conceptQuery}
-                onChange={e => setConceptQuery(e.target.value)}
-                placeholder="Find or create a concept…"
+                value={nodeQuery}
+                onChange={e => setNodeQuery(e.target.value)}
+                placeholder="Find or create a node…"
                 autoFocus
                 spellCheck={false}
               />
               <div className="tw:flex tw:flex-col tw:gap-0.5 tw:mt-0.5">
-                {suggestions.map(c => (
+                {suggestions.map(n => (
                   <button
-                    key={c._id}
+                    key={n._id}
                     className="tw:flex tw:items-center tw:gap-2 tw:text-left tw:py-1.5 tw:px-2.5 tw:rounded-[7px] tw:text-[13px] tw:text-ink tw:hover:bg-bg-2 tw:disabled:opacity-50"
-                    onClick={() => void attachExisting(c._id, c.label)}
+                    onClick={() => void attachExisting(n._id, n.label)}
                     disabled={busy}
                   >
                     <span className={`tw:w-2 tw:h-2 tw:rounded-[50%] tw:flex-none ${
-                      c.color === "coral" ? "tw:bg-coral" : c.color === "teal" ? "tw:bg-teal" : c.color === "lilac" ? "tw:bg-lilac" : "tw:bg-butter"
+                      n.color === "coral" ? "tw:bg-coral" : n.color === "teal" ? "tw:bg-teal" : n.color === "lilac" ? "tw:bg-lilac" : "tw:bg-butter"
                     }`} />
-                    <span className="tw:truncate">{c.label}</span>
+                    <span className="tw:truncate">{n.label}</span>
+                    {n.kind === "root" && (
+                      <span className="tw:font-mono tw:text-[9px] tw:tracking-[0.1em] tw:uppercase tw:text-coral tw:flex-none">root</span>
+                    )}
                   </button>
                 ))}
                 {!exactMatch && (
@@ -240,12 +261,12 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
                   >
                     <span className="tw:w-4 tw:h-4 tw:grid tw:place-items-center tw:rounded-[50%] tw:border tw:border-dashed tw:border-line tw:text-[10px] tw:flex-none">+</span>
                     <span className="tw:truncate">
-                      Create "{conceptQuery.trim() || target.title.slice(0, 40) || "New concept"}"
+                      Create "{nodeQuery.trim() || target.title.slice(0, 40) || "New node"}"
                     </span>
                   </button>
                 )}
-                {suggestions.length === 0 && exactMatch === false && concepts.length > 0 && conceptQuery.trim() !== "" && (
-                  <div className="tw:text-[12px] tw:text-ink-3 tw:px-2.5 tw:py-1">No matching concepts.</div>
+                {suggestions.length === 0 && exactMatch === false && candidates.length > 0 && nodeQuery.trim() !== "" && (
+                  <div className="tw:text-[12px] tw:text-ink-3 tw:px-2.5 tw:py-1">No matching nodes.</div>
                 )}
               </div>
             </div>

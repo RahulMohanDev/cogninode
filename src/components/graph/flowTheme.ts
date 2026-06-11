@@ -5,7 +5,7 @@
 // values here — re-read per theme so dark-mode overrides apply.
 
 import { useMemo } from "react";
-import type { ConceptColor } from "../../lib/db";
+import type { GraphNodeColor } from "../../lib/db";
 
 export function readToken(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -20,7 +20,7 @@ export function withAlpha(color: string, alpha: number): string {
 }
 
 export interface FlowTheme {
-  accents: Record<ConceptColor, string>;
+  accents: Record<GraphNodeColor, string>;
   /** Depth scale for chat trees: [root, L1, L2, L3+]. */
   depths:  string[];
   mask:    string;

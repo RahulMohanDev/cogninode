@@ -274,6 +274,13 @@
   40% { transform: translateY(-3px); opacity: 1; }
 }
 
+/* ====== Graph-RAG retrieval glow ====== */
+/* Pulsing ring on canvas nodes the dock answer just retrieved from. */
+@keyframes ragGlow {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--lilac) 30%, transparent); }
+  50%      { box-shadow: 0 0 0 7px color-mix(in oklab, var(--lilac) 55%, transparent); }
+}
+
 /* ============ Auth / settings / billing ============ */
 
 
