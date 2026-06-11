@@ -92,20 +92,20 @@ export default function Reflections() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
-        <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:pt-8 tw:px-10 tw:pb-20 tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--lilac)_6%,transparent),transparent_60%),var(--bg-3)]">
-          {/* The sidebar is the list + search; the page is the full-width
-              reader. The hero only shows while there's nothing to read. */}
+        <div className={`tw:flex-1 tw:min-h-0 tw:overflow-y-auto ${selected ? "tw:p-5" : "tw:pt-8 tw:px-10 tw:pb-20"} tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--lilac)_6%,transparent),transparent_60%),var(--bg-3)]`}>
+          {/* The sidebar is the list + search; the page is the reader and
+              gets ALL the space — the card spans the column and stretches
+              to full height. The hero only shows when there's nothing to
+              read. */}
           {selected ? (
-            <div className="tw:max-w-[920px] tw:mx-auto">
-              <ReflectionDetail
-                key={selected._id}
-                reflection={selected}
-                chatTitle={chatTitleById.get(selected.chatId) ?? "(deleted chat)"}
-                onOpenBranch={() => navigate(`/chat/${selected.chatId}?node=${selected.nodeId}`)}
-                onAddToGraph={() => setGraphTarget({ type: "reflection", id: selected._id, title: selected.title })}
-                onDeleted={() => { setSelectedId(null); toast("Reflection deleted", { kind: "success" }); }}
-              />
-            </div>
+            <ReflectionDetail
+              key={selected._id}
+              reflection={selected}
+              chatTitle={chatTitleById.get(selected.chatId) ?? "(deleted chat)"}
+              onOpenBranch={() => navigate(`/chat/${selected.chatId}?node=${selected.nodeId}`)}
+              onAddToGraph={() => setGraphTarget({ type: "reflection", id: selected._id, title: selected.title })}
+              onDeleted={() => { setSelectedId(null); toast("Reflection deleted", { kind: "success" }); }}
+            />
           ) : (
             <div className="tw:max-w-[920px] tw:mx-auto">
               <div className="tw:mt-0 tw:mb-7">
@@ -209,7 +209,7 @@ function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onAddToGraph, o
   };
 
   return (
-    <div className="tw:bg-bg tw:border tw:border-line tw:rounded-[16px] tw:p-6 tw:min-w-0">
+    <div className="tw:bg-bg tw:border tw:border-line tw:rounded-[16px] tw:py-6 tw:px-8 tw:min-w-0 tw:min-h-full">
       <div className="tw:flex tw:items-start tw:gap-2.5 tw:mb-1">
         {renaming ? (
           <input
