@@ -19,6 +19,7 @@ import {
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
 import { resolveModelSync }               from "../lib/models";
+import { autoTitleChat, FIRST_QUESTION_MAX } from "../lib/title";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
 import { useSettings }                    from "./useSettings";
 
@@ -246,6 +247,13 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         // nodes created from a text selection — a snippet of the prior
         // reply or the "New branch" placeholder. Graph dock chats keep
         // their fixed "<graph> — graph chat" title.
+        //
+        // When this derived title lands on the chat itself, the run is
+        // "armed" for LLM auto-titling: after the first assistant reply
+        // persists, onDone fires a background call that swaps in a short
+        // topic title (compare-and-swap in lib/title.ts — a user rename
+        // mid-flight wins).
+        let autoTitleExpected: string | null = null;
         const chatRecord = await db.chats.get(chatId);
         if (chatRecord && !chatRecord.graphId) {
           // "First user message on this node" = the message we just added
@@ -256,21 +264,37 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
 
           if (isFirstUser) {
             const title = deriveTitle(params.composerText);
-            if (title) {
-              if (nodeId === chatRecord.rootNodeId) {
-                // Root node: existing behavior — only fires while the chat
-                // title is still the default placeholder, so any user-chosen
-                // title (from a starter chip) is preserved. Updates both the
-                // chat title and the root node label together.
-                if (chatRecord.title === "New chat") {
-                  await db.chats.update(chatId, { title, updatedAt: Date.now() });
-                  await db.nodes.update(chatRecord.rootNodeId, { label: title });
+            if (nodeId === chatRecord.rootNodeId) {
+              // Root node: fires while the chat title is still the default
+              // placeholder — or still "derived", which re-fires after a
+              // failed first send (onError deletes the user message but
+              // leaves the derived title behind; the retry must re-derive
+              // and re-arm). User-chosen titles (starter chips: titleSource
+              // undefined; renames: "manual") are never touched. The guard
+              // is re-checked inside a transaction so a rename committing
+              // mid-send can't be clobbered — or downgraded to "derived",
+              // which would let the LLM title overwrite it. firstQuestion
+              // is stored regardless — it's hover context, not a title.
+              const firstQuestion = params.composerText.replace(/\s+/g, " ").trim()
+                .slice(0, FIRST_QUESTION_MAX);
+              autoTitleExpected = await db.transaction("rw", db.chats, db.nodes, async () => {
+                const chat = await db.chats.get(chatId);
+                if (!chat) return null;
+                if (chat.title !== "New chat" && chat.titleSource !== "derived") {
+                  await db.chats.update(chatId, { firstQuestion });
+                  return null;
                 }
-              } else {
-                // Non-root branch node: retitle from the question,
-                // overwriting the selected-quote / "New branch" placeholder.
-                await db.nodes.update(nodeId, { label: title });
-              }
+                const next = title || chat.title;
+                await db.chats.update(chatId, {
+                  title: next, titleSource: "derived", firstQuestion, updatedAt: Date.now(),
+                });
+                if (title) await db.nodes.update(chat.rootNodeId, { label: title });
+                return next;
+              });
+            } else if (title) {
+              // Non-root branch node: retitle from the question,
+              // overwriting the selected-quote / "New branch" placeholder.
+              await db.nodes.update(nodeId, { label: title });
             }
           }
         }
@@ -340,6 +364,20 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
               createdAt:    Date.now(),
             });
             await db.chats.update(chatId, { updatedAt: Date.now() });
+
+            // First exchange complete — swap the derived title for a short
+            // LLM topic title in the background. Fire-and-forget: it never
+            // throws and a failure just keeps the derived title.
+            if (autoTitleExpected !== null) {
+              void autoTitleChat({
+                chatId,
+                expectedTitle: autoTitleExpected,
+                question:      params.composerText,
+                answer:        fullContent,
+                apiKey:        apiKeyRef.current,
+                customModels:  prefsRef.current.customModels,
+              });
+            }
 
             // Drop the slot — the persisted assistant message takes over
             // rendering. We only do this if our slot is still the live one

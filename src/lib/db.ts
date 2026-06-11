@@ -12,6 +12,13 @@ export type { Citation };
 export interface Chat {
   _id:           string;   // crypto.randomUUID()
   title:         string;
+  /** How `title` was last set (non-indexed, no migration). "manual" wins:
+   *  auto-titling never overwrites a user-chosen name. Absent on rows from
+   *  before auto-titling — treated like "derived". */
+  titleSource?:  "derived" | "auto" | "manual";
+  /** The user's first message, clamped — hover context for rows whose
+   *  auto-title no longer quotes the question (non-indexed, no migration). */
+  firstQuestion?: string;
   rootNodeId:    string;
   currentNodeId: string;
   /** Set ⇒ this is a graph's hidden dock chat (the "ask this graph"
@@ -404,7 +411,7 @@ export async function renameChat(chatId: string, title: string): Promise<void> {
   await db.transaction("rw", db.chats, db.nodes, async () => {
     const chat = await db.chats.get(chatId);
     if (!chat) return;
-    await db.chats.update(chatId, { title: trimmed, updatedAt: Date.now() });
+    await db.chats.update(chatId, { title: trimmed, titleSource: "manual", updatedAt: Date.now() });
     await db.nodes.update(chat.rootNodeId, { label: trimmed });
   });
 }
@@ -421,7 +428,7 @@ export async function renameNode(nodeId: string, label: string): Promise<void> {
     await db.nodes.update(nodeId, { label: trimmed });
     const chat = await db.chats.get(node.chatId);
     if (chat && chat.rootNodeId === nodeId) {
-      await db.chats.update(node.chatId, { title: trimmed, updatedAt: Date.now() });
+      await db.chats.update(node.chatId, { title: trimmed, titleSource: "manual", updatedAt: Date.now() });
     }
   });
 }

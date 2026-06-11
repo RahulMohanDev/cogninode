@@ -32,6 +32,7 @@ import { Sidebar } from "../components/chat/Sidebar";
 import { SettingsModal } from "../components/settings/SettingsModal";
 import { useSettings } from "../hooks/useSettings";
 import { useSettingsHotkey } from "../hooks/useSettingsHotkey";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useToast } from "../components/ui/Toast";
 
 export default function GraphEditor() {
@@ -50,6 +51,7 @@ export default function GraphEditor() {
     () => (graphId ? db.graphs.get(graphId) : undefined),
     [graphId],
   );
+  useDocumentTitle(graph?.name);
   const graphNodes = useLiveQuery(
     () => db.graphNodes.where("graphId").equals(graphId).toArray(),
     [graphId], [] as GraphNode[],
