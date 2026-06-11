@@ -104,15 +104,17 @@ export async function importFromJson(file: File): Promise<{
   const existingGraphIds = new Set(await db.graphs.toCollection().primaryKeys());
   const newGraphsRaw = (payload.graphs ?? []).filter(g => !existingGraphIds.has(g._id));
   const newGraphIds  = new Set(newGraphsRaw.map(g => g._id));
+  let keptGraphIds = newGraphIds;
 
   let newGraphs:     KnowledgeGraph[] = [];
   let newGraphNodes: GraphNode[] = [];
   let newGraphEdges: GraphEdge[] = [];
 
   if (payload.version >= 4) {
-    newGraphNodes = (payload.graphNodes ?? []).filter(n => newGraphIds.has(n.graphId));
-    newGraphEdges = (payload.graphEdges ?? []).filter(e => newGraphIds.has(e.graphId));
     newGraphs     = newGraphsRaw.filter((g): g is KnowledgeGraph => Boolean(g.rootNodeId));
+    keptGraphIds  = new Set(newGraphs.map(g => g._id));
+    newGraphNodes = (payload.graphNodes ?? []).filter(n => keptGraphIds.has(n.graphId));
+    newGraphEdges = (payload.graphEdges ?? []).filter(e => keptGraphIds.has(e.graphId));
   } else if (newGraphsRaw.length > 0) {
     // v2/v3: assemble the legacy rows, then run the SAME transform the
     // schema-v6 upgrade uses — concepts + sources merge into graphNodes,
@@ -167,7 +169,7 @@ export async function importFromJson(file: File): Promise<{
   // graphId pointing at a skipped/missing graph would hide the chat
   // everywhere with no editor to surface it.
   const newChats = newChatsRaw.map(c => {
-    if (!c.graphId || newGraphIds.has(c.graphId)) return c;
+    if (!c.graphId || keptGraphIds.has(c.graphId)) return c;
     const { graphId: _dropped, ...rest } = c;
     return rest as Chat;
   });

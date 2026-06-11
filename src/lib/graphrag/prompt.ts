@@ -10,7 +10,7 @@
 // retrieve.ts, so they win ranking whenever they're relevant. The reserve
 // below protects the root's own notes, which are always present.
 
-import type { RagSourceRef } from "../db";
+import type { GraphNode, RagSourceRef } from "../db";
 import type { RetrievalResult, RetrievedBlock } from "./retrieve";
 
 export const GRAPH_CONTEXT_BUDGET_TOKENS = 8000;
@@ -51,9 +51,34 @@ export function buildGraphContext(
 
   // ── 2 · graph map — the user's curated structure, labels only ─────
   const outlineBudget = Math.floor(budgetChars * OUTLINE_RESERVE);
-  const ordered = [...corpus.nodesById.values()].sort((a, b) =>
-    (corpus.distFromRoot.get(a._id)! - corpus.distFromRoot.get(b._id)!) ||
-    (a.createdAt - b.createdAt));
+  // Pre-order DFS over the BFS spanning tree so each node renders directly
+  // under its actual parent (depth in this tree === distFromRoot, so the
+  // indent below stays correct). Disconnected nodes trail in createdAt order.
+  const childrenByParent = new Map<string, GraphNode[]>();
+  for (const [childId, parentId] of corpus.parentByNode) {
+    if (parentId === null) continue;
+    const child = corpus.nodesById.get(childId);
+    if (!child) continue;
+    const arr = childrenByParent.get(parentId) ?? [];
+    arr.push(child);
+    childrenByParent.set(parentId, arr);
+  }
+  for (const arr of childrenByParent.values()) {
+    arr.sort((a, b) => a.createdAt - b.createdAt);
+  }
+  const ordered: GraphNode[] = [];
+  const rootNode = corpus.nodesById.get(corpus.rootGraphNodeId);
+  const stack: GraphNode[] = rootNode ? [rootNode] : [];
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    ordered.push(n);
+    const kids = childrenByParent.get(n._id) ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!);
+  }
+  const disconnectedNodes = [...corpus.nodesById.values()]
+    .filter(n => n._id !== corpus.rootGraphNodeId && corpus.parentByNode.get(n._id) === null)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  ordered.push(...disconnectedNodes);
   const edgeLabel = (childId: string): string => {
     const parent = corpus.parentByNode.get(childId);
     if (!parent) return "";
@@ -66,9 +91,6 @@ export function buildGraphContext(
   let outline = "\n\n# Graph map\n";
   let outlined = 0;
   let sawDisconnected = false;
-  const maxFiniteDist = Math.max(0, ...[...corpus.distFromRoot.entries()]
-    .filter(([id]) => corpus.parentByNode.get(id) !== null || id === corpus.rootGraphNodeId)
-    .map(([, d]) => d));
   for (const n of ordered) {
     if (outlined >= OUTLINE_MAX_NODES) {
       outline += `(… ${ordered.length - outlined} more nodes)\n`;
@@ -82,7 +104,7 @@ export function buildGraphContext(
       sawDisconnected = true;
       outline += "(not yet connected to the root:)\n";
     }
-    const indent = disconnected ? "" : "  ".repeat(Math.min(dist, maxFiniteDist));
+    const indent = disconnected ? "" : "  ".repeat(dist);
     const row = `${indent}- ${title}${disconnected ? "" : edgeLabel(n._id)}\n`;
     if (outline.length + row.length > outlineBudget) break;
     outline += row;

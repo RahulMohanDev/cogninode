@@ -294,6 +294,7 @@ function RagSourceChips({
             className={`tw:inline-flex tw:items-center tw:gap-1 tw:py-0.5 tw:px-2 tw:rounded-[999px] tw:text-[11px] tw:border ${cited ? "tw:border-lilac tw:text-ink tw:bg-[color-mix(in_oklab,var(--lilac)_14%,var(--bg-3))]" : "tw:border-line tw:text-ink-3 tw:bg-bg-3 tw:hover:text-ink tw:hover:border-ink-3"}`}
             onClick={() => onFocusNode(s.graphNodeId)}
             onMouseEnter={() => onGlow(new Set([s.graphNodeId]))}
+            onMouseLeave={() => onGlow(new Set(sources.map(x => x.graphNodeId)))}
             title={`Show "${getNodeLabel(s.graphNodeId)}" on the canvas`}
           >
             <span className="tw:font-mono tw:text-[9.5px]">{s.tag}</span>

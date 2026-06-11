@@ -17,7 +17,6 @@ import { MarkdownBody }      from "./MarkdownBody";
 import { Reasoning }         from "./Reasoning";
 
 export interface StreamProps {
-  chatId:               string;
   currentNodeId:        string;
   /** Scroll to + flash this message once it's rendered (search deep link). */
   focusMessageId?:      string;
@@ -62,16 +61,15 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   ref,
 ) {
   // Messages for the current node only — parent-node messages are sent to the
-  // model via buildPathMessages but we don't clutter the UI with them. The
-  // breadcrumb that used to live here has moved to the TopBar in ChatApp.
-  const pathMessages = useLiveQuery(
+  // model via buildPathMessages but we don't clutter the UI with them.
+  const liveMessages = useLiveQuery(
     () => db.messages
       .where("nodeId").equals(currentNodeId)
       .sortBy("createdAt"),
     [currentNodeId],
-  ) ?? [];
+  );
+  const pathMessages = liveMessages ?? [];
 
-  // Auto-scroll bottom on new content.
   const bottomRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -86,8 +84,8 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   useEffect(() => {
     if (!focusMessageId || focusedRef.current === focusMessageId) return undefined;
     if (!pathMessages.some(m => m._id === focusMessageId)) return undefined;
-    focusedRef.current = focusMessageId;
-    requestAnimationFrame(() => {
+    const raf = requestAnimationFrame(() => {
+      focusedRef.current = focusMessageId;
       const el = document.querySelector(`[data-msg-id="${CSS.escape(focusMessageId)}"]`);
       if (el instanceof HTMLElement) {
         el.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -96,10 +94,10 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
         if (focusQuery) highlightTermsInElement(el, tokenizeQuery(focusQuery));
       }
     });
-    return () => clearSearchHighlight();
+    return () => { cancelAnimationFrame(raf); clearSearchHighlight(); };
   }, [focusMessageId, focusQuery, pathMessages]);
 
-  const isEmpty = pathMessages.length === 0 && streamState !== "streaming";
+  const isEmpty = liveMessages !== undefined && pathMessages.length === 0 && streamState !== "streaming";
 
   return (
     <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:scroll-smooth tw:pt-8 tw:px-0 tw:pb-[200px] tw:relative" ref={ref}>
@@ -210,7 +208,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
             </div>
           ) : (
             <div className="msg assistant tw:flex tw:flex-col tw:gap-1.5 tw:relative tw:items-start">
-              <div className="m-body" style={{ color: "var(--coral)" }}>
+              <div className="m-body" role="alert" style={{ color: "var(--coral)" }}>
                 <strong>Stream error:</strong>{" "}
                 {streamError ?? "Unknown error — see browser console for details."}
                 {streamErrorStatus !== undefined ? ` (HTTP ${streamErrorStatus})` : ""}

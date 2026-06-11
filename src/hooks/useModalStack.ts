@@ -62,7 +62,7 @@ export function useModalBehavior(
         const first = els[0]!;
         const last  = els[els.length - 1]!;
         const current = document.activeElement;
-        if (!e.shiftKey && current === last) {
+        if (!e.shiftKey && (current === last || !containerRef.current.contains(current))) {
           e.preventDefault();
           first.focus();
         } else if (

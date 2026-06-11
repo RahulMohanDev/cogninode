@@ -335,11 +335,23 @@ export async function unfoldNode(
 
     const rootItem = plan.find(p => p.parentTargetId === null);
     if (!rootItem) return null;
-    await db.graphNodes.update(graphNodeId, {
-      attachment: { type: "node", targetId: rootItem.targetId, scope: "single" },
-      updatedAt:  Date.now(),
-    });
-    idByTarget.set(rootItem.targetId, graphNodeId);
+    const conflict = await db.graphNodes
+      .where("attachment.targetId").equals(rootItem.targetId)
+      .filter(n => n.graphId === graphId && n._id !== graphNodeId)
+      .first();
+    if (conflict) {
+      // Another card already holds this target (e.g. the chat was unfolded
+      // before and re-dropped). Keep the one-node-per-(graph, target)
+      // invariant: wire lineage through the existing card; leave this node's
+      // attachment untouched.
+      idByTarget.set(rootItem.targetId, conflict._id);
+    } else {
+      await db.graphNodes.update(graphNodeId, {
+        attachment: { type: "node", targetId: rootItem.targetId, scope: "single" },
+        updatedAt:  Date.now(),
+      });
+      idByTarget.set(rootItem.targetId, graphNodeId);
+    }
 
     for (const item of plan) {
       if (item.parentTargetId === null) continue;

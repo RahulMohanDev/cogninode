@@ -42,7 +42,6 @@ export function SaveReflectionDialog({ open, chatId, nodeId, onClose }: SaveRefl
 
   useModalBehavior(open, onClose, panelRef);
 
-  // Fresh state every time the dialog opens.
   useEffect(() => {
     if (!open) return;
     setIncludeReasoning(false);
@@ -52,11 +51,14 @@ export function SaveReflectionDialog({ open, chatId, nodeId, onClose }: SaveRefl
     setBusy(false);
   }, [open]);
 
-  // (Re)build the draft on open and whenever the reasoning toggle flips.
-  // The path is captured from chatId/nodeId at open time, so a later node
-  // switch can't redirect the save.
+  // (Re)build the draft on open, when the reasoning toggle flips, and when
+  // chatId/nodeId change while open. The draft and the save both track the
+  // live props: if the current node switches under an open dialog (e.g. the
+  // same chat updated in another tab), the preview rebuilds and the save
+  // targets the new path.
   useEffect(() => {
     if (!open) return undefined;
+    setDraft(null);
     let cancelled = false;
     void buildReflectionDraft(chatId, nodeId, { includeReasoning }).then(d => {
       if (cancelled) return;
@@ -129,7 +131,7 @@ export function SaveReflectionDialog({ open, chatId, nodeId, onClose }: SaveRefl
                   className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[14px] tw:outline-none tw:bg-bg-3 tw:text-ink tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac"
                   value={title}
                   onChange={e => { titleDirty.current = true; setTitle(e.target.value); }}
-                  onKeyDown={e => { if (e.key === "Enter") void handleSave(); }}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) void handleSave(); }}
                   placeholder="Reflection"
                   autoFocus
                   spellCheck={false}

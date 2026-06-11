@@ -31,7 +31,7 @@ export default defineConfig({
   },
   server:  { proxy: HF_PROXY },
   preview: { proxy: HF_PROXY },
-  // pdf.js worker file — served as a static asset
+  // onnxruntime-web wasm — self-hosted, see src/workers/embedding.worker.ts
   assetsInclude: ["**/*.wasm"],
   optimizeDeps: {
     exclude: ["pdfjs-dist"],   // dynamic import — don't pre-bundle

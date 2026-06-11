@@ -14,7 +14,6 @@ export function useCostEstimate(
   const { resolve } = useModels();
   const model = resolve(modelId);
 
-  // Get all nodes to build path, reactive via useLiveQuery
   const pathDepth = useLiveQuery(async () => {
     const allNodes = await db.nodes.where("chatId").equals(chatId).toArray();
     const nodeMap  = new Map(allNodes.map(n => [n._id, n]));

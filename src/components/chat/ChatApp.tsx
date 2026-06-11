@@ -98,8 +98,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
   }, [chat]);
 
   // Live count of messages on the current node — drives the Collapse-to-one
-  // button's disabled state + the "Collapse N messages…" confirm label. We
-  // only need a count so we just read .length off the cached array.
+  // button's disabled state + the "Collapse N messages…" confirm label.
   const currentNodeMessages = useLiveQuery(
     () => currentNodeId
       ? db.messages.where("nodeId").equals(currentNodeId).count()
@@ -281,7 +280,6 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
   const collapseDisabled = (currentNodeMessages ?? 0) < 2;
   const collapseAction = collapseConfirm ? (
     <span
-      className="rb-collapse-confirm"
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -374,7 +372,6 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
 
         <Stream
           ref={streamRef}
-          chatId={chatId}
           currentNodeId={currentNodeId}
           {...(focusMessageId ? { focusMessageId } : {})}
           {...(focusQuery ? { focusQuery } : {})}

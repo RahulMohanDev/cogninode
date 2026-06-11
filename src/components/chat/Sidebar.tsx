@@ -1,7 +1,4 @@
 // src/components/chat/Sidebar.tsx
-// Real sidebar implementation backed by Dexie via useLiveQuery.
-// Replaces the WAVE-1-STUB; preserves the SidebarProps shape so
-// other consumers (Chats page) keep compiling.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate }     from "react-router-dom";
@@ -228,7 +225,6 @@ export function Sidebar({
     activeChatId ? loadCollapsed(activeChatId) : new Set(),
   );
 
-  // Reload collapse state whenever the active chat changes.
   useEffect(() => {
     setCollapsed(activeChatId ? loadCollapsed(activeChatId) : new Set());
   }, [activeChatId]);
@@ -329,11 +325,6 @@ export function Sidebar({
 
   const confirmDeleteBranch = async (nodeId: string): Promise<void> => {
     if (!activeChatId || !activeChat) return;
-    // If this is the root, delegate to chat-level delete.
-    if (nodeId === activeChat.rootNodeId) {
-      await confirmDeleteChat(activeChatId);
-      return;
-    }
     cancelConfirm();
     await deleteNodeSubtree(activeChatId, nodeId);
   };
@@ -605,7 +596,17 @@ export function Sidebar({
             <div key={g._id}>
               <div
                 className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                role="button"
+                tabIndex={0}
+                aria-current={isActive ? "true" : undefined}
                 onClick={() => { if (!isRenaming) navigate(`/graphs/${g._id}`); }}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (!isRenaming) navigate(`/graphs/${g._id}`);
+                  }
+                }}
               >
                 {isRenaming ? (
                   <input
@@ -686,7 +687,17 @@ export function Sidebar({
             <div key={r._id}>
               <div
                 className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                role="button"
+                tabIndex={0}
+                aria-current={isActive ? "true" : undefined}
                 onClick={() => navigate(`/reflections?open=${r._id}`)}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    navigate(`/reflections?open=${r._id}`);
+                  }
+                }}
               >
                 <span className="tw:flex-1 tw:truncate">{r.title || "Untitled reflection"}</span>
                 <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(r.updatedAt)}</span>
@@ -733,7 +744,17 @@ export function Sidebar({
             <div key={chat._id}>
               <div
                 className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                role="button"
+                tabIndex={0}
+                aria-current={isActive ? "true" : undefined}
                 onClick={() => { if (!isRenaming) handleSelectChat(chat._id); }}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (!isRenaming) handleSelectChat(chat._id);
+                  }
+                }}
               >
                 {isRenaming ? (
                   <input
@@ -827,7 +848,6 @@ export function Sidebar({
                 <div className="tw:mt-0.5 tw:mb-1.5 tw:ml-[22px] tw:flex tw:flex-col tw:gap-0">
                   {branchRows.map(row => {
                     const rowActive = activeChat?.currentNodeId === row.node._id;
-                    const isRoot    = row.node._id === activeChat?.rootNodeId;
                     const isRowPending = pending?.kind === "branch" && pending.id === row.node._id;
                     const isRowRenaming =
                       renamingId?.kind === "node" && renamingId.id === row.node._id;
@@ -835,9 +855,18 @@ export function Sidebar({
                       <div key={row.node._id}>
                         <div
                           className={`tw:group/row tw:flex tw:items-stretch tw:gap-1.5 tw:pl-0 tw:pr-2 tw:min-h-[26px] tw:rounded-[6px] tw:text-[12px] tw:cursor-pointer tw:relative ${rowActive ? "tw:bg-coral-tint tw:text-ink tw:font-medium" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-                          data-depth={Math.min(3, row.node.depth)}
+                          role="button"
+                          tabIndex={0}
+                          aria-current={rowActive ? "true" : undefined}
                           onClick={() => {
                             if (!isRowRenaming) void handleSelectNode(row.node._id);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.target !== e.currentTarget) return;
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              if (!isRowRenaming) void handleSelectNode(row.node._id);
+                            }
                           }}
                         >
                           {row.lastFlags.length > 0 && (
@@ -903,8 +932,8 @@ export function Sidebar({
                           {!isRowRenaming && (
                             <button
                               className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-auto ${rowActive ? "tw:text-ink tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"}`}
-                              title={isRoot ? "Rename chat" : "Rename branch"}
-                              aria-label={isRoot ? "Rename chat" : "Rename branch"}
+                              title="Rename branch"
+                              aria-label="Rename branch"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 startRename(
@@ -919,8 +948,8 @@ export function Sidebar({
                           {!isRowRenaming && (
                             <button
                               className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral`}
-                              title={isRoot ? "Delete chat" : "Delete branch"}
-                              aria-label={isRoot ? "Delete chat" : "Delete branch"}
+                              title="Delete branch"
+                              aria-label="Delete branch"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 armConfirm({ kind: "branch", id: row.node._id });
@@ -934,11 +963,9 @@ export function Sidebar({
                         {isRowPending && (
                           <ConfirmPill
                             label={
-                              isRoot
-                                ? `Delete this chat? ${branchRows.length} branches.`
-                                : row.descendantCount > 0
-                                  ? `Delete this branch and ${row.descendantCount} descendant ${row.descendantCount === 1 ? "branch" : "branches"}?`
-                                  : "Delete this branch?"
+                              row.descendantCount > 0
+                                ? `Delete this branch and ${row.descendantCount} descendant ${row.descendantCount === 1 ? "branch" : "branches"}?`
+                                : "Delete this branch?"
                             }
                             onConfirm={() => { void confirmDeleteBranch(row.node._id); }}
                             onCancel={cancelConfirm}

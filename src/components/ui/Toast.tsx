@@ -71,12 +71,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={toast}>
       {children}
       {createPortal(
-        <div className="tw:fixed tw:bottom-5 tw:right-5 tw:z-[300] tw:flex tw:flex-col tw:items-end tw:gap-2 tw:pointer-events-none">
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="false"
+          className="tw:fixed tw:bottom-5 tw:right-5 tw:z-[300] tw:flex tw:flex-col tw:items-end tw:gap-2 tw:pointer-events-none"
+        >
           {toasts.map(t => (
             <div
               key={t.id}
-              role="status"
-              aria-live="polite"
               className="tw:pointer-events-auto tw:flex tw:items-center tw:gap-2.5 tw:bg-ink tw:text-bg tw:py-2.5 tw:px-3.5 tw:rounded-[10px] tw:text-[13px] tw:max-w-[360px] tw:shadow-[0_16px_40px_-14px_rgba(0,0,0,0.4)] tw:cursor-pointer tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]"
               onClick={() => dismiss(t.id)}
               title="Dismiss"

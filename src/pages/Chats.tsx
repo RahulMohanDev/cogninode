@@ -90,7 +90,7 @@ export default function Chats() {
 
             <div className="tw:grid tw:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] tw:gap-4">
               <div
-                className="tw:border tw:border-line tw:rounded-[16px] tw:p-[18px] tw:cursor-pointer tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:min-h-[180px] tw:relative tw:overflow-hidden tw:bg-bg-3 tw:border-dashed tw:grid tw:flex-col tw:place-items-center tw:text-center tw:hover:border-ink-3 tw:hover:-translate-y-0.5"
+                className="tw:border tw:border-line tw:rounded-[16px] tw:p-[18px] tw:cursor-pointer tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:min-h-[180px] tw:relative tw:overflow-hidden tw:bg-bg-3 tw:border-dashed tw:grid tw:place-items-center tw:text-center tw:hover:border-ink-3 tw:hover:-translate-y-0.5"
                 onClick={() => { void startNewChat(); }}
                 role="button"
                 tabIndex={0}
@@ -189,6 +189,7 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpen();
@@ -286,7 +287,7 @@ function MiniTreeThumb({ chatId }: MiniTreeThumbProps) {
   const pointById = new Map(points.map((p) => [p.nodeId, p]));
 
   // Visible cap so the thumb stays legible; spec asks for ~12–16 dots.
-  const visiblePoints = points.slice(0, 18);
+  const visiblePoints = [...points].sort((a, b) => a.depth - b.depth).slice(0, 18);
   const visibleIds = new Set(visiblePoints.map((p) => p.nodeId));
 
   const edges: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];

@@ -1,10 +1,5 @@
-// src/pages/Chat.tsx
-// Thin wrapper around <ChatApp />. Reads :chatId from the route,
-// optional `node` and `prefill` from the query string. If `node` is
-// provided, syncs it into Dexie once on mount.
-
-import { useEffect, useRef, useState } from "react";
-import { useParams, useSearchParams, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams, useSearchParams, Link, useLocation } from "react-router-dom";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db }                from "../lib/db";
 import { ChatApp }           from "../components/chat/ChatApp";
@@ -17,19 +12,20 @@ export default function Chat() {
   const prefill = search.get("prefill");
   const focusMessageId = search.get("msg");   // deep link from search
   const focusQuery     = search.get("q");     // terms to highlight there
+  const location = useLocation();
 
-  // Sync the optional ?node= query into Dexie's currentNodeId, once per chatId.
-  const syncedNodeRef = useRef<string | null>(null);
+  // Apply the optional ?node= deep link into Dexie's currentNodeId on every
+  // navigation that carries it. location.key changes per navigation (even to
+  // an identical URL), so re-clicking the same search hit re-applies it; the
+  // update is idempotent, so StrictMode double-invokes are harmless.
   useEffect(() => {
     if (!chatId || !node) return;
-    if (syncedNodeRef.current === `${chatId}:${node}`) return;
-    syncedNodeRef.current = `${chatId}:${node}`;
     void db.chats.update(chatId, { currentNodeId: node });
-  }, [chatId, node]);
+  }, [chatId, node, location.key]);
 
   // useLiveQuery returns `undefined` while pending OR when the row is missing.
   // We can't distinguish by value alone, so we use a short grace timer: if
-  // the chat is still undefined after ~200ms, treat it as "not found".
+  // the chat is still undefined after ~250ms, treat it as "not found".
   const chat = useLiveQuery(
     () => chatId ? db.chats.get(chatId) : undefined,
     [chatId],

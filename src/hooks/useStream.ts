@@ -11,10 +11,8 @@
 
 import { useCallback } from "react";
 import {
-  useStreamsContext, useStreamSlot, type SendParams,
+  useStreamsContext, useStreamSlot, type SendParams, type StreamState,
 } from "./StreamsProvider";
-
-type StreamState = "idle" | "streaming" | "error";
 
 export function useStream(chatId: string, nodeId: string) {
   const ctx  = useStreamsContext();

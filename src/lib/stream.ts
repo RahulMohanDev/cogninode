@@ -124,69 +124,74 @@ export async function streamMessage(params: StreamParams): Promise<void> {
   let inputTokens  = 0;
   let outputTokens = 0;
   let finishReason: string | null = null;
+  let midStreamError: string | null = null;
 
   // url_citation annotations from the `web` plugin. They arrive across one
   // or more deltas (usually near the end of the stream) — accumulate and
   // dedupe by url so the last write per url wins.
   const citations = new Map<string, Citation>();
 
+  type SseDataFrame = {
+    choices?: Array<{
+      delta?: {
+        content?:           string | null;
+        reasoning?:         string | null;
+        reasoning_content?: string | null;
+        annotations?:       Array<{
+          type?:         string;
+          url_citation?: {
+            url?:     string;
+            title?:   string;
+            content?: string;
+          };
+        }>;
+      };
+      finish_reason?: string | null;
+    }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    error?: { message?: string; code?: number | string };
+  };
+
   const parser = createParser({
     onEvent: (event: EventSourceMessage) => {
       const raw = event.data;
       if (!raw || raw === "[DONE]") return;
+      let parsed: SseDataFrame;
       try {
-        const parsed = JSON.parse(raw) as {
-          choices?: Array<{
-            delta?: {
-              content?:           string | null;
-              reasoning?:         string | null;
-              reasoning_content?: string | null;
-              annotations?:       Array<{
-                type?:         string;
-                url_citation?: {
-                  url?:     string;
-                  title?:   string;
-                  content?: string;
-                };
-              }>;
-            };
-            finish_reason?: string | null;
-          }>;
-          usage?: { prompt_tokens?: number; completion_tokens?: number };
-        };
-        const choice = parsed.choices?.[0];
-        const delta  = choice?.delta;
-        if (delta) {
-          // OpenRouter normalizes reasoning to `reasoning`; some upstream
-          // providers leak the original `reasoning_content`. Handle both.
-          const reasoning = delta.reasoning ?? delta.reasoning_content;
-          if (typeof reasoning === "string" && reasoning && params.onReasoning) {
-            params.onReasoning(reasoning);
-          }
-          if (typeof delta.content === "string" && delta.content) {
-            params.onChunk(delta.content);
-          }
-          if (delta.annotations) {
-            for (const ann of delta.annotations) {
-              const cit = ann.url_citation;
-              const url = cit?.url;
-              if (!url) continue;
-              const entry: Citation = { url };
-              if (cit.title)   entry.title   = cit.title;
-              if (cit.content) entry.content = cit.content;
-              citations.set(url, entry);
-            }
-          }
-        }
-        if (choice?.finish_reason) finishReason = choice.finish_reason;
-        if (parsed.usage) {
-          inputTokens  = parsed.usage.prompt_tokens     ?? inputTokens;
-          outputTokens = parsed.usage.completion_tokens ?? outputTokens;
-        }
+        parsed = JSON.parse(raw) as SseDataFrame;
       } catch {
-        // Some OpenRouter SSE comments arrive as `: OPENROUTER PROCESSING`
-        // and similar non-JSON events — ignore them silently.
+        return; // malformed/non-JSON data payload — skip this frame
       }
+      const choice = parsed.choices?.[0];
+      const delta  = choice?.delta;
+      if (delta) {
+        // OpenRouter normalizes reasoning to `reasoning`; some upstream
+        // providers leak the original `reasoning_content`. Handle both.
+        const reasoning = delta.reasoning ?? delta.reasoning_content;
+        if (typeof reasoning === "string" && reasoning && params.onReasoning) {
+          params.onReasoning(reasoning);
+        }
+        if (typeof delta.content === "string" && delta.content) {
+          params.onChunk(delta.content);
+        }
+        if (delta.annotations) {
+          for (const ann of delta.annotations) {
+            const cit = ann.url_citation;
+            const url = cit?.url;
+            if (!url) continue;
+            const entry: Citation = { url };
+            if (cit.title)   entry.title   = cit.title;
+            if (cit.content) entry.content = cit.content;
+            citations.set(url, entry);
+          }
+        }
+      }
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      if (parsed.usage) {
+        inputTokens  = parsed.usage.prompt_tokens     ?? inputTokens;
+        outputTokens = parsed.usage.completion_tokens ?? outputTokens;
+      }
+      if (parsed.error?.message) midStreamError = parsed.error.message;
     },
     onError: (err) => {
       // The parser surfaces its own errors (malformed frames); log but keep
@@ -210,6 +215,11 @@ export async function streamMessage(params: StreamParams): Promise<void> {
     // onDone — otherwise the last token can be lost.
     const tail = decoder.decode();
     if (tail) parser.feed(tail);
+
+    if (midStreamError !== null || finishReason === "error") {
+      params.onError(midStreamError ?? "Provider returned a mid-stream error.");
+      return;
+    }
 
     // If the model burned the entire output budget and never finished its
     // answer, tell the user instead of leaving them confused by a half-

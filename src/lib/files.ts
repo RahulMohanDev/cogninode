@@ -15,7 +15,6 @@ export function inferKind(file: File): StoredFile["kind"] {
   return "file";
 }
 
-// Convert file to storable content
 export async function readFileContent(file: File, kind: StoredFile["kind"]): Promise<string> {
   if (kind === "image") {
     // Base64 data URL — sent directly to OpenRouter as image_url
@@ -32,18 +31,23 @@ export async function readFileContent(file: File, kind: StoredFile["kind"]): Pro
     const pdfjsLib = await import("pdfjs-dist");
     pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
     const buffer = await file.arrayBuffer();
-    const pdf    = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const pages: string[] = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page    = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      pages.push(
-        content.items
-          .map(item => ("str" in item ? item.str : ""))
-          .join(" "),
-      );
+    const task = pdfjsLib.getDocument({ data: buffer });
+    try {
+      const pdf = await task.promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page    = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        pages.push(
+          content.items
+            .map(item => ("str" in item ? item.str : ""))
+            .join(" "),
+        );
+      }
+      return pages.join("\n\n");
+    } finally {
+      await task.destroy();
     }
-    return pages.join("\n\n");
   }
 
   // Code and other text files

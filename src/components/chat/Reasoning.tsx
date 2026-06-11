@@ -39,7 +39,7 @@ export function Reasoning({ text, streaming = false }: ReasoningProps) {
     <div className={`tw:flex tw:flex-col tw:mt-0 tw:mx-0 tw:mb-2.5 tw:border tw:rounded-app-sm tw:bg-[color-mix(in_oklab,var(--bg-2)_60%,transparent)] tw:overflow-hidden ${streaming ? "tw:border-[color-mix(in_oklab,var(--lilac)_50%,var(--line))]" : "tw:border-line"}`}>
       <button type="button" className={`tw:flex tw:items-center tw:gap-2 tw:py-2 tw:px-3 tw:font-mono tw:text-[11px] tw:uppercase tw:tracking-[0.08em] tw:bg-transparent tw:border-none tw:cursor-pointer tw:text-left tw:w-full tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[color-mix(in_oklab,var(--lilac)_6%,transparent)] ${streaming ? "tw:text-ink" : "tw:text-ink-3 tw:hover:text-ink-2"}`} onClick={toggle} aria-expanded={open}>
         <ThinkingStar spinning={streaming} />
-        <span className={`tw:flex-1 tw:min-w-0 ${streaming ? "tw:after:content-[''] tw:after:inline-block tw:after:w-1 tw:after:ml-0.5" : ""}`}>
+        <span className="tw:flex-1 tw:min-w-0">
           {streaming ? "Thinking…" : "Thought"}
         </span>
         <svg className={`tw:text-ink-3 tw:transition-transform tw:duration-[180ms] tw:ease-[ease] tw:flex-none ${open ? "tw:[transform:rotate(180deg)]" : ""}`} width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
