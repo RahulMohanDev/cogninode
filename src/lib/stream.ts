@@ -54,7 +54,7 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${params.apiKey}`,
-        "HTTP-Referer":  "https://github.com/rahulmohan/cogninode",
+        "HTTP-Referer":  "https://github.com/RahulMohanDev/cogninode",
         "X-Title":       "cogninode beta",
       },
       body: JSON.stringify({

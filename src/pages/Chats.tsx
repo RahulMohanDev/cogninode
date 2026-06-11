@@ -209,7 +209,7 @@ function ChatCard({ chat, onOpen }: ChatCardProps) {
         </svg>
       </button>
 
-      <div className="tw:font-display tw:font-semibold tw:text-[19px] tw:tracking-[-0.015em] tw:leading-[1.15] tw:mb-2 tw:text-balance">{chat.title}</div>
+      <div className="tw:font-display tw:font-semibold tw:text-[19px] tw:tracking-[-0.015em] tw:leading-[1.15] tw:mb-2 tw:text-balance" title={chat.title}>{chat.title}</div>
       <div className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mb-4 tw:flex tw:items-center tw:gap-2.5">
         <span>{formatCreated(chat.createdAt)}</span>
         <span style={{ opacity: 0.3 }}>·</span>

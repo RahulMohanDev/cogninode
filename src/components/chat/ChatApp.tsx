@@ -11,6 +11,7 @@ import { useLiveQuery }        from "dexie-react-hooks";
 import { db, createBranch, newId, type Message as DbMessage, type Node as DbNode } from "../../lib/db";
 import { useStream }           from "../../hooks/useStream";
 import { useSettings }         from "../../hooks/useSettings";
+import { useDocumentTitle }    from "../../hooks/useDocumentTitle";
 import { useSettingsHotkey }   from "../../hooks/useSettingsHotkey";
 import { anyModalOpen }        from "../../hooks/useModalStack";
 import { findPath }            from "../../lib/path";
@@ -38,6 +39,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const currentNodeId = chat?.currentNodeId ?? chat?.rootNodeId ?? "";
+  useDocumentTitle(chat?.title);
 
   // Record the active branch as most-recently-visited whenever it changes —
   // feeds QuickJump's node MRU ("Alt+Tab") ordering. Every way the branch
@@ -487,7 +489,7 @@ function TopBar({ title, breadcrumb, reflectionsActive, onToggleReflect, onAddTo
           const last  = i === tail.length - 1;
           return (
             <span key={n._id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span className="tw:inline-flex tw:items-center tw:gap-[5px] tw:py-[3px] tw:px-[9px] tw:rounded-[999px] tw:bg-bg-2 tw:text-ink-2 tw:text-[12px]">
+              <span className="tw:inline-flex tw:items-center tw:gap-[5px] tw:py-[3px] tw:px-[9px] tw:rounded-[999px] tw:bg-bg-2 tw:text-ink-2 tw:text-[12px]" title={n.label}>
                 <span className={`tw:w-[7px] tw:h-[7px] tw:rounded-[50%] ${CRUMB_DOT[Math.min(3, n.depth)]}`} />
                 {label}
               </span>

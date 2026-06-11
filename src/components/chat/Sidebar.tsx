@@ -343,9 +343,11 @@ export function Sidebar({
   const [renamingId, setRenamingId] = useState<RenameTarget | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const committedRef = useRef(false);
+  const startLabelRef = useRef("");
 
   const startRename = (target: RenameTarget, currentLabel: string): void => {
     committedRef.current = false;
+    startLabelRef.current = currentLabel;
     setRenameDraft(currentLabel);
     setRenamingId(target);
   };
@@ -360,7 +362,10 @@ export function Sidebar({
     committedRef.current = true;
     const t = renameDraft.trim();
     setRenamingId(null);
-    if (t) {
+    // An unchanged draft is a dismissal, not a rename — writing it anyway
+    // would stamp titleSource:"manual" and could revert an auto-title that
+    // landed while the input was open.
+    if (t && t !== startLabelRef.current.trim()) {
       if (target.kind === "chat")       await renameChat(target.id, t);
       else if (target.kind === "graph") await renameGraph(target.id, t);
       else                              await renameNode(target.id, t);
@@ -631,7 +636,7 @@ export function Sidebar({
                     onBlur={() => { void commitRename({ kind: "graph", id: g._id }); }}
                   />
                 ) : (
-                  <span className="tw:flex-1 tw:truncate">{g.name || "Untitled graph"}</span>
+                  <span className="tw:flex-1 tw:truncate" title={g.name || "Untitled graph"}>{g.name || "Untitled graph"}</span>
                 )}
                 {!isRenaming && (
                   <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(g.updatedAt)}</span>
@@ -699,7 +704,7 @@ export function Sidebar({
                   }
                 }}
               >
-                <span className="tw:flex-1 tw:truncate">{r.title || "Untitled reflection"}</span>
+                <span className="tw:flex-1 tw:truncate" title={r.title || "Untitled reflection"}>{r.title || "Untitled reflection"}</span>
                 <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(r.updatedAt)}</span>
                 <button
                   className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--coral)_26%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"}`}
@@ -779,7 +784,7 @@ export function Sidebar({
                     onBlur={() => { void commitRename({ kind: "chat", id: chat._id }); }}
                   />
                 ) : (
-                  <span className="tw:flex-1 tw:truncate">{chat.title || "Untitled"}</span>
+                  <span className="tw:flex-1 tw:truncate" title={chat.title || "Untitled"}>{chat.title || "Untitled"}</span>
                 )}
                 {!isRenaming && (
                   <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(chat.updatedAt)}</span>
@@ -920,7 +925,7 @@ export function Sidebar({
                               }}
                             />
                           ) : (
-                            <span className="tw:flex-[1_1_auto] tw:min-w-0 tw:truncate tw:self-center tw:py-[5px] tw:px-0">{row.node.label || "(no label)"}</span>
+                            <span className="tw:flex-[1_1_auto] tw:min-w-0 tw:truncate tw:self-center tw:py-[5px] tw:px-0" title={row.node.label || "(no label)"}>{row.node.label || "(no label)"}</span>
                           )}
                           {!isRowRenaming && activeStreams.has(row.node._id) && (
                             <span
