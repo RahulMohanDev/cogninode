@@ -101,10 +101,11 @@ export function NodePanel({
 
       <div className="tw:p-4 tw:flex tw:flex-col tw:gap-4">
         <div className="tw:flex tw:flex-col tw:gap-1">
-          <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
+          <label htmlFor="node-panel-name" className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
             {isRoot ? "Name — also the graph's name" : "Name"}
           </label>
           <input
+            id="node-panel-name"
             className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:outline-none tw:bg-bg-3 tw:text-ink tw:focus:border-lilac tw:placeholder:text-ink-4"
             value={label}
             onChange={e => setLabel(e.target.value)}
@@ -116,7 +117,7 @@ export function NodePanel({
         </div>
 
         <div className="tw:flex tw:flex-col tw:gap-1.5">
-          <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Color</label>
+          <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Color</span>
           <div className="tw:flex tw:gap-2">
             {GRAPH_NODE_COLORS.map(c => (
               <button
@@ -132,8 +133,9 @@ export function NodePanel({
         </div>
 
         <div className="tw:flex tw:flex-col tw:gap-1">
-          <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Notes</label>
+          <label htmlFor="node-panel-notes" className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">Notes</label>
           <textarea
+            id="node-panel-notes"
             className="tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:leading-[1.5] tw:outline-none tw:bg-bg-3 tw:text-ink tw:focus:border-lilac tw:resize-y tw:min-h-[72px]"
             value={notes}
             onChange={e => setNotes(e.target.value)}
@@ -309,9 +311,9 @@ function ConnectionsList({
 
   return (
     <div className="tw:flex tw:flex-col tw:gap-1.5">
-      <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
+      <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
         Connections{rows.length > 0 ? ` · ${rows.length}` : ""}
-      </label>
+      </span>
       {rows.length === 0 && (
         <p className="tw:m-0 tw:text-[12px] tw:text-ink-4">
           No connections yet — drag from a handle to any other node.
@@ -399,13 +401,12 @@ function AttachPicker({
   }, [items, q]);
 
   return (
-    <div className="tw:relative">
+    <div className="tw:relative" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false); }}>
       <input
         className="tw:w-full tw:py-1.5 tw:px-2.5 tw:border tw:border-dashed tw:border-line tw:rounded-app-sm tw:text-[12.5px] tw:outline-none tw:bg-bg tw:text-ink tw:focus:border-ink-3 tw:placeholder:text-ink-4"
         value={q}
         onChange={e => setQ(e.target.value)}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
         placeholder={placeholder}
         spellCheck={false}
       />

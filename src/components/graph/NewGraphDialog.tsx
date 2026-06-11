@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createGraph } from "../../lib/knowledge";
 import { useModalBehavior } from "../../hooks/useModalStack";
+import { useToast } from "../ui/Toast";
 
 export function NewGraphDialog({
   open, onClose, onCreated,
@@ -19,6 +20,7 @@ export function NewGraphDialog({
 
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -31,8 +33,13 @@ export function NewGraphDialog({
   const create = async (): Promise<void> => {
     if (busy) return;
     setBusy(true);
-    const id = await createGraph(name.trim() || "New graph");
-    onCreated(id);
+    try {
+      const id = await createGraph(name.trim() || "New graph");
+      onCreated(id);
+    } catch (err) {
+      toast(`Couldn't create graph: ${(err as Error).message}`, { kind: "error" });
+      setBusy(false);
+    }
   };
 
   return (
@@ -69,10 +76,11 @@ export function NewGraphDialog({
 
         <div className="tw:p-[18px] tw:flex tw:flex-col tw:gap-3">
           <div className="tw:flex tw:flex-col tw:gap-1">
-            <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
+            <label htmlFor="new-graph-name" className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">
               What is this graph about?
             </label>
             <input
+              id="new-graph-name"
               className="tw:py-2.5 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[14px] tw:outline-none tw:bg-bg tw:text-ink tw:focus:border-teal tw:placeholder:text-ink-4"
               value={name}
               onChange={e => setName(e.target.value)}

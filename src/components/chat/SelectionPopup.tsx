@@ -1,9 +1,8 @@
-// src/components/chat/SelectionPopup.tsx
 // Floating popup that appears when the user selects text inside the
 // chat stream. Offers a "Branch from selection" action which creates
 // a new node and routes the composer to it (with the selection as a quote).
 
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 export interface SelectionInfo {
   text: string;
@@ -17,6 +16,8 @@ export interface SelectionPopupProps {
 
 export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
   const [sel, setSel] = useState<SelectionInfo | null>(null);
+  const selRef = useRef<SelectionInfo | null>(null);
+  selRef.current = sel;
 
   useEffect(() => {
     const handler = (): void => {
@@ -52,9 +53,12 @@ export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
 
     document.addEventListener("mouseup", handler);
     document.addEventListener("keyup",   handler);
+    const onScroll = (): void => { if (selRef.current) handler(); };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return () => {
       document.removeEventListener("mouseup", handler);
       document.removeEventListener("keyup",   handler);
+      document.removeEventListener("scroll", onScroll, true);
     };
   }, [streamRef]);
 

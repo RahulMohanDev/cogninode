@@ -31,8 +31,9 @@ export function ApiKeyForm() {
 
                 <form onSubmit={submit}>
                     <div className="tw:flex tw:flex-col tw:gap-1.5 tw:mb-3.5">
-                        <label className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">OpenRouter API key</label>
+                        <label htmlFor="openrouter-api-key" className="tw:font-mono tw:text-[10px] tw:tracking-[0.12em] tw:uppercase tw:text-ink-3">OpenRouter API key</label>
                         <input
+                            id="openrouter-api-key"
                             className="tw:py-[11px] tw:px-3.5 tw:border tw:border-line tw:rounded-app-sm tw:text-[15px] tw:outline-none tw:bg-bg-3 tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3"
                             type="password"
                             placeholder="sk-or-v1-..."
@@ -50,7 +51,7 @@ export function ApiKeyForm() {
                     </div>
 
                     {error && (
-                        <div className="tw:flex tw:items-center tw:gap-2 tw:text-[13px] tw:text-coral tw:bg-coral-tint tw:px-3 tw:py-[9px] tw:rounded-app-sm tw:-mt-0.5 tw:mb-3.5 tw:border tw:border-coral-soft">
+                        <div role="alert" className="tw:flex tw:items-center tw:gap-2 tw:text-[13px] tw:text-coral tw:bg-coral-tint tw:px-3 tw:py-[9px] tw:rounded-app-sm tw:-mt-0.5 tw:mb-3.5 tw:border tw:border-coral-soft">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                                 <circle cx="8" cy="8" r="6.4" stroke="currentColor" strokeWidth="1.4" />
                                 <path d="M8 5 V9 M8 11 V11.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

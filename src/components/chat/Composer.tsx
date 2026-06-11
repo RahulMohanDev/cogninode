@@ -101,7 +101,6 @@ export function Composer({
     setFiles([]);
   }, [chatId, currentNodeId, initialText]);
 
-  // Persist draft on change.
   useEffect(() => {
     saveDraft(chatId, currentNodeId, text);
   }, [chatId, currentNodeId, text]);
@@ -195,6 +194,7 @@ export function Composer({
     const composerText = text.trim();
     if (!composerText && files.length === 0) return;
     if (streamState === "streaming") return;
+    if (uploading) return;
     const fileIds = files.map(f => f.fileId);
     // Clear local state before firing — the assistant tail handles itself.
     setText("");
@@ -241,7 +241,7 @@ export function Composer({
                 {f.kind === "pdf" ? "PDF" : f.kind === "code" ? "<>" : f.kind === "image" ? "IMG" : "FILE"}
               </span>
               {f.name}
-              <button className="tw:w-4 tw:h-4 tw:grid tw:place-items-center tw:rounded-[50%] tw:text-ink-3 tw:hover:bg-ink tw:hover:text-white" onClick={() => removeFile(f.fileId)}>
+              <button className="tw:w-4 tw:h-4 tw:grid tw:place-items-center tw:rounded-[50%] tw:text-ink-3 tw:hover:bg-ink tw:hover:text-white" onClick={() => removeFile(f.fileId)} aria-label={`Remove ${f.name}`} title="Remove file">
                 <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
                   <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
@@ -325,7 +325,10 @@ export function Composer({
                   style={{ position: "fixed", inset: 0, zIndex: 29 }}
                   onClick={closePicker}
                 />
-                <div className="tw:absolute tw:bottom-[calc(100%+6px)] tw:left-0 tw:w-[360px] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[12px] tw:shadow-3 tw:z-30 tw:overflow-hidden tw:animate-[popUp_0.15s_cubic-bezier(0.34,1.56,0.64,1)]">
+                <div
+                  className="tw:absolute tw:bottom-[calc(100%+6px)] tw:left-0 tw:w-[360px] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[12px] tw:shadow-3 tw:z-30 tw:overflow-hidden tw:animate-[popUp_0.15s_cubic-bezier(0.34,1.56,0.64,1)]"
+                  onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePicker(); } }}
+                >
                   <div className="tw:flex tw:items-center tw:gap-2 tw:py-2 tw:px-2.5 tw:border-b tw:border-line">
                     <svg className="tw:text-ink-3 tw:flex-none" width="13" height="13" viewBox="0 0 16 16" fill="none">
                       <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
@@ -400,6 +403,9 @@ export function Composer({
                     <div
                       className="tw:group/addrow tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:text-[13px] tw:cursor-pointer tw:text-ink-3 tw:border-t tw:border-line tw:hover:text-ink tw:hover:bg-bg-2"
                       onClick={() => { closePicker(); onOpenSettings(); }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closePicker(); onOpenSettings(); } }}
                     >
                       <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:flex-none tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:bg-bg-2 tw:border tw:border-dashed tw:border-line tw:text-ink-3 tw:group-hover/addrow:border-coral tw:group-hover/addrow:text-coral">
                         <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
@@ -454,11 +460,10 @@ export function Composer({
 
         {streamState === "streaming" ? (
           <button
-            className="tw:w-9 tw:h-9 tw:grid tw:place-items-center tw:bg-coral tw:text-white tw:rounded-[9px] tw:transition-[background-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#ff4520] tw:hover:[transform:translateY(-1px)] tw:disabled:bg-ink-4 tw:disabled:cursor-not-allowed tw:disabled:[transform:none]"
+            className="tw:w-9 tw:h-9 tw:grid tw:place-items-center tw:bg-ink-3 tw:text-white tw:rounded-[9px] tw:transition-[background-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:hover:[transform:translateY(-1px)] tw:disabled:cursor-not-allowed tw:disabled:[transform:none]"
             onClick={onCancel}
             title="Cancel"
             type="button"
-            style={{ background: "var(--ink-3)" }}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
               <rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" />
@@ -467,7 +472,7 @@ export function Composer({
         ) : (
           <button
             className="tw:w-9 tw:h-9 tw:grid tw:place-items-center tw:bg-coral tw:text-white tw:rounded-[9px] tw:transition-[background-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#ff4520] tw:hover:[transform:translateY(-1px)] tw:disabled:bg-ink-4 tw:disabled:cursor-not-allowed tw:disabled:[transform:none]"
-            disabled={!text.trim() && files.length === 0}
+            disabled={(!text.trim() && files.length === 0) || uploading}
             onClick={handleSend}
             title="Send (Cmd/Ctrl+Enter)"
             type="button"
@@ -502,6 +507,9 @@ function PickerRow({ m, selected, pinned, onSelect, onTogglePin }: PickerRowProp
     <div
       className={`tw:group/row tw:flex tw:items-center tw:gap-2.5 tw:py-2 tw:px-2.5 tw:rounded-[8px] tw:text-[13px] tw:text-ink tw:cursor-pointer ${selected ? "tw:bg-butter-tint tw:dark:bg-[color-mix(in_oklab,var(--butter)_14%,transparent)]" : "tw:hover:bg-bg-2"}`}
       onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(); } }}
     >
       <span className="tw:w-[22px] tw:h-[22px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[10px] tw:font-bold tw:tracking-[-0.04em] tw:flex-none" style={{ background: "var(--ink-2)" }}>{mInitials}</span>
       <div className="tw:flex-1 tw:min-w-0 tw:flex tw:flex-col tw:gap-px">

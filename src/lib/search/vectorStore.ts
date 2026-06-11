@@ -34,6 +34,7 @@ export function topKByDot(
   rows: Iterable<{ id: string; vector: Float32Array }>,
   k: number,
 ): VectorHit[] {
+  if (k <= 0) return [];
   const hits: VectorHit[] = [];
   for (const row of rows) {
     if (row.vector.length !== query.length) continue;

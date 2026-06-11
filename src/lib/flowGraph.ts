@@ -77,7 +77,6 @@ export function planSubtreeSources(
   const points = layoutTree(forest);
   const pointById = new Map(points.map(p => [p.nodeId, p]));
 
-  // Locate the subtree root node.
   const actualRootId = rootNodeId
     ?? chatNodes.find(n => n.parentId === null)?._id
     ?? null;
@@ -85,7 +84,6 @@ export function planSubtreeSources(
   const rootPoint = pointById.get(actualRootId);
   if (!rootPoint) return [];
 
-  // Collect the subtree (root + descendants).
   const childrenByParent = new Map<string, DbNode[]>();
   for (const n of chatNodes) {
     if (!n.parentId) continue;

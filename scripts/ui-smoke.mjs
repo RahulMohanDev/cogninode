@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-const APP = "http://localhost:5199";
+const APP = process.env.APP_URL ?? "http://localhost:5173";
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.addInitScript(() => {

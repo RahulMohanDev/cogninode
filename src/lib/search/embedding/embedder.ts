@@ -77,7 +77,6 @@ export class LocalEmbedder implements Embedder {
       }
       return;
     }
-    // error
     const err = new Error(msg.message);
     if (msg.id !== undefined) {
       const p = this.pending.get(msg.id);

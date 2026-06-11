@@ -138,7 +138,7 @@ function ApiKeySection({
         </div>
         <div className="tw:flex tw:gap-1">
           <button
-            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
             disabled={!apiKey}
             onClick={() => setReveal(v => !v)}
             title={reveal ? "Hide key" : "Reveal key"}
@@ -146,7 +146,7 @@ function ApiKeySection({
             {reveal ? "Hide" : "Reveal"}
           </button>
           <button
-            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
             disabled={!apiKey}
             onClick={onRemoveKey}
             title="Remove key"
@@ -343,6 +343,8 @@ function SearchSection({
     onToggle(false);
     void searchService.purgeSemanticData().then(() => {
       toast("Semantic search off — vectors and model weights deleted", { kind: "info" });
+    }).catch((err) => {
+      toast(`Purge failed: ${(err as Error).message}`, { kind: "error" });
     });
   };
 
@@ -408,6 +410,7 @@ function SearchSection({
           <input
             type="radio"
             name="embeddingModel"
+            aria-label={m.label}
             checked={embeddingModelId === m.id}
             disabled={!semanticSearch}
             onChange={() => onSelectModel(m.id)}
@@ -443,6 +446,7 @@ function BranchModeSection({
         <input
           type="radio"
           name="branchMode"
+          aria-label="Follow new branch"
           checked={value === "follow"}
           onChange={() => onChange("follow")}
           style={{ accentColor: "var(--coral)" }}
@@ -457,6 +461,7 @@ function BranchModeSection({
         <input
           type="radio"
           name="branchMode"
+          aria-label="Stay on current node"
           checked={value === "stay"}
           onChange={() => onChange("stay")}
           style={{ accentColor: "var(--coral)" }}
@@ -490,6 +495,7 @@ function ThemeSection({
         <input
           type="radio"
           name="theme"
+          aria-label="Light"
           checked={value === "light"}
           onChange={() => onChange("light")}
           style={{ accentColor: "var(--coral)" }}
@@ -504,6 +510,7 @@ function ThemeSection({
         <input
           type="radio"
           name="theme"
+          aria-label="Dark"
           checked={value === "dark"}
           onChange={() => onChange("dark")}
           style={{ accentColor: "var(--coral)" }}
@@ -584,7 +591,7 @@ function CustomModelsSection({
             </div>
           </div>
           <button
-            className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
             onClick={() => remove(m.id)}
             title="Remove custom model"
           >
@@ -704,7 +711,7 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
       await db.transaction(
         "rw",
         [db.chats, db.nodes, db.messages, db.reflections, db.files,
-         db.graphs, db.graphNodes, db.graphEdges],
+         db.graphs, db.graphNodes, db.graphEdges, db.searchVectors],
         async () => {
           await db.chats.clear();
           await db.nodes.clear();
@@ -714,6 +721,7 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
           await db.graphs.clear();
           await db.graphNodes.clear();
           await db.graphEdges.clear();
+          await db.searchVectors.clear();
         },
       );
       setConfirmOpen(false);
@@ -838,7 +846,7 @@ function AboutSection() {
         <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Open source · MIT license · runs entirely in your browser.</p>
       </div>
       <div className="tw:flex tw:gap-[18px] tw:mt-2.5">
-        <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="https://github.com/rahulmohan/cogninode" target="_blank" rel="noopener noreferrer">
+        <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="https://github.com/RahulMohanDev/cogninode" target="_blank" rel="noopener noreferrer">
           GitHub
         </a>
       </div>

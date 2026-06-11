@@ -38,7 +38,6 @@
 //      dynamic `import()` so they code-split into their own chunks instead
 //      of bloating the eager bundle.
 
-import { useEffect, useState } from "react";
 import {
   Streamdown,
   type Components,
@@ -144,13 +143,11 @@ const ALIASES: Record<string, string> = {
   tsx:        "typescript",
   js:         "javascript",
   jsx:        "javascript",
-  sh:         "shell",
-  zsh:        "shell",
-  bash:       "bash",
+  sh:         "bash",
+  zsh:        "bash",
   html:       "xml",
   htm:        "xml",
   svg:        "xml",
-  xml:        "xml",
   yml:        "yaml",
   md:         "markdown",
   py:         "python",
@@ -336,15 +333,12 @@ interface HighlighterState {
   ready: Set<string>;
   /** In-flight loads, so concurrent calls share one promise per language. */
   loading: Map<string, Promise<void>>;
-  /** Subscribers notified when a previously-pending language becomes ready. */
-  listeners: Set<() => void>;
 }
 
 const state: HighlighterState = {
   hljs:      null,
   ready:     new Set<string>(),
   loading:   new Map<string, Promise<void>>(),
-  listeners: new Set<() => void>(),
 };
 
 async function loadHljsCore(): Promise<HLJS> {
@@ -366,15 +360,17 @@ function ensureLanguage(canonical: string): Promise<void> {
     if (!hljs.getLanguage(canonical)) {
       hljs.registerLanguage(canonical, grammarMod.default);
     }
+    if (canonical === "shell" && !hljs.getLanguage("bash")) {
+      const bashMod = await LOADERS.bash!();
+      hljs.registerLanguage("bash", bashMod.default);
+      state.ready.add("bash");
+    }
     state.ready.add(canonical);
   })().catch((err: unknown) => {
     // eslint-disable-next-line no-console
     console.warn(`[MarkdownBody] failed to load grammar "${canonical}":`, err);
   }).finally(() => {
     state.loading.delete(canonical);
-    // Notify subscribers (mounted MarkdownBody instances) to force a re-render
-    // so streamdown re-invokes our `highlight` and picks up the cached tokens.
-    for (const fn of state.listeners) fn();
   });
   state.loading.set(canonical, p);
   return p;
@@ -416,7 +412,6 @@ const codePlugin: CodeHighlighterPlugin = {
     if (!canonical) return null;
     const cached = tokenize(canonical, options.code);
     if (cached) return cached;
-    // Trigger async load + notify on completion.
     void ensureLanguage(canonical).then(() => {
       if (!callback) return;
       const out = tokenize(canonical, options.code);
@@ -431,15 +426,6 @@ const plugins: PluginConfig = { code: codePlugin };
 // ── Component ─────────────────────────────────────────────────────
 
 export function MarkdownBody({ text }: { text: string }) {
-  // Subscribe to grammar-load completions so that newly-supported languages
-  // re-render with colours without waiting for the next streaming chunk.
-  const [, force] = useState(0);
-  useEffect(() => {
-    const fn = (): void => force((n) => n + 1);
-    state.listeners.add(fn);
-    return () => { state.listeners.delete(fn); };
-  }, []);
-
   if (!text) return null;
   return (
     <div className="md">

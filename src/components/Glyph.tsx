@@ -1,4 +1,3 @@
-// src/components/Glyph.tsx
 // Cogninode logo glyph — TS port of design/glyph.jsx
 import type { CSSProperties } from "react";
 

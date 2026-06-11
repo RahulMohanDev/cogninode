@@ -80,6 +80,7 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
     return [...base]
       .sort((a, b) =>
         (a.kind === "root" ? -1 : 0) - (b.kind === "root" ? -1 : 0) ||
+        (a.label.toLowerCase() === needle ? -1 : 0) - (b.label.toLowerCase() === needle ? -1 : 0) ||
         b.updatedAt - a.updatedAt)
       .slice(0, 6);
   }, [candidates, nodeQuery]);
@@ -127,13 +128,21 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
   };
 
   const doCreateGraph = async (): Promise<void> => {
-    const id = await createGraph(newGraphName.trim() || "My brain");
-    setGraphId(id);
-    setCreatingGraph(false);
-    setNewGraphName("");
+    if (busy) return;
+    setBusy(true);
+    try {
+      const id = await createGraph(newGraphName.trim() || "My brain");
+      setGraphId(id);
+      setCreatingGraph(false);
+      setNewGraphName("");
+    } catch (err) {
+      toast(`Couldn't create graph: ${(err as Error).message}`, { kind: "error" });
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const exactMatch = suggestions.some(
+  const exactMatch = candidates.some(
     n => n.label.toLowerCase() === nodeQuery.trim().toLowerCase() && nodeQuery.trim() !== "",
   );
 
@@ -265,7 +274,7 @@ export function AddToGraphDialog({ open, target, onClose }: AddToGraphDialogProp
                     </span>
                   </button>
                 )}
-                {suggestions.length === 0 && exactMatch === false && candidates.length > 0 && nodeQuery.trim() !== "" && (
+                {suggestions.length === 0 && candidates.length > 0 && nodeQuery.trim() !== "" && (
                   <div className="tw:text-[12px] tw:text-ink-3 tw:px-2.5 tw:py-1">No matching nodes.</div>
                 )}
               </div>

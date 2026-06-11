@@ -140,6 +140,7 @@ function GraphCard({
   const [draft, setDraft]           = useState("");
   const committedRef = useRef(false);
   const revertRef = useRef<number | null>(null);
+  const wasRenamingOnPressRef = useRef(false);
 
   useEffect(() => () => {
     if (revertRef.current !== null) window.clearTimeout(revertRef.current);
@@ -163,10 +164,12 @@ function GraphCard({
   return (
     <div
       className="tw:group/card tw:bg-bg tw:border tw:border-line tw:rounded-[16px] tw:p-[18px] tw:cursor-pointer tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:min-h-[160px] tw:relative tw:overflow-hidden tw:flex tw:flex-col tw:hover:border-ink-3 tw:hover:-translate-y-0.5"
-      onClick={() => { if (!renaming) onOpen(); }}
+      onMouseDown={() => { wasRenamingOnPressRef.current = renaming; }}
+      onClick={() => { const wasRenaming = wasRenamingOnPressRef.current; wasRenamingOnPressRef.current = false; if (!renaming && !wasRenaming) onOpen(); }}
       role="button"
       tabIndex={0}
       onKeyDown={e => {
+        if (e.target !== e.currentTarget) return;
         if ((e.key === "Enter" || e.key === " ") && !renaming) {
           e.preventDefault();
           onOpen();
@@ -175,7 +178,7 @@ function GraphCard({
     >
       <div className="tw:absolute tw:top-2.5 tw:right-2.5 tw:flex tw:gap-1">
         <button
-          className="tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"
+          className="tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:focus-visible:opacity-90 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"
           title="Rename graph"
           aria-label="Rename graph"
           onClick={e => { e.stopPropagation(); committedRef.current = false; setDraft(graph.name); setRenaming(true); }}
@@ -185,7 +188,7 @@ function GraphCard({
           </svg>
         </button>
         <button
-          className="tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
+          className="tw:w-6 tw:h-6 tw:grid tw:place-items-center tw:rounded-[6px] tw:text-ink-3 tw:opacity-0 tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/card:opacity-90 tw:focus-visible:opacity-90 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"
           title="Delete graph"
           aria-label="Delete graph"
           onClick={e => { e.stopPropagation(); arm(); }}
@@ -280,8 +283,12 @@ function MiniConstellation({
     px: maxX > minX ? PAD + ((x - minX) / (maxX - minX)) * (THUMB_W - PAD * 2) : THUMB_W / 2,
     py: maxY > minY ? PAD + ((y - minY) / (maxY - minY)) * (THUMB_H - PAD * 2) : THUMB_H / 2,
   });
-  const posById = new Map(points.map(p => [p.id, project(p.x, p.y)]));
-  const visible = points.slice(0, 32);
+  const rootIdx = nodes.findIndex(n => n.kind === "root");
+  const rootPt = rootIdx >= 32 ? points[rootIdx] : undefined;
+  const visible = rootPt
+    ? [rootPt, ...points.slice(0, 31)]
+    : points.slice(0, 32);
+  const posById = new Map(visible.map(p => [p.id, project(p.x, p.y)]));
 
   return (
     <svg width={THUMB_W} height={THUMB_H} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`} aria-hidden="true" style={{ display: "block" }}>

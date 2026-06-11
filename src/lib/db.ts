@@ -337,10 +337,6 @@ export async function getMeta<T>(key: string): Promise<T | undefined> {
   return row?.value as T | undefined;
 }
 
-export async function setMeta(key: string, value: unknown): Promise<void> {
-  await db.meta.put({ key, value });
-}
-
 // ── Typed helpers ──────────────────────────────────────────────
 
 export function newId(): string {
@@ -374,7 +370,6 @@ export async function createChat(title = "New chat"): Promise<string> {
   return chatId;
 }
 
-// Create a branch node from a parent
 export async function createBranch(params: {
   chatId:   string;
   parentId: string;
@@ -439,7 +434,6 @@ export async function buildPathMessages(
   const allNodes = await db.nodes.where("chatId").equals(chatId).toArray();
   const nodeMap  = new Map(allNodes.map(n => [n._id, n]));
 
-  // Walk to root
   const path: Node[] = [];
   let currentId: string | null = nodeId;
   while (currentId) {
@@ -449,7 +443,6 @@ export async function buildPathMessages(
     currentId = node.parentId;
   }
 
-  // Collect messages in path order
   const result: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
 
   for (const node of path) {
@@ -578,7 +571,7 @@ export interface DeleteSubtreeResult {
   filesDeleted:    number;
   /** Graph nodes that kept living on a canvas but lost their attached data. */
   detachedGraphNodes: number;
-  /** The parent node of the deleted subtree, or null when the root was deleted. */
+  /** The parent node of the deleted subtree; null when the call was a no-op. */
   parentNodeId:    string | null;
 }
 
@@ -587,8 +580,8 @@ export interface DeleteSubtreeResult {
  * Removes all messages, reflections, and orphaned files in one transaction.
  * If the chat's `currentNodeId` lived inside the deleted subtree, the chat
  * is repointed to the parent of `nodeId` (or its root, if parent is null).
- * Does NOT delete the chat itself even when called on the root — callers
- * that want "delete whole chat" semantics should use `deleteChat`.
+ * Calling on the chat's root node is a no-op — callers that want "delete
+ * whole chat" semantics must use `deleteChat`.
  */
 export async function deleteNodeSubtree(
   chatId: string,
@@ -607,6 +600,14 @@ export async function deleteNodeSubtree(
       }
       const target = await db.nodes.get(nodeId);
       if (!target || target.chatId !== chatId) {
+        return {
+          nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0,
+          filesDeleted: 0, detachedGraphNodes: 0, parentNodeId: null,
+        };
+      }
+      // Whole-chat deletion must go through deleteChat — deleting the root
+      // here would leave the chat row pointing at deleted nodes.
+      if (nodeId === chat.rootNodeId) {
         return {
           nodesDeleted: 0, messagesDeleted: 0, reflectionsDeleted: 0,
           filesDeleted: 0, detachedGraphNodes: 0, parentNodeId: null,
@@ -648,7 +649,6 @@ export async function deleteNodeSubtree(
       }
       const orphanFileIds = [...candidateFileIds].filter(f => !stillUsedFileIds.has(f));
 
-      // Reflections by node id.
       const doomedReflections = await db.reflections
         .where("nodeId").anyOf(doomedArr)
         .toArray();

@@ -1,4 +1,3 @@
-// src/lib/markdown.tsx
 // Tiptap-based rich-text editor for editing chat messages. This module is
 // pulled in by Message.tsx via a dynamic `import()` so the heavy ProseMirror
 // / Tiptap / markdown-it dependencies code-split into their own async chunk
@@ -19,6 +18,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type FocusEvent as ReactFocusEvent,
 } from "react";
 import { useEditor, EditorContent }   from "@tiptap/react";
 import StarterKit                     from "@tiptap/starter-kit";
@@ -229,14 +229,18 @@ export function RichEditor({
     editor.commands.setContent(initial);
   }, [initial, editor]);
 
-  const handleBlur = useCallback(() => {
+  const handleBlur = useCallback((e: ReactFocusEvent) => {
     if (!editor) return;
+    if (e.relatedTarget instanceof Node && shellRef.current?.contains(e.relatedTarget)) return;
     onSave(getMarkdown(editor));
   }, [editor, onSave]);
 
   // Toolbar clicks must not steal focus from the editor (which would trigger
   // an unwanted blur-save before the format command actually applies).
-  const preventBlur = (e: ReactMouseEvent): void => { e.preventDefault(); };
+  const preventBlur = (e: ReactMouseEvent): void => {
+    if ((e.target as HTMLElement).closest("input, a")) return;
+    e.preventDefault();
+  };
 
   // ── Link popover state ────────────────────────────────────────
   // The popover is rendered inline beneath the toolbar's link button. We keep
@@ -246,6 +250,7 @@ export function RichEditor({
   const [linkValue, setLinkValue]     = useState("");
   const linkWrapRef  = useRef<HTMLSpanElement | null>(null);
   const linkInputRef = useRef<HTMLInputElement | null>(null);
+  const shellRef     = useRef<HTMLDivElement | null>(null);
 
   const closeLink = useCallback((): void => {
     setLinkOpen(false);
@@ -258,7 +263,6 @@ export function RichEditor({
     setLinkOpen(true);
   }, [editor]);
 
-  // Focus the input once the popover mounts.
   useEffect(() => {
     if (!linkOpen) return;
     // Defer to next frame so the input is attached before focusing.
@@ -271,7 +275,6 @@ export function RichEditor({
     return () => cancelAnimationFrame(id);
   }, [linkOpen]);
 
-  // Single document-level mousedown listener for outside-click dismissal.
   useEffect(() => {
     if (!linkOpen) return;
     const onDocDown = (ev: MouseEvent): void => {
@@ -354,7 +357,7 @@ export function RichEditor({
   const showOpenLink = linkOpen && /^(https?:|mailto:)/i.test(currentHrefForOpen);
 
   return (
-    <div className={`rte-shell${variant === "inverted" ? " rte-shell-inverted" : ""}`}>
+    <div ref={shellRef} className={`rte-shell${variant === "inverted" ? " rte-shell-inverted" : ""}`}>
       <div className="rte-toolbar" onMouseDown={preventBlur}>
         {TOOLBAR_BUTTONS.map((btn) => (
           <button

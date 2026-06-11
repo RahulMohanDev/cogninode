@@ -31,6 +31,8 @@ export function highlightTermsInElement(root: HTMLElement, terms: string[]): voi
   const Ctor = highlightCtor();
   if (!reg || !Ctor) return;
 
+  reg.delete(HIGHLIGHT_NAME);
+
   const needles = [...new Set(terms.map(t => t.toLowerCase()))].filter(t => t.length > 1);
   if (needles.length === 0) return;
 
@@ -41,6 +43,7 @@ export function highlightTermsInElement(root: HTMLElement, terms: string[]): voi
     const text = node.textContent ?? "";
     if (!text) continue;
     const lower = text.toLowerCase();
+    if (lower.length !== text.length) continue; // U+0130 İ lowercases to 2 code units; offsets into `lower` would misalign with the node
     for (const needle of needles) {
       let from = 0;
       while (true) {

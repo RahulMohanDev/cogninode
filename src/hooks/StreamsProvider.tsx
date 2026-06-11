@@ -57,9 +57,10 @@ export interface SendParams {
  *  survives the slice. */
 const GRAPH_CHAT_HISTORY_MAX = 16;
 
-// Derive a chat/root-node title from the user's first message. Drops any
-// auto-appended file blocks (PDF excerpts or code fences added by storeFile)
-// so the title reflects what the user typed, not what they attached.
+// Derive a chat/root-node title from the user's first message. Truncates at
+// the first user-typed fenced code block (or pasted <document> block) so the
+// title reflects the question, not pasted content. Attached-file content never
+// reaches composerText — buildPathMessages injects it at prompt time.
 function deriveTitle(text: string): string {
   const firstBlock = text.split(/\n\n(?:<document|```)/)[0] ?? text;
   const cleaned    = firstBlock.replace(/\s+/g, " ").trim();
@@ -116,7 +117,6 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
   // fresh non-null value on its next read.
   const pendingSubs = useRef<Map<string, Set<() => void>>>(new Map());
 
-  // Active-streams subscribers.
   const activeRef     = useRef<Set<string>>(new Set());
   const activeSubsRef = useRef<Set<() => void>>(new Set());
 
@@ -368,6 +368,14 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
             console.error("Stream error:", msg, status);
           },
         });
+
+        // streamMessage returns silently on AbortError without calling
+        // onDone/onError. cancel() removes the slot itself, but external
+        // aborts (abortNodes() from db.ts cascade deletes) rely on this
+        // cleanup — otherwise the slot leaks in "streaming" state forever.
+        if (controller.signal.aborted && slotsRef.current.get(nodeId) === slot) {
+          removeSlot(nodeId);
+        }
       } catch (err) {
         // streamMessage swallows its own errors via onError, but defensive:
         // any unexpected throw (e.g. buildPathMessages) lands here.

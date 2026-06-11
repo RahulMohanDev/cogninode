@@ -1,5 +1,5 @@
 // src/components/chat/Overlays.tsx
-// QuickJump (Ctrl+Q / Cmd+K), TreeMap (Ctrl+T), Shortcuts cheat sheet (Ctrl+/).
+// QuickJump (Ctrl+Q), TreeMap (Ctrl+T), Shortcuts cheat sheet (Ctrl+/).
 // Self-managed: installs a single global keydown listener and renders three modal
 // overlays gated by local state. Consumer is ChatApp.
 
@@ -26,7 +26,6 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
   const [open, setOpen] = useState<OverlayKind>(null);
   const close = useCallback(() => setOpen(null), []);
 
-  // Single global keydown listener — gates the overlays and dispatches Esc.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
@@ -54,7 +53,6 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
         setOpen(prev => (prev === "quickjump" ? null : "quickjump"));
         return;
       }
-      // Ctrl+T → TreeMap
       if (ctrl && (e.key === "t" || e.key === "T")) {
         e.preventDefault();
         setOpen(prev => (prev === "treemap" ? null : "treemap"));
@@ -74,7 +72,7 @@ export function Overlays({ chatId, currentNodeId }: OverlaysProps) {
 
   return (
     <>
-      {open === "quickjump" && <QuickJump chatId={chatId} currentNodeId={currentNodeId} onClose={close} />}
+      {open === "quickjump" && <QuickJump currentNodeId={currentNodeId} onClose={close} />}
       {open === "treemap"   && <TreeMap chatId={chatId} currentNodeId={currentNodeId} onClose={close} />}
       {open === "shortcuts" && <Shortcuts onClose={close} />}
     </>
@@ -122,11 +120,9 @@ function relativeTime(ts: number): string {
 }
 
 function QuickJump({
-  chatId,
   currentNodeId,
   onClose,
 }: {
-  chatId:        string;
   currentNodeId: string;
   onClose:       () => void;
 }) {
@@ -241,6 +237,12 @@ function QuickJump({
     );
   }, [ordered, q, serviceRows]);
 
+  // Clamp the highlight whenever the visible list changes (e.g. debounced
+  // service results replacing the substring-filtered list).
+  useEffect(() => {
+    setHi(h => Math.max(0, Math.min(h, filtered.length - 1)));
+  }, [filtered]);
+
   const jump = useCallback(async (row: QuickJumpRow) => {
     await db.chats.update(row.node.chatId, { currentNodeId: row.node._id });
     navigate(`/chat/${row.node.chatId}`);
@@ -318,7 +320,7 @@ function QuickJump({
                     )}
                   </span>
                   {row.isRoot && <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">root</span>}
-                  {i === 0 && q.trim() === "" && (
+                  {i === 0 && q.trim() === "" && row.visited && (
                     <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">← back</span>
                   )}
                   <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:tracking-[0.02em]">
@@ -472,8 +474,8 @@ function Shortcuts({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="tw:fixed tw:inset-0 tw:bg-[color-mix(in_oklab,var(--ink)_30%,transparent)] tw:dark:bg-[var(--veil-black-60)] tw:backdrop-blur-[8px] tw:grid tw:[place-items:start_center] tw:pt-[14vh] tw:z-[200] tw:animate-[fadeIn_0.14s_ease-out]" onClick={onClose}>
-      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" className="tw:w-[min(640px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" style={{ width: "min(720px, 92vw)" }} onClick={e => e.stopPropagation()}>
-        <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-3.5 tw:px-[18px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none" style={{ padding: "16px 22px" }}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" className="tw:w-[min(720px,92vw)] tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-[0_40px_80px_-20px_rgba(0,0,0,0.4)] tw:overflow-hidden tw:animate-[popUp_0.18s_cubic-bezier(0.34,1.56,0.64,1)]" onClick={e => e.stopPropagation()}>
+        <div className="tw:flex tw:items-center tw:gap-2.5 tw:py-4 tw:px-[22px] tw:border-b tw:border-line tw:[&_svg]:text-ink-3 tw:[&_svg]:flex-none">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" style={{ color: "var(--ink)" }}>
             <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
             <path d="M4 8 H6 M8 8 H10 M4 10 H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

@@ -142,7 +142,10 @@ class SearchService {
       this.keyword.build(docs);
       this.installHooks();
       this.patch({ keywordReady: true, docCount: this.keyword.size });
-    })();
+    })().catch(err => {
+      this.keywordInit = null; // failed boot — let the next call retry
+      throw err;
+    });
     return this.keywordInit;
   }
 
@@ -191,9 +194,24 @@ class SearchService {
     this.pendingUpserts.clear();
 
     for (const id of removes) {
-      this.keyword.remove(id);
-      this.embedQueue.delete(id);
-      if (this.vectors) await this.vectors.remove(id).catch(() => {});
+      const parsed = parseDocId(id);
+      const doc = parsed ? await loadDoc(parsed.kind, parsed.rawId) : null;
+      if (!doc) {
+        this.keyword.remove(id);
+        this.embedQueue.delete(id);
+        if (this.vectors) await this.vectors.remove(id).catch(() => {});
+        continue;
+      }
+      // Record still exists (delete transaction rolled back after its
+      // hook fired) — keep it indexed.
+      this.keyword.upsert(doc);
+      if (
+        EMBEDDED_KINDS.has(doc.kind) &&
+        this.vectors &&
+        this.vectors.hashOf(id) !== textHash(embedText(doc))
+      ) {
+        this.embedQueue.add(id);
+      }
     }
 
     for (const id of upserts) {
@@ -238,9 +256,9 @@ class SearchService {
     if (this.embedder && this.embedder.spec.id !== spec.id) {
       // Model switch: stop, drop the other model's vectors, start fresh.
       this.stopSemantic();
-      await VectorStore.wipeOtherModels(spec.id);
     }
     if (this.embedder) return;   // same model already active/starting
+    await VectorStore.wipeOtherModels(spec.id);
 
     const run = ++this.semanticRun;
     this.patch({ semantic: "starting", modelId: spec.id, error: null, downloadPct: 0 });
@@ -373,12 +391,13 @@ class SearchService {
   private async pumpEmbeds(): Promise<void> {
     if (this.pumping || !this.embedder || !this.vectors) return;
     this.pumping = true;
+    let inflight: string[] = [];
     try {
       while (this.embedQueue.size > 0 && this.state.semantic === "ready") {
-        const ids = [...this.embedQueue].slice(0, EMBED_BATCH);
-        for (const id of ids) this.embedQueue.delete(id);
+        inflight = [...this.embedQueue].slice(0, EMBED_BATCH);
+        for (const id of inflight) this.embedQueue.delete(id);
         const docs: SearchDoc[] = [];
-        for (const id of ids) {
+        for (const id of inflight) {
           const parsed = parseDocId(id);
           if (!parsed) continue;
           const doc = await loadDoc(parsed.kind, parsed.rawId);
@@ -401,9 +420,11 @@ class SearchService {
           }
           this.patch({ vectorCount: this.vectors.size });
         }
+        inflight = [];
         await sleep(EMBED_BATCH_REST);
       }
     } catch (err) {
+      if (this.state.semantic === "ready") for (const id of inflight) this.embedQueue.add(id);
       console.warn("[search] incremental embed failed:", err);
     } finally {
       this.pumping = false;

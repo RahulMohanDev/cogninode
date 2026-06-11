@@ -119,10 +119,12 @@ export function GraphCanvas({
   // Citation chips / dock → pan to a node (nonce re-fires for repeats).
   // Slight delay: the dock may be mid-resize (or just un-hiding the
   // canvas after a maximized chat) — measure after it settles.
+  const centerNonceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!centerRequest) return undefined;
+    if (!centerRequest || centerNonceRef.current === centerRequest.nonce) return undefined;
     const n = nodeById.get(centerRequest.id);
     if (!n) return undefined;
+    centerNonceRef.current = centerRequest.nonce;
     const t = setTimeout(
       () => flow.setCenter(n.x + 100, n.y + 40, { zoom: 1, duration: 500 }),
       230,
@@ -143,13 +145,13 @@ export function GraphCanvas({
     return () => clearTimeout(t);
   }, [fitNonce, flow]);
 
-  // ?node= deep link (from ⌘K): select + center once.
-  const focusedRef = useRef(false);
+  // ?node= deep link (from ⌘K): select + center once per target.
+  const focusedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (focusedRef.current || !focusNodeId) return;
+    if (!focusNodeId || focusedRef.current === focusNodeId) return;
     const n = nodeById.get(focusNodeId);
     if (!n) return;
-    focusedRef.current = true;
+    focusedRef.current = focusNodeId;
     onSelect(n._id);
     setTimeout(() => flow.setCenter(n.x + 100, n.y + 40, { zoom: 1, duration: 500 }), 120);
   }, [focusNodeId, nodeById, flow, onSelect]);

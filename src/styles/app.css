@@ -173,17 +173,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 /* ====== Main pane ====== */
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  background: var(--bg-3);
-  position: relative;
-  overflow: hidden;
-}
-
 .m-body {
   font-size: 15px;
   line-height: 1.55;
@@ -283,7 +272,6 @@
 
 /* ============ Auth / settings / billing ============ */
 
-
 /* ============================================================ */
 /* Dark mode — applied via <html data-theme="dark">             */
 /* Warm dark, reading-by-lamplight feel — not pure black.       */
@@ -346,21 +334,6 @@
 /* The new-chat button in the sidebar uses --ink/--bg pair. In dark it
    becomes a cream button with dark text — reads as primary. Good as-is. */
 
-
-
-/* Subtle warm tint behind the page bg in dark, so big white-on-white
-   plan cards in light don't suddenly look like a slab of charcoal. */
-/* Hover states that hardcoded a near-black colour now need to be
-   slightly-off-cream (since --ink is cream in dark). */
-
-
-
-/* Reflect mode banner: keep lilac legible on dark. */
-
-/* Selection popup: in light it's dark ink-on-cream; in dark we keep the
-   same inverted feel by flipping. */
-
-
 /* The user-message bubble: dark cream-on-dark bubble looks weird —
    keep it as ink (cream) with bg (dark) text, exactly the inversion of
    light mode. Already works via --ink/--bg, no override needed. */
@@ -370,7 +343,6 @@
    we already retoned for dark. */
 
 /* Auth page: the decorative tree uses currentColor (--ink-3) — good. */
-
 
 /* ============================================================ */
 /*                                                              */
@@ -385,7 +357,6 @@
 /* ── Sidebar footer — API key indicator ──────────────────────── */
 .sm-body::-webkit-scrollbar { width: 6px; }
 .sm-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
-
 
 /* Subtle outline cue on the message envelope itself while reflecting. */
 .msg.reflecting .m-body { transition: outline-color 0.12s; }
@@ -715,7 +686,7 @@
 .rte-inverted hr { border-top-color: color-mix(in oklab, var(--bg) 22%, transparent); }
 
 /* ProseMirror placeholder + selection visuals. */
-.rte-content .ProseMirror-focused { outline: none; }
+.rte-content.ProseMirror-focused { outline: none; }
 .rte-content ::selection { background: color-mix(in oklab, var(--lilac) 30%, transparent); }
 .rte-inverted ::selection { background: color-mix(in oklab, var(--bg) 30%, transparent); color: var(--bg); }
 
@@ -834,7 +805,6 @@
   to   { transform: rotate(360deg); }
 }
 
-/* Respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   .rs-star.spin { animation: rs-pulse 1.8s ease-in-out infinite; }
 }

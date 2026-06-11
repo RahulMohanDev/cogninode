@@ -106,7 +106,7 @@ export default function Reflections() {
               onAddToGraph={() => setGraphTarget({ type: "reflection", id: selected._id, title: selected.title })}
               onDeleted={() => { setSelectedId(null); toast("Reflection deleted", { kind: "success" }); }}
             />
-          ) : (
+          ) : reflections && reflections.length === 0 ? (
             <div className="tw:max-w-[920px] tw:mx-auto">
               <div className="tw:mt-0 tw:mb-7">
                 <span className="tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:inline-flex tw:items-center tw:gap-2">
@@ -126,7 +126,7 @@ export default function Reflections() {
                 enter reflections mode, tidy the path, then choose <span className="tw:text-ink">Save as reflection</span>.
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
       <AddToGraphDialog
@@ -188,10 +188,10 @@ function ReflectionDetail({ reflection, chatTitle, onOpenBranch, onAddToGraph, o
 
   const handleSaveBody = async (markdown: string): Promise<void> => {
     const next = markdown.replace(/\s+$/g, "");
-    setEditing(false);
-    if (next === reflection.body) return;
+    if (next === reflection.body) { setEditing(false); return; }
     try {
       await db.reflections.update(reflection._id, { body: next, updatedAt: Date.now() });
+      setEditing(false);
       toast("Reflection updated", { kind: "success" });
     } catch (err) {
       toast(`Couldn't save: ${(err as Error).message}`, { kind: "error" });

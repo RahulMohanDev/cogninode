@@ -14,8 +14,6 @@ import {
 } from "../lib/cost";
 import { LEGACY_MODEL_IDS } from "../lib/models";
 
-export type { CustomModel };
-
 export type ThemeMode = "light" | "dark";
 
 const KEYS = {
@@ -112,23 +110,35 @@ export interface SettingsProviderProps {
 }
 
 export function SettingsProvider({ children }: SettingsProviderProps) {
-  const [apiKey, _setApiKey] = useState(() => localStorage.getItem(KEYS.apiKey) ?? "");
+  const [apiKey, _setApiKey] = useState(() => {
+    try {
+      return localStorage.getItem(KEYS.apiKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [prefs,  _setPrefs]  = useState<Prefs>(loadPrefs);
 
   const setApiKey = useCallback((key: string) => {
-    localStorage.setItem(KEYS.apiKey, key.trim());
+    try {
+      localStorage.setItem(KEYS.apiKey, key.trim());
+    } catch { /* ignore */ }
     _setApiKey(key.trim());
   }, []);
 
   const clearApiKey = useCallback(() => {
-    localStorage.removeItem(KEYS.apiKey);
+    try {
+      localStorage.removeItem(KEYS.apiKey);
+    } catch { /* ignore */ }
     _setApiKey("");
   }, []);
 
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => {
     _setPrefs(prev => {
       const next = { ...prev, [key]: value };
-      localStorage.setItem(KEYS.prefs, JSON.stringify(next));
+      try {
+        localStorage.setItem(KEYS.prefs, JSON.stringify(next));
+      } catch { /* ignore */ }
       // Theme is the single side-effect-bearing pref: mirror it to the
       // <html> attribute and its dedicated key so the pre-paint bootstrap
       // sees the latest value on next load.

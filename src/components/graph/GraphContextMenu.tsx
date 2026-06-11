@@ -2,7 +2,9 @@
 // Right-click menu for the graph canvas — one generic positioned list,
 // fed different items for pane / node / edge targets. Fixed-positioned at
 // the cursor with a full-screen transparent backdrop for click-away;
-// Esc closes via the backdrop's key handling in GraphCanvas.
+// Esc closes via a window keydown listener registered while the menu is mounted.
+
+import { useEffect } from "react";
 
 export interface MenuItem {
   label:   string;
@@ -19,6 +21,14 @@ export function GraphContextMenu({
   items:   MenuItem[];
   onClose: () => void;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   if (items.length === 0) return null;
   // Keep the menu on-screen near the edges.
   const left = Math.min(x, window.innerWidth - 230);

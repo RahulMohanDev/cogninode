@@ -187,10 +187,11 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
   useEffect(() => {
     if (!reflectionsMode) {
       setConfirming(false);
-      if (editing) {
-        // commit current draft before exit
-        void db.messages.update(message._id, { content: draft }).finally(() => setEditing(false));
-      }
+      // Close the editor without writing: `draft` cannot hold in-progress
+      // editor content (RichEditor only reports via onSave on blur/⌘↵),
+      // and writing it here would clobber external updates (e.g. merge)
+      // that landed while the editor was open.
+      setEditing(false);
     }
     // intentionally don't include `draft` / `editing` — we only want to react
     // to mode toggles.
@@ -314,6 +315,9 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
             className="tw:flex tw:flex-col tw:gap-[3px] tw:py-[7px] tw:pr-2.5 tw:pl-3 tw:border-l-[3px] tw:border-l-coral tw:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:rounded-[4px_8px_8px_4px] tw:text-[12px] tw:leading-[1.4] tw:mb-2 tw:cursor-pointer"
             onClick={() => void handleGoToSource()}
             title="Go to source branch"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void handleGoToSource(); } }}
           >
             <span className="tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:opacity-65">↳ branched from</span>
             <span className="tw:italic tw:font-serif tw:text-[14px]">"{message.quote}"</span>
@@ -331,6 +335,16 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
           <div
             onClick={() => setEditing(true)}
             title="Click to edit"
+            role="button"
+            tabIndex={0}
+            aria-label="Edit message"
+            onKeyDown={e => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setEditing(true);
+              }
+            }}
             style={{
               cursor: "text",
               padding: "8px 12px",
@@ -401,7 +415,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
               </span>
             )}
           </span>
-          <div className="tw:flex tw:items-center tw:gap-0.5 tw:ml-auto tw:opacity-0 tw:transition-opacity tw:duration-[120ms] tw:ease-[ease] tw:group-hover/msg:opacity-100">
+          <div className="tw:flex tw:items-center tw:gap-0.5 tw:ml-auto tw:opacity-0 tw:transition-opacity tw:duration-[120ms] tw:ease-[ease] tw:group-hover/msg:opacity-100 tw:focus-within:opacity-100">
             <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title="Branch from this" onClick={() => onBranch?.(undefined)}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
                 <circle cx="4"  cy="3"  r="1.6" fill="currentColor" />
@@ -430,7 +444,7 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
         </div>
       ) : !isAssistant && !reflectionsMode ? (
         <div className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1">
-          <div className="tw:flex tw:items-center tw:gap-0.5 tw:ml-auto tw:opacity-0 tw:transition-opacity tw:duration-[120ms] tw:ease-[ease] tw:group-hover/msg:opacity-100">
+          <div className="tw:flex tw:items-center tw:gap-0.5 tw:ml-auto tw:opacity-0 tw:transition-opacity tw:duration-[120ms] tw:ease-[ease] tw:group-hover/msg:opacity-100 tw:focus-within:opacity-100">
             <button className="tw:w-[26px] tw:h-[26px] tw:grid tw:place-items-center tw:rounded-[5px] tw:text-ink-3 tw:hover:bg-bg-2 tw:hover:text-ink" title="Copy" onClick={handleCopy}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
                 <rect x="5" y="5" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1.4" />

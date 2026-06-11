@@ -7,7 +7,7 @@
 //   · attachment   — type icon + live subtitle, stale = dashed coral.
 //   · glow         — pulsing lilac ring while graph-RAG cites this node.
 //
-// A hover/selection NodeToolbar carries the quick actions (open data,
+// A selection NodeToolbar carries the quick actions (open data,
 // unfold, delete); the side panel owns the full edit surface.
 
 import { createContext, useContext } from "react";
@@ -109,6 +109,7 @@ export function GraphNodeView({ id, data, selected }: NodeProps<GraphFlowNodeT>)
   const isRoot  = data.kind === "root";
   const a       = data.attachment;
   const stale   = a?.stale ?? false;
+  const hasActions = Boolean((a && a.href && !stale) || a?.unfoldable || !isRoot);
 
   const border = stale
     ? "tw:border-dashed tw:border-coral"
@@ -128,7 +129,7 @@ export function GraphNodeView({ id, data, selected }: NodeProps<GraphFlowNodeT>)
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <Handle type="source" position={Position.Bottom} style={handleStyle} />
 
-      <NodeToolbar isVisible={selected} position={Position.Top} offset={8}>
+      <NodeToolbar isVisible={selected && hasActions} position={Position.Top} offset={8}>
         <div className="tw:flex tw:items-center tw:gap-0.5 tw:p-0.5 tw:rounded-[9px] tw:bg-bg-3 tw:border tw:border-line tw:shadow-2">
           {a && a.href && !stale && (
             <ToolbarButton title="Open the underlying data" onClick={() => actions.onOpen(a.href)}>

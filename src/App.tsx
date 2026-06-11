@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { ApiKeyGate } from "./components/setup/ApiKeyGate";
 import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
@@ -40,6 +40,7 @@ export default function App() {
                                     }
                                 />
                                 <Route path="/chat/:chatId" element={<Chat />} />
+                                <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
                             {/* ⌘K palette — global so it works on every page;
                                 also bootstraps the search index + semantic layer. */}

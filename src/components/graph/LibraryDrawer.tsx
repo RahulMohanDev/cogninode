@@ -172,7 +172,7 @@ export function LibraryDrawer({
         ))}
 
         {visibleChats.length === 0 && visibleReflections.length === 0 && (
-          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[12px] tw:text-center">Nothing matches "{q}".</div>
+          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[12px] tw:text-center">{needle ? <>Nothing matches "{q}".</> : <>No chats or reflections yet — start a chat to add sources.</>}</div>
         )}
       </div>
     </div>

@@ -128,9 +128,11 @@ export function SearchOverlay() {
 
   // ── service bootstrap: keyword index at boot + semantic per prefs ──
   useEffect(() => {
-    void searchService.configure({
+    searchService.configure({
       semanticSearch:   prefs.semanticSearch,
       embeddingModelId: prefs.embeddingModelId,
+    }).catch(err => {
+      console.warn("[search] configure failed:", err);
     });
   }, [prefs.semanticSearch, prefs.embeddingModelId]);
 
@@ -160,7 +162,6 @@ export function SearchOverlay() {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // Debounced querying.
   useEffect(() => {
     if (!open) return undefined;
     const needle = q.trim();
@@ -178,6 +179,11 @@ export function SearchOverlay() {
         setTookMs(res.tookMs);
         setBusy(false);
         setHi(0);
+      }).catch((err: unknown) => {
+        console.warn("[search] query failed:", err);
+        if (queryRun.current !== run) return;
+        setHits([]);
+        setBusy(false);
       });
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -213,12 +219,11 @@ export function SearchOverlay() {
   }, [navigate, close, q]);
 
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      setHi(h => Math.min(flat.length - 1, h + 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHi(h => Math.max(0, h - 1));
+      const next = e.key === "ArrowDown" ? Math.min(flat.length - 1, hi + 1) : Math.max(0, hi - 1);
+      setHi(next);
+      panelRef.current?.querySelector(`[data-hit-index="${next}"]`)?.scrollIntoView({ block: "nearest" });
     } else if (e.key === "Enter") {
       e.preventDefault();
       const hit = flat[hi];
@@ -257,6 +262,11 @@ export function SearchOverlay() {
             placeholder="Search messages, reflections, branches…"
             spellCheck={false}
             autoComplete="off"
+            role="combobox"
+            aria-expanded={flat.length > 0}
+            aria-controls="search-overlay-results"
+            aria-autocomplete="list"
+            aria-activedescendant={flat.length > 0 ? `search-hit-${hi}` : undefined}
           />
           <span
             className={`tw:font-mono tw:text-[10px] tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2 tw:flex-none ${statusTone}`}
@@ -266,7 +276,7 @@ export function SearchOverlay() {
           </span>
         </div>
 
-        <div className="tw:max-h-[56vh] tw:overflow-y-auto tw:p-1.5 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
+        <div id="search-overlay-results" role="listbox" aria-label="Search results" className="tw:max-h-[56vh] tw:overflow-y-auto tw:p-1.5 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
           {q.trim() === "" ? (
             <div className="tw:py-9 tw:px-[18px] tw:text-center tw:text-ink-3 tw:text-[13px]">
               Type to search everything — message bodies included.
@@ -279,7 +289,7 @@ export function SearchOverlay() {
             rows.map(row => {
               if (row.type === "header") {
                 return (
-                  <div key={`h:${row.chatId}`} className="tw:font-mono tw:text-[9px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-3 tw:pb-1 tw:truncate">
+                  <div key={`h:${row.chatId}`} role="presentation" className="tw:font-mono tw:text-[9px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-3 tw:pb-1 tw:truncate">
                     {row.chatTitle || "Untitled chat"}
                   </div>
                 );
@@ -290,6 +300,10 @@ export function SearchOverlay() {
               return (
                 <div
                   key={hit.docId}
+                  id={`search-hit-${flatIndex}`}
+                  role="option"
+                  aria-selected={active}
+                  data-hit-index={flatIndex}
                   className={`tw:flex tw:items-start tw:gap-2.5 tw:py-2 tw:px-3 tw:rounded-[8px] tw:cursor-pointer ${active ? "tw:bg-bg-2" : "tw:hover:bg-bg-2"}`}
                   onClick={() => openHit(hit)}
                   onMouseEnter={() => setHi(flatIndex)}

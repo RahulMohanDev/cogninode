@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildChatFlowGraph, planSubtreeSources,
-  FLOW_X_GAP, FLOW_Y_GAP, SOURCE_X_GAP, SOURCE_Y_GAP,
+  FLOW_Y_GAP, SOURCE_X_GAP, SOURCE_Y_GAP,
 } from "./flowGraph";
 import type { Node as DbNode } from "./db";
 
@@ -26,7 +26,7 @@ describe("buildChatFlowGraph", () => {
     expect(root.position.y).toBe(0);
     const a1 = g.nodes.find(n => n.id === "a1")!;
     expect(a1.position.y).toBe(2 * FLOW_Y_GAP);
-    expect(a1.position.x % FLOW_X_GAP === 0 || a1.position.x >= 0).toBe(true);
+    expect(a1.position.x).toBe(0);
   });
 
   it("flags the current node and the root→current path", () => {

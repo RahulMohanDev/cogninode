@@ -62,8 +62,11 @@ export function layoutTree(roots: TreeNode[]): LayoutPoint[] {
 export function findPath(nodes: Node[], targetId: string): string[] {
   const map = new Map(nodes.map(n => [n._id, n]));
   const path: string[] = [];
+  const seen = new Set<string>();
   let currentId: string | null = targetId;
   while (currentId) {
+    if (seen.has(currentId)) return [];
+    seen.add(currentId);
     const node = map.get(currentId);
     if (!node) return [];
     path.unshift(node._id);

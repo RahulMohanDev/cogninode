@@ -61,7 +61,6 @@ export function makeSnippet(raw: string, terms: string[], window: number = WINDO
   let start = Math.max(0, anchor - Math.floor(window / 3));
   let end   = Math.min(text.length, start + window);
   start     = Math.max(0, Math.min(start, end - window));
-  if (start < 0) start = 0;
 
   // Snap to word boundaries where cheap.
   if (start > 0) {
