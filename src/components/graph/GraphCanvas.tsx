@@ -76,12 +76,14 @@ export interface GraphCanvasProps {
   glowIds:         Set<string> | null;
   /** One-shot pan-to-node requests (nonce re-fires for the same node). */
   centerRequest:   { id: string; nonce: number } | null;
+  /** Bumped when the canvas area resizes (dock open/close) — re-frames. */
+  fitNonce:        number;
 }
 
 export function GraphCanvas({
   graphId, rootNodeId, graphNodes, graphEdges, resolvers,
   selectedId, onSelect, focusNodeId, libraryOpen, onToggleLibrary,
-  onUnfold, glowIds, centerRequest,
+  onUnfold, glowIds, centerRequest, fitNonce,
 }: GraphCanvasProps) {
   const { prefs } = useSettings();
   const toast = useToast();
@@ -115,12 +117,31 @@ export function GraphCanvas({
   useEffect(() => { setEdges(graphData.edges as FlowEdge[]); }, [graphData.edges, setEdges]);
 
   // Citation chips / dock → pan to a node (nonce re-fires for repeats).
+  // Slight delay: the dock may be mid-resize (or just un-hiding the
+  // canvas after a maximized chat) — measure after it settles.
   useEffect(() => {
-    if (!centerRequest) return;
+    if (!centerRequest) return undefined;
     const n = nodeById.get(centerRequest.id);
-    if (!n) return;
-    flow.setCenter(n.x + 100, n.y + 40, { zoom: 1, duration: 500 });
+    if (!n) return undefined;
+    const t = setTimeout(
+      () => flow.setCenter(n.x + 100, n.y + 40, { zoom: 1, duration: 500 }),
+      230,
+    );
+    return () => clearTimeout(t);
   }, [centerRequest, nodeById, flow]);
+
+  // Dock opened/closed/restored → re-frame once the height transition
+  // (200ms) settles so nothing ends up stranded off-viewport.
+  const fitNonceRef = useRef(fitNonce);
+  useEffect(() => {
+    if (fitNonceRef.current === fitNonce) return undefined;
+    fitNonceRef.current = fitNonce;
+    const t = setTimeout(
+      () => void flow.fitView({ padding: 0.25, maxZoom: 1, duration: 300 }),
+      230,
+    );
+    return () => clearTimeout(t);
+  }, [fitNonce, flow]);
 
   // ?node= deep link (from ⌘K): select + center once.
   const focusedRef = useRef(false);

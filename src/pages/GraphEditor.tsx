@@ -25,7 +25,7 @@ import { renameGraph, unfoldNode } from "../lib/knowledge";
 import { planSubtreeSources } from "../lib/flowGraph";
 import { displayTitle, type SourceResolvers } from "../lib/graphFlow";
 import { GraphCanvas } from "../components/graph/GraphCanvas";
-import { GraphDock } from "../components/graph/GraphDock";
+import { GraphDock, type DockMode } from "../components/graph/GraphDock";
 import { LibraryDrawer } from "../components/graph/LibraryDrawer";
 import { NodePanel } from "../components/graph/NodePanel";
 import { Sidebar } from "../components/chat/Sidebar";
@@ -86,6 +86,14 @@ export default function GraphEditor() {
 
   const [selectedId, setSelectedId] = useState<string | null>(focusNodeId);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  // Dock: closed bar · open split · maximized chat (canvas tucked away).
+  const [dockMode, setDockMode] = useState<DockMode>("closed");
+  // Re-frame the canvas whenever the dock changes its height.
+  const [fitNonce, setFitNonce] = useState(0);
+  const changeDockMode = (m: DockMode): void => {
+    setDockMode(m);
+    if (m !== "max") setFitNonce(n => n + 1);   // canvas visible + resized
+  };
   // Nodes the latest dock answer retrieved from (set by GraphDock).
   const [glowIds, setGlowIds] = useState<Set<string> | null>(null);
   // One-shot "center this node" requests (citation chips → canvas).
@@ -224,7 +232,9 @@ export default function GraphEditor() {
           )}
 
           <div className="tw:flex-1 tw:flex tw:flex-col tw:min-w-0 tw:min-h-0">
-            <div className="tw:flex-1 tw:relative tw:min-w-0 tw:min-h-0">
+            {/* React Flow stays mounted while maximized — just hidden — so
+                glow state, viewport, and selection survive the round trip. */}
+            <div className={`tw:flex-1 tw:relative tw:min-w-0 tw:min-h-0 ${dockMode === "max" ? "tw:hidden" : ""}`}>
               <ReactFlowProvider>
                 <GraphCanvas
                   graphId={graphId}
@@ -240,21 +250,28 @@ export default function GraphEditor() {
                   onUnfold={doUnfold}
                   glowIds={glowIds}
                   centerRequest={centerRequest}
+                  fitNonce={fitNonce}
                 />
               </ReactFlowProvider>
             </div>
             <GraphDock
               graphId={graphId}
               graphName={graph?.name ?? "this graph"}
+              mode={dockMode}
+              onModeChange={changeDockMode}
               getNodeLabel={id => {
                 const n = graphNodes.find(x => x._id === id);
                 return n ? displayTitle(n, resolvers).title : "(removed node)";
               }}
               onGlow={setGlowIds}
               onFocusNode={id => {
+                // Bring the canvas back if the chat had taken the column —
+                // a citation click means "show me the node".
+                setDockMode(m => (m === "max" ? "open" : m));
                 setSelectedId(id);
                 setCenterRequest({ id, nonce: Date.now() });
               }}
+              onOpenSettings={() => setSettingsOpen(true)}
             />
           </div>
 
