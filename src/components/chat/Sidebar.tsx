@@ -7,8 +7,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate }     from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
-  db, createChat, deleteChat, deleteNodeSubtree, renameChat, renameNode,
-  type Chat, type KnowledgeGraph, type Node,
+  db, createChat, deleteChat, deleteNodeSubtree, deleteReflection,
+  renameChat, renameNode,
+  type Chat, type KnowledgeGraph, type Node, type Reflection,
 } from "../../lib/db";
 import { deleteGraph, renameGraph }     from "../../lib/knowledge";
 import { buildTree, type TreeNode }     from "../../lib/path";
@@ -23,10 +24,11 @@ import { searchService, type ResolvedHit } from "../../lib/search/service";
 export interface SidebarProps {
   activeChatId:   string | null;
   onOpenSettings: () => void;
-  /** "graphs" swaps the chat list for the graph list — chats make no
-   *  sense as sidebar content while you're working a graph. */
-  mode?:          "chats" | "graphs";
+  /** Page-scoped lists: "graphs" and "reflections" swap the chat list for
+   *  their own — chats make no sense as sidebar content on those pages. */
+  mode?:          "chats" | "graphs" | "reflections";
   activeGraphId?: string | null;
+  activeReflectionId?: string | null;
 }
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -126,9 +128,11 @@ const DEPTH_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
 // ── component ─────────────────────────────────────────────────────
 
 export function Sidebar({
-  activeChatId, onOpenSettings, mode = "chats", activeGraphId = null,
+  activeChatId, onOpenSettings, mode = "chats",
+  activeGraphId = null, activeReflectionId = null,
 }: SidebarProps) {
   const graphMode = mode === "graphs";
+  const reflMode  = mode === "reflections";
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
@@ -181,12 +185,12 @@ export function Sidebar({
   }, [navigate]);
 
   const chats = useLiveQuery(
-    // Graph dock chats render only inside their graph's editor; in graph
-    // mode the whole chat list stands down for the graph list below.
-    () => graphMode
+    // Graph dock chats render only inside their graph's editor; in graph/
+    // reflection mode the whole chat list stands down for that mode's list.
+    () => mode !== "chats"
       ? Promise.resolve([] as Chat[])
       : db.chats.orderBy("updatedAt").reverse().filter(c => !c.graphId).toArray(),
-    [graphMode],
+    [mode],
   );
 
   const graphs = useLiveQuery(
@@ -194,6 +198,17 @@ export function Sidebar({
       ? db.graphs.orderBy("updatedAt").reverse().toArray()
       : Promise.resolve([] as KnowledgeGraph[]),
     [graphMode],
+  );
+
+  const reflections = useLiveQuery(
+    async () => {
+      if (!reflMode) return [] as Reflection[];
+      // No updatedAt index on reflections — sort in memory; counts stay
+      // small (hand-curated snapshots, not messages).
+      const all = await db.reflections.toArray();
+      return all.sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    [reflMode],
   );
 
   // For the active chat: read its nodes and currentNodeId so we can render
@@ -263,9 +278,10 @@ export function Sidebar({
   // We track at most one in-flight confirm at a time, identified by
   // its kind + id. Auto-reverts after 4s.
   type Pending =
-    | { kind: "chat";   id: string }
-    | { kind: "branch"; id: string }
-    | { kind: "graph";  id: string };
+    | { kind: "chat";       id: string }
+    | { kind: "branch";     id: string }
+    | { kind: "graph";      id: string }
+    | { kind: "reflection"; id: string };
 
   const [pending, setPending] = useState<Pending | null>(null);
   const revertTimer = useRef<number | null>(null);
@@ -303,6 +319,12 @@ export function Sidebar({
     cancelConfirm();
     await deleteGraph(graphId);
     if (graphId === activeGraphId) navigate("/graphs");
+  };
+
+  const confirmDeleteReflection = async (reflectionId: string): Promise<void> => {
+    cancelConfirm();
+    await deleteReflection(reflectionId);   // also detaches graph nodes
+    if (reflectionId === activeReflectionId) navigate("/reflections");
   };
 
   const confirmDeleteBranch = async (nodeId: string): Promise<void> => {
@@ -364,7 +386,7 @@ export function Sidebar({
   } | null>(null);
   useEffect(() => {
     const needle = search.trim();
-    if (graphMode || !needle) {
+    if (mode !== "chats" || !needle) {
       setRanked(null);
       return undefined;
     }
@@ -389,7 +411,7 @@ export function Sidebar({
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [search, graphMode]);
+  }, [search, mode]);
 
   // Open a search preview at its exact location: the branch, and for
   // message hits the exact message — scrolled to, flashed, and with the
@@ -425,6 +447,14 @@ export function Sidebar({
     const q = search.trim().toLowerCase();
     return q ? graphs.filter(g => g.name.toLowerCase().includes(q)) : graphs;
   }, [graphMode, graphs, search]);
+
+  const visibleReflections = useMemo(() => {
+    if (!reflMode || !reflections) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return reflections;
+    return reflections.filter(r =>
+      r.title.toLowerCase().includes(q) || r.body.toLowerCase().includes(q));
+  }, [reflMode, reflections, search]);
 
   const isDark = prefs.theme === "dark";
 
@@ -530,7 +560,7 @@ export function Sidebar({
         <input
           className="tw:w-full tw:py-[9px] tw:pr-8 tw:pl-[34px] tw:border tw:border-line tw:bg-bg-3 tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
           type="text"
-          placeholder={graphMode ? "Search graphs…" : "Search chats…"}
+          placeholder={graphMode ? "Search graphs…" : reflMode ? "Search reflections…" : "Search chats…"}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -549,19 +579,22 @@ export function Sidebar({
         )}
       </div>
 
-      <button
-        className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`}
-        onClick={() => { if (graphMode) setCreatingGraph(true); else void handleNewChat(); }}
-        title={graphMode ? "New graph" : "New chat (⌃N)"}
-      >
-        <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[var(--veil-white-14)] tw:text-[14px] tw:leading-none">+</span>
-        <span className={isCollapsed ? "tw:hidden" : undefined}>{graphMode ? "New graph" : "New chat"}</span>
-        {!graphMode && (
-          <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
-        )}
-      </button>
+      {/* Reflections can only be saved FROM a chat (⌃R) — no create button. */}
+      {!reflMode && (
+        <button
+          className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`}
+          onClick={() => { if (graphMode) setCreatingGraph(true); else void handleNewChat(); }}
+          title={graphMode ? "New graph" : "New chat (⌃N)"}
+        >
+          <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[var(--veil-white-14)] tw:text-[14px] tw:leading-none">+</span>
+          <span className={isCollapsed ? "tw:hidden" : undefined}>{graphMode ? "New graph" : "New chat"}</span>
+          {!graphMode && (
+            <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
+          )}
+        </button>
+      )}
 
-      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>{graphMode ? "Your graphs" : "Recent chats"}</div>
+      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>{graphMode ? "Your graphs" : reflMode ? "Your reflections" : "Recent chats"}</div>
 
       <div className={`side-list tw:flex-1 tw:overflow-y-auto tw:pt-0 tw:px-2 tw:pb-2 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent] ${isCollapsed ? "tw:hidden" : ""}`}>
         {graphMode && visibleGraphs.map(g => {
@@ -646,7 +679,49 @@ export function Sidebar({
           </div>
         )}
 
-        {!graphMode && visibleChats.map(chat => {
+        {reflMode && visibleReflections.map(r => {
+          const isActive  = r._id === activeReflectionId;
+          const isPending = pending?.kind === "reflection" && pending.id === r._id;
+          return (
+            <div key={r._id}>
+              <div
+                className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                onClick={() => navigate(`/reflections?open=${r._id}`)}
+              >
+                <span className="tw:flex-1 tw:truncate">{r.title || "Untitled reflection"}</span>
+                <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(r.updatedAt)}</span>
+                <button
+                  className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--coral)_26%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"}`}
+                  title="Delete reflection"
+                  aria-label="Delete reflection"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    armConfirm({ kind: "reflection", id: r._id });
+                  }}
+                >
+                  <TrashIcon />
+                </button>
+              </div>
+
+              {isPending && (
+                <ConfirmPill
+                  label="Delete this reflection?"
+                  onConfirm={() => { void confirmDeleteReflection(r._id); }}
+                  onCancel={cancelConfirm}
+                />
+              )}
+            </div>
+          );
+        })}
+        {reflMode && visibleReflections.length === 0 && (
+          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
+            {search
+              ? `No reflections match "${search}"`
+              : "No reflections yet — in a chat, press ⌃R → Save as reflection."}
+          </div>
+        )}
+
+        {!graphMode && !reflMode && visibleChats.map(chat => {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
           const isRenaming = renamingId?.kind === "chat" && renamingId.id === chat._id;
@@ -879,7 +954,7 @@ export function Sidebar({
           );
         })}
 
-        {!graphMode && visibleChats.length === 0 && (
+        {!graphMode && !reflMode && visibleChats.length === 0 && (
           <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
             {search ? `No chats match "${search}"` : "No chats yet — start one above."}
           </div>

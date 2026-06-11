@@ -87,7 +87,12 @@ export default function Reflections() {
 
   return (
     <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
-      <Sidebar activeChatId={null} onOpenSettings={() => setSettingsOpen(true)} />
+      <Sidebar
+        activeChatId={null}
+        mode="reflections"
+        activeReflectionId={selectedId}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
         <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:pt-8 tw:px-10 tw:pb-20 tw:bg-bg-3 tw:dark:[background:radial-gradient(800px_400px_at_100%_-10%,color-mix(in_oklab,var(--lilac)_6%,transparent),transparent_60%),var(--bg-3)]">
           <div className="tw:max-w-[1040px] tw:mx-auto tw:mt-0 tw:mb-7">
