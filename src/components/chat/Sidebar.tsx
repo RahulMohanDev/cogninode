@@ -428,71 +428,99 @@ export function Sidebar({
 
   const isDark = prefs.theme === "dark";
 
+  // Header pieces, shared by both layouts. Expanded = TWO rows (brand +
+  // collapse, then the nav icons): the wordmark, beta pill, and four
+  // 30px buttons never fit one 268px row — the pill used to wrap under
+  // the logo and the icons crowded it. Collapsed keeps the icon rail.
+  const collapseButton = (
+    <button
+      className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
+      onClick={toggleCollapsed}
+      title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
+      aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-expanded={!isCollapsed}
+    >
+      <svg className={`tw:transition-transform tw:duration-200 tw:ease-[ease] ${isCollapsed ? "tw:[transform:scaleX(-1)]" : ""}`} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M8.5 4 L4.5 8 L8.5 12 M12 4 L8 8 L12 12"
+              stroke="currentColor" strokeWidth="1.5"
+              strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+  const brand = (
+    <a
+      href="/"
+      className={`tw:flex tw:items-center tw:gap-2 tw:font-display tw:font-semibold tw:text-[17px] tw:tracking-[-0.02em] tw:[&_svg]:flex-none tw:min-w-0 ${isCollapsed ? "tw:flex-none tw:justify-center" : "tw:flex-1"}`}
+      title="cogninode — all chats"
+      onClick={(e) => { e.preventDefault(); navigate("/"); }}
+    >
+      <Glyph size={22} />
+      <span className={isCollapsed ? "tw:hidden" : "tw:truncate tw:whitespace-nowrap"}>cogninode <span className="tw:font-mono tw:text-[9px] tw:font-medium tw:tracking-[0.14em] tw:uppercase tw:text-coral tw:bg-coral-tint tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:align-[2px] tw:ml-1 tw:inline-block">beta</span></span>
+    </a>
+  );
+  const navButtons = (
+    <>
+      <button
+        className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
+        title="All chats"
+        aria-label="All chats"
+        onClick={() => navigate("/")}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="9" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="2" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="9" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+      <button
+        className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onReflectionsPage ? "tw:bg-lilac-tint tw:text-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+        title="Reflections"
+        aria-label="Reflections"
+        aria-current={onReflectionsPage ? "page" : undefined}
+        onClick={() => navigate("/reflections")}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      </button>
+      <button
+        className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onGraphsPage ? "tw:bg-teal-tint tw:text-teal tw:dark:bg-[color-mix(in_oklab,var(--teal)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+        title="Knowledge graphs"
+        aria-label="Knowledge graphs"
+        aria-current={onGraphsPage ? "page" : undefined}
+        onClick={() => navigate("/graphs")}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      </button>
+    </>
+  );
+
   return (
     <aside className="tw:bg-bg tw:border-r tw:border-line tw:flex tw:flex-col tw:min-h-0 tw:relative tw:overflow-hidden">
-      <div className={`tw:flex tw:items-center tw:justify-between ${isCollapsed ? "tw:flex-col tw:gap-1.5 tw:pt-3.5 tw:px-0 tw:pb-2.5" : "tw:gap-2 tw:pt-4 tw:px-4 tw:pb-2.5"}`}>
-        <a
-          href="/"
-          className={`tw:flex tw:items-center tw:gap-2 tw:font-display tw:font-semibold tw:text-[17px] tw:tracking-[-0.02em] tw:[&_svg]:flex-none tw:min-w-0 ${isCollapsed ? "tw:flex-none tw:justify-center" : "tw:flex-1"}`}
-          title="cogninode — all chats"
-          onClick={(e) => { e.preventDefault(); navigate("/"); }}
-        >
-          <Glyph size={22} />
-          <span className={isCollapsed ? "tw:hidden" : undefined}>cogninode <span className={`tw:font-mono tw:text-[9px] tw:font-medium tw:tracking-[0.14em] tw:uppercase tw:text-coral tw:bg-coral-tint tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:align-[2px] tw:ml-1 ${isCollapsed ? "tw:hidden" : "tw:inline-block"}`}>beta</span></span>
-        </a>
-        <button
-          className="tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink"
-          title="All chats"
-          aria-label="All chats"
-          onClick={() => navigate("/")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            <rect x="9" y="3"  width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            <rect x="2" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            <rect x="9" y="10" width="5" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
-          </svg>
-        </button>
-        <button
-          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onReflectionsPage ? "tw:bg-lilac-tint tw:text-lilac tw:dark:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-          title="Reflections"
-          aria-label="Reflections"
-          aria-current={onReflectionsPage ? "page" : undefined}
-          onClick={() => navigate("/reflections")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M1.8 8 C4 4.7 12 4.7 14.2 8 C12 11.3 4 11.3 1.8 8 Z" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="8" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-          </svg>
-        </button>
-        <button
-          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] ${onGraphsPage ? "tw:bg-teal-tint tw:text-teal tw:dark:bg-[color-mix(in_oklab,var(--teal)_18%,transparent)]" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
-          title="Knowledge graphs"
-          aria-label="Knowledge graphs"
-          aria-current={onGraphsPage ? "page" : undefined}
-          onClick={() => navigate("/graphs")}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="4" cy="4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="12.5" cy="6.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-            <circle cx="6.5" cy="12.5" r="1.8" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M5.6 5 L11 6 M5 5.7 L6.2 10.8 M7.9 11.7 L11.3 7.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button
-          className={`tw:w-[30px] tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-bg-2 tw:hover:text-ink ${isCollapsed ? "tw:-order-1" : ""}`}
-          onClick={toggleCollapsed}
-          title={isCollapsed ? "Expand sidebar (⌃B)" : "Collapse sidebar (⌃B)"}
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!isCollapsed}
-        >
-          <svg className={`tw:transition-transform tw:duration-200 tw:ease-[ease] ${isCollapsed ? "tw:[transform:scaleX(-1)]" : ""}`} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8.5 4 L4.5 8 L8.5 12 M12 4 L8 8 L12 12"
-                  stroke="currentColor" strokeWidth="1.5"
-                  strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </div>
+      {isCollapsed ? (
+        <div className="tw:flex tw:flex-col tw:items-center tw:gap-1.5 tw:pt-3.5 tw:px-0 tw:pb-2.5">
+          {collapseButton}
+          {brand}
+          {navButtons}
+        </div>
+      ) : (
+        <div className="tw:pt-4 tw:px-4 tw:pb-2">
+          <div className="tw:flex tw:items-center tw:gap-2">
+            {brand}
+            {collapseButton}
+          </div>
+          <div className="tw:flex tw:items-center tw:gap-1 tw:mt-2 tw:-ml-1.5">
+            {navButtons}
+          </div>
+        </div>
+      )}
 
       <div className={`tw:mx-3 tw:mt-0 tw:mb-2 tw:relative ${isCollapsed ? "tw:hidden" : ""}`}>
         <svg className="tw:absolute tw:left-[11px] tw:top-1/2 tw:[transform:translateY(-50%)] tw:text-ink-3 tw:pointer-events-none" width="14" height="14" viewBox="0 0 16 16" fill="none">
