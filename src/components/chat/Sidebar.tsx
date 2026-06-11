@@ -8,10 +8,12 @@ import { useLocation, useNavigate }     from "react-router-dom";
 import { useLiveQuery }                 from "dexie-react-hooks";
 import {
   db, createChat, deleteChat, deleteNodeSubtree, renameChat, renameNode,
-  type Node,
+  type Chat, type KnowledgeGraph, type Node,
 } from "../../lib/db";
+import { deleteGraph, renameGraph }     from "../../lib/knowledge";
 import { buildTree, type TreeNode }     from "../../lib/path";
 import { Glyph }                        from "../Glyph";
+import { NewGraphDialog }               from "../graph/NewGraphDialog";
 import { useSettings }                  from "../../hooks/useSettings";
 import { useActiveStreams }             from "../../hooks/StreamsProvider";
 import { anyModalOpen }                 from "../../hooks/useModalStack";
@@ -21,6 +23,10 @@ import { searchService, type ResolvedHit } from "../../lib/search/service";
 export interface SidebarProps {
   activeChatId:   string | null;
   onOpenSettings: () => void;
+  /** "graphs" swaps the chat list for the graph list — chats make no
+   *  sense as sidebar content while you're working a graph. */
+  mode?:          "chats" | "graphs";
+  activeGraphId?: string | null;
 }
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -119,10 +125,14 @@ const DEPTH_DOT = ["tw:bg-coral", "tw:bg-teal", "tw:bg-lilac", "tw:bg-butter"];
 
 // ── component ─────────────────────────────────────────────────────
 
-export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
+export function Sidebar({
+  activeChatId, onOpenSettings, mode = "chats", activeGraphId = null,
+}: SidebarProps) {
+  const graphMode = mode === "graphs";
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState("");
+  const [creatingGraph, setCreatingGraph] = useState(false);
   const { prefs, setTheme, setPref } = useSettings();
   const activeStreams = useActiveStreams();
   const onReflectionsPage = location.pathname.startsWith("/reflections");
@@ -171,9 +181,19 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   }, [navigate]);
 
   const chats = useLiveQuery(
-    // Graph dock chats render only inside their graph's editor.
-    () => db.chats.orderBy("updatedAt").reverse().filter(c => !c.graphId).toArray(),
-    [],
+    // Graph dock chats render only inside their graph's editor; in graph
+    // mode the whole chat list stands down for the graph list below.
+    () => graphMode
+      ? Promise.resolve([] as Chat[])
+      : db.chats.orderBy("updatedAt").reverse().filter(c => !c.graphId).toArray(),
+    [graphMode],
+  );
+
+  const graphs = useLiveQuery(
+    () => graphMode
+      ? db.graphs.orderBy("updatedAt").reverse().toArray()
+      : Promise.resolve([] as KnowledgeGraph[]),
+    [graphMode],
   );
 
   // For the active chat: read its nodes and currentNodeId so we can render
@@ -244,7 +264,8 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   // its kind + id. Auto-reverts after 4s.
   type Pending =
     | { kind: "chat";   id: string }
-    | { kind: "branch"; id: string };
+    | { kind: "branch"; id: string }
+    | { kind: "graph";  id: string };
 
   const [pending, setPending] = useState<Pending | null>(null);
   const revertTimer = useRef<number | null>(null);
@@ -278,6 +299,12 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     if (chatId === activeChatId) navigate("/");
   };
 
+  const confirmDeleteGraph = async (graphId: string): Promise<void> => {
+    cancelConfirm();
+    await deleteGraph(graphId);
+    if (graphId === activeGraphId) navigate("/graphs");
+  };
+
   const confirmDeleteBranch = async (nodeId: string): Promise<void> => {
     if (!activeChatId || !activeChat) return;
     // If this is the root, delegate to chat-level delete.
@@ -298,7 +325,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   // commit, which also blurs the input → onBlur would fire a second
   // commit). The flag is set on the first commit and cleared once the
   // row leaves edit mode.
-  type RenameTarget = { kind: "chat" | "node"; id: string };
+  type RenameTarget = { kind: "chat" | "node" | "graph"; id: string };
 
   const [renamingId, setRenamingId] = useState<RenameTarget | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -321,8 +348,9 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     const t = renameDraft.trim();
     setRenamingId(null);
     if (t) {
-      if (target.kind === "chat") await renameChat(target.id, t);
-      else await renameNode(target.id, t);
+      if (target.kind === "chat")       await renameChat(target.id, t);
+      else if (target.kind === "graph") await renameGraph(target.id, t);
+      else                              await renameNode(target.id, t);
     }
   };
 
@@ -336,7 +364,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
   } | null>(null);
   useEffect(() => {
     const needle = search.trim();
-    if (!needle) {
+    if (graphMode || !needle) {
       setRanked(null);
       return undefined;
     }
@@ -361,7 +389,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
       });
     }, 150);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [search]);
+  }, [search, graphMode]);
 
   // Open a search preview at its exact location: the branch, and for
   // message hits the exact message — scrolled to, flashed, and with the
@@ -391,6 +419,12 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
     const q = needle.toLowerCase();
     return chats.filter(c => c.title.toLowerCase().includes(q));
   }, [chats, search, ranked]);
+
+  const visibleGraphs = useMemo(() => {
+    if (!graphMode || !graphs) return [];
+    const q = search.trim().toLowerCase();
+    return q ? graphs.filter(g => g.name.toLowerCase().includes(q)) : graphs;
+  }, [graphMode, graphs, search]);
 
   const isDark = prefs.theme === "dark";
 
@@ -468,7 +502,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         <input
           className="tw:w-full tw:py-[9px] tw:pr-8 tw:pl-[34px] tw:border tw:border-line tw:bg-bg-3 tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-ink-3 tw:placeholder:text-ink-3"
           type="text"
-          placeholder="Search chats…"
+          placeholder={graphMode ? "Search graphs…" : "Search chats…"}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -487,16 +521,104 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
         )}
       </div>
 
-      <button className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`} onClick={handleNewChat} title="New chat (⌃N)">
+      <button
+        className={`tw:flex tw:items-center tw:gap-2 tw:bg-ink tw:text-bg tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:transition-[background-color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#2a2522] tw:dark:hover:bg-[color-mix(in_oklab,var(--ink)_88%,var(--bg))] ${isCollapsed ? "tw:mt-0.5 tw:mx-auto tw:mb-2 tw:w-[38px] tw:h-[38px] tw:p-0 tw:justify-center" : "tw:mx-3 tw:mt-0 tw:mb-3 tw:px-3 tw:py-2.5"}`}
+        onClick={() => { if (graphMode) setCreatingGraph(true); else void handleNewChat(); }}
+        title={graphMode ? "New graph" : "New chat (⌃N)"}
+      >
         <span className="tw:w-[18px] tw:h-[18px] tw:grid tw:place-items-center tw:rounded-app-xs tw:bg-[var(--veil-white-14)] tw:text-[14px] tw:leading-none">+</span>
-        <span className={isCollapsed ? "tw:hidden" : undefined}>New chat</span>
-        <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
+        <span className={isCollapsed ? "tw:hidden" : undefined}>{graphMode ? "New graph" : "New chat"}</span>
+        {!graphMode && (
+          <span className={`tw:ml-auto tw:font-mono tw:text-[10px] tw:bg-[var(--veil-white-14)] tw:px-1.5 tw:py-0.5 tw:rounded-[4px] tw:text-[var(--veil-white-80)] ${isCollapsed ? "tw:hidden" : ""}`}>⌃N</span>
+        )}
       </button>
 
-      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>Recent chats</div>
+      <div className={`tw:font-mono tw:text-[10px] tw:tracking-[0.14em] tw:uppercase tw:text-ink-3 tw:pt-2.5 tw:px-[18px] tw:pb-1.5 ${isCollapsed ? "tw:hidden" : ""}`}>{graphMode ? "Your graphs" : "Recent chats"}</div>
 
       <div className={`side-list tw:flex-1 tw:overflow-y-auto tw:pt-0 tw:px-2 tw:pb-2 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent] ${isCollapsed ? "tw:hidden" : ""}`}>
-        {visibleChats.map(chat => {
+        {graphMode && visibleGraphs.map(g => {
+          const isActive   = g._id === activeGraphId;
+          const isPending  = pending?.kind === "graph" && pending.id === g._id;
+          const isRenaming = renamingId?.kind === "graph" && renamingId.id === g._id;
+          return (
+            <div key={g._id}>
+              <div
+                className={`tw:group/row tw:flex tw:items-center tw:gap-2 tw:px-2.5 tw:py-[7px] tw:rounded-[8px] tw:text-[13px] tw:cursor-pointer tw:relative tw:transition-[background-color,color] tw:duration-100 tw:ease-[ease] ${isActive ? "tw:bg-ink tw:text-bg" : "tw:text-ink-2 tw:hover:bg-bg-2 tw:hover:text-ink"}`}
+                onClick={() => { if (!isRenaming) navigate(`/graphs/${g._id}`); }}
+              >
+                {isRenaming ? (
+                  <input
+                    className="tw:flex-1 tw:min-w-0 tw:text-[13px] tw:text-ink tw:bg-bg tw:border tw:border-line tw:rounded-[5px] tw:px-1.5 tw:py-0.5 tw:outline-none tw:transition-[border-color,box-shadow] tw:duration-[120ms] tw:ease-[ease] tw:focus:border-lilac tw:focus:shadow-[0_0_0_2px_color-mix(in_oklab,var(--lilac)_22%,transparent)]"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    autoFocus
+                    onFocus={(e) => e.currentTarget.select()}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void commitRename({ kind: "graph", id: g._id });
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        cancelRename();
+                      }
+                    }}
+                    onBlur={() => { void commitRename({ kind: "graph", id: g._id }); }}
+                  />
+                ) : (
+                  <span className="tw:flex-1 tw:truncate">{g.name || "Untitled graph"}</span>
+                )}
+                {!isRenaming && (
+                  <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(g.updatedAt)}</span>
+                )}
+                {!isRenaming && (
+                  <button
+                    className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--lilac)_30%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"}`}
+                    title="Rename graph"
+                    aria-label="Rename graph"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startRename({ kind: "graph", id: g._id }, g.name || "");
+                    }}
+                  >
+                    <PencilIcon />
+                  </button>
+                )}
+                {!isRenaming && (
+                  <button
+                    className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--coral)_26%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--coral)_18%,transparent)] tw:hover:text-coral"}`}
+                    title="Delete graph"
+                    aria-label="Delete graph"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      armConfirm({ kind: "graph", id: g._id });
+                    }}
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
+              </div>
+
+              {isPending && (
+                <ConfirmPill
+                  label="Delete this graph (and its dock chat)?"
+                  onConfirm={() => { void confirmDeleteGraph(g._id); }}
+                  onCancel={cancelConfirm}
+                />
+              )}
+            </div>
+          );
+        })}
+        {graphMode && visibleGraphs.length === 0 && (
+          <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
+            {search ? `No graphs match "${search}"` : "No graphs yet — create one above."}
+          </div>
+        )}
+
+        {!graphMode && visibleChats.map(chat => {
           const isActive = chat._id === activeChatId;
           const isPending = pending?.kind === "chat" && pending.id === chat._id;
           const isRenaming = renamingId?.kind === "chat" && renamingId.id === chat._id;
@@ -729,7 +851,7 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           );
         })}
 
-        {visibleChats.length === 0 && (
+        {!graphMode && visibleChats.length === 0 && (
           <div className="tw:py-5 tw:px-3 tw:text-ink-3 tw:text-[13px] tw:text-center">
             {search ? `No chats match "${search}"` : "No chats yet — start one above."}
           </div>
@@ -782,6 +904,14 @@ export function Sidebar({ activeChatId, onOpenSettings }: SidebarProps) {
           </svg>
         </button>
       </div>
+
+      {graphMode && (
+        <NewGraphDialog
+          open={creatingGraph}
+          onClose={() => setCreatingGraph(false)}
+          onCreated={id => { setCreatingGraph(false); navigate(`/graphs/${id}`); }}
+        />
+      )}
     </aside>
   );
 }

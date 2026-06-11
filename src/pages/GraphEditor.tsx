@@ -178,7 +178,12 @@ export default function GraphEditor() {
 
   return (
     <div className={`tw:grid tw:h-dvh tw:w-screen tw:transition-[grid-template-columns] tw:duration-[220ms] tw:ease-[cubic-bezier(0.4,0,0.2,1)] tw:motion-reduce:transition-none ${prefs.sidebarCollapsed ? "tw:grid-cols-[60px_1fr]" : "tw:grid-cols-[268px_1fr]"}`}>
-      <Sidebar activeChatId={null} onOpenSettings={() => setSettingsOpen(true)} />
+      <Sidebar
+        activeChatId={null}
+        mode="graphs"
+        activeGraphId={graphId}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
       <div className="tw:flex tw:flex-col tw:min-w-0 tw:min-h-0 tw:h-full tw:bg-bg-3 tw:relative tw:overflow-hidden">
         <div className="tw:flex tw:items-center tw:gap-3 tw:py-3 tw:px-[22px] tw:border-b tw:border-line tw:bg-bg-3 tw:min-h-[58px]">
