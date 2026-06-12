@@ -7,19 +7,22 @@
 // Graph-owned dock chats ("ask this graph" transcripts) are EXCLUDED —
 // indexing RAG answers would feed them back into the next retrieval.
 
-import { db } from "../db";
+import { db, type StoredFile } from "../db";
+import { chunksForFile, invalidateChunkMemo } from "../docrag/chunk";
 
-export type SearchDocKind = "message" | "reflection" | "node" | "chat" | "graphNode";
+export type SearchDocKind = "message" | "reflection" | "node" | "chat" | "graphNode" | "fileChunk";
 
 export interface SearchDoc {
-  /** Namespaced id: "m:<id>" | "r:<id>" | "n:<id>" | "c:<id>" | "g:<id>". */
+  /** Namespaced id: "m:<id>" | "r:<id>" | "n:<id>" | "c:<id>" | "g:<id>"
+   *  | "f:<fileId>#<chunkIndex>" (uploaded files index per-chunk). */
   id:     string;
   kind:   SearchDocKind;
   /** Owning chat id — or the GRAPH id for graphNode docs (used the same
-   *  way for grouping/navigation). */
+   *  way for grouping/navigation). Empty for fileChunk docs: files are
+   *  reused across chats, so navigation is resolved at hydrate time. */
   chatId: string;
   /** Node to open for this hit (chat docs use the chat's currentNodeId;
-   *  empty for graph nodes). */
+   *  empty for graph nodes and file chunks). */
   nodeId: string;
   /** Title-ish field (reflection title, node label, chat title, graph-node label). */
   title:  string;
@@ -31,6 +34,7 @@ export interface SearchDoc {
 
 const KIND_PREFIX: Record<SearchDocKind, string> = {
   message: "m", reflection: "r", node: "n", chat: "c", graphNode: "g",
+  fileChunk: "f",
 };
 
 export const docId = (kind: SearchDocKind, rawId: string): string =>
@@ -46,8 +50,39 @@ export function parseDocId(id: string): { kind: SearchDocKind; rawId: string } |
     case "n:": return { kind: "node",       rawId };
     case "c:": return { kind: "chat",       rawId };
     case "g:": return { kind: "graphNode",  rawId };
+    case "f:": return { kind: "fileChunk",  rawId };
     default:   return null;
   }
+}
+
+export const fileChunkDocId = (fileId: string, chunkIndex: number): string =>
+  docId("fileChunk", `${fileId}#${chunkIndex}`);
+
+/** Split a fileChunk rawId ("<fileId>#<chunkIndex>") back into its parts. */
+export function parseFileChunkRawId(
+  rawId: string,
+): { fileId: string; chunkIndex: number } | null {
+  const hash = rawId.lastIndexOf("#");
+  if (hash <= 0 || hash === rawId.length - 1) return null;
+  const chunkIndex = Number(rawId.slice(hash + 1));
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0) return null;
+  return { fileId: rawId.slice(0, hash), chunkIndex };
+}
+
+/** Build the SearchDocs for one stored file. The file name rides on chunk
+ *  0 only — repeating it would multiply the title-boosted keyword score by
+ *  the chunk count. */
+export function fileChunkDocs(file: { _id: string; name: string; kind: string; content: string }): SearchDoc[] {
+  if (file.kind === "image") return [];
+  return chunksForFile(file._id, file.content).map(chunk => ({
+    id:     fileChunkDocId(file._id, chunk.index),
+    kind:   "fileChunk" as const,
+    chatId: "",
+    nodeId: "",
+    title:  chunk.index === 0 ? file.name : "",
+    text:   chunk.text,
+    rawId:  `${file._id}#${chunk.index}`,
+  }));
 }
 
 /** FNV-1a 32-bit — cheap content hash to detect docs needing re-embedding. */
@@ -63,12 +98,15 @@ export function textHash(s: string): string {
 /** Snapshot every searchable doc from Dexie. Used for the boot-time index
  *  build and for the embedding backfill diff. */
 export async function collectAllDocs(): Promise<SearchDoc[]> {
-  const [allChats, nodes, messages, reflections, graphNodes] = await Promise.all([
+  const [allChats, nodes, messages, reflections, graphNodes, files] = await Promise.all([
     db.chats.toArray(),
     db.nodes.toArray(),
     db.messages.toArray(),
     db.reflections.toArray(),
     db.graphNodes.toArray(),
+    // Filtered in the cursor so image rows' base64 payloads are never
+    // retained together in memory (they index nothing anyway).
+    db.files.filter(f => f.kind !== "image").toArray(),
   ]);
 
   // Dock chats (and everything inside them) stay out of the index.
@@ -118,6 +156,9 @@ export async function collectAllDocs(): Promise<SearchDoc[]> {
       nodeId: "", title: g.label, text: g.notes, rawId: g._id,
     });
   }
+  for (const f of files) {
+    docs.push(...fileChunkDocs(f));
+  }
 
   return docs;
 }
@@ -159,5 +200,44 @@ export async function loadDoc(kind: SearchDocKind, rawId: string): Promise<Searc
       if (!g || (!g.label.trim() && !g.notes.trim())) return null;
       return { id: docId(kind, rawId), kind, chatId: g.graphId, nodeId: "", title: g.label, text: g.notes, rawId };
     }
+    case "fileChunk": {
+      // Must stay exactly symmetric with fileChunkDocs/collectAllDocs, or
+      // the backfill hash diff churns vectors on every boot.
+      const parsed = parseFileChunkRawId(rawId);
+      if (!parsed) return null;
+      const f = await getFileRow(parsed.fileId);
+      if (!f) return null;
+      return fileChunkDocs(f).find(d => d.rawId === rawId) ?? null;
+    }
   }
+}
+
+// ── file-row cache ─────────────────────────────────────────────────
+// pumpEmbeds loads chunk docs ONE AT A TIME through loadDoc — without this
+// cache every chunk load re-reads (and re-deserializes) the entire file
+// row from IndexedDB: O(chunks × fileSize) per file. Rows are immutable
+// after upload; deletions invalidate through invalidateFileDocCache.
+
+const FILE_ROW_CACHE_MAX = 4;
+const fileRowCache = new Map<string, StoredFile>();
+
+async function getFileRow(fileId: string): Promise<StoredFile | undefined> {
+  const cached = fileRowCache.get(fileId);
+  if (cached) return cached;
+  const f = await db.files.get(fileId);
+  if (f) {
+    fileRowCache.set(fileId, f);
+    if (fileRowCache.size > FILE_ROW_CACHE_MAX) {
+      const oldest = fileRowCache.keys().next().value;
+      if (oldest !== undefined) fileRowCache.delete(oldest);
+    }
+  }
+  return f;
+}
+
+/** Drop everything cached for a file — called by the search service when
+ *  its row is created/deleted, so reused ids never serve stale data. */
+export function invalidateFileDocCache(fileId: string): void {
+  fileRowCache.delete(fileId);
+  invalidateChunkMemo(fileId);
 }

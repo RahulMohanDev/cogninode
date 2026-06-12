@@ -59,6 +59,9 @@ export interface ProcessedFile {
   name:      string;
   kind:      StoredFile["kind"];
   sizeBytes: number;
+  /** Extracted-text length — what actually rides in the prompt. Differs
+   *  from sizeBytes for PDFs; drives the "indexed" chip threshold. */
+  contentChars: number;
 }
 
 // Store file in Dexie and return metadata. File content is *only* persisted
@@ -84,5 +87,13 @@ export async function storeFile(file: File): Promise<ProcessedFile> {
     name:  file.name,
     kind,
     sizeBytes: file.size,
+    contentChars: content.length,
   };
+}
+
+// Chip removed before sending: the row is referenced by no message yet, so
+// delete it outright — otherwise it lives (and is search-indexed) forever.
+// The search service's files hook cleans the index automatically.
+export async function deleteStoredFile(fileId: string): Promise<void> {
+  await db.files.delete(fileId);
 }

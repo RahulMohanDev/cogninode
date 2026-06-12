@@ -15,7 +15,7 @@ export interface VectorHit {
 
 export interface VectorRowInput {
   docId:    string;
-  kind:     "message" | "reflection" | "graphNode";
+  kind:     "message" | "reflection" | "graphNode" | "fileChunk";
   chatId:   string;
   nodeId:   string;
   textHash: string;

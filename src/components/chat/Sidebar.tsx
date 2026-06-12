@@ -418,6 +418,10 @@ export function Sidebar({
       params.set("msg", h.rawId);
       const needle = search.trim();
       if (needle) params.set("q", needle);
+    } else if (h.kind === "fileChunk" && h.messageId) {
+      // Land on the attaching message. No ?q= — the matched terms live in
+      // the document body, not the message (mirrors SearchOverlay).
+      params.set("msg", h.messageId);
     }
     navigate(`/chat/${h.chatId}?${params.toString()}`);
   };

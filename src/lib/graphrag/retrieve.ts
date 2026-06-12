@@ -89,7 +89,9 @@ export async function retrieveForGraph(
     return { query: q, blocks: [], corpus, semanticUsed: false };
   }
 
-  const kw  = await searchService.keywordHits(q, KEYWORD_POOL);
+  // Corpus-filter INSIDE the pool: out-of-corpus docs (notably uploaded-
+  // file chunks, thousands per file) must not eat the 200 slots.
+  const kw  = await searchService.keywordHits(q, KEYWORD_POOL, id => corpus.docIds.has(id));
   const sem = await searchService.semanticHitsScoped(q, corpus.docIds, SEMANTIC_K);
   const ranked = rankCorpusHits(kw, sem, corpus).slice(0, MAX_BLOCKS);
 

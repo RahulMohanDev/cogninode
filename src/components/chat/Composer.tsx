@@ -8,7 +8,8 @@ import { useCostEstimate }      from "../../hooks/useCostEstimate";
 import { useSettings }          from "../../hooks/useSettings";
 import { useModels }            from "../../hooks/ModelsProvider";
 import { formatEstimate, formatPerM, type ModelDef } from "../../lib/cost";
-import { storeFile, type ProcessedFile }               from "../../lib/files";
+import { storeFile, deleteStoredFile, type ProcessedFile } from "../../lib/files";
+import { INLINE_MAX_CHARS, ATTACH_TURN_CAP_CHARS } from "../../lib/docrag/chunk";
 
 export interface ComposerSendParams {
   modelId:      string;
@@ -180,6 +181,9 @@ export function Composer({
 
   const removeFile = (fileId: string): void => {
     setFiles(prev => prev.filter(f => f.fileId !== fileId));
+    // The row was persisted at attach time and no message references it
+    // yet — delete it, or it lives (and is search-indexed) forever.
+    void deleteStoredFile(fileId).catch(() => {});
   };
 
   const toggleWebSearch = (): void => {
@@ -241,6 +245,16 @@ export function Composer({
                 {f.kind === "pdf" ? "PDF" : f.kind === "code" ? "<>" : f.kind === "image" ? "IMG" : "FILE"}
               </span>
               {f.name}
+              {f.kind !== "image" && f.contentChars > INLINE_MAX_CHARS && (
+                <span
+                  className="tw:font-mono tw:text-[9px] tw:tracking-[0.08em] tw:uppercase tw:text-teal"
+                  title={f.contentChars > ATTACH_TURN_CAP_CHARS
+                    ? "Very large file — sent as the excerpts most relevant to each question; fully searchable"
+                    : "Large file — sent in full with this message, then as relevant excerpts on follow-ups; fully searchable"}
+                >
+                  indexed
+                </span>
+              )}
               <button className="tw:w-4 tw:h-4 tw:grid tw:place-items-center tw:rounded-[50%] tw:text-ink-3 tw:hover:bg-ink tw:hover:text-white" onClick={() => removeFile(f.fileId)} aria-label={`Remove ${f.name}`} title="Remove file">
                 <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
                   <path d="M3 3 L13 13 M13 3 L3 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

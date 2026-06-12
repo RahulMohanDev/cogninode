@@ -63,11 +63,27 @@ export class KeywordIndex {
     this.docs.delete(id);
   }
 
-  search(query: string, limit = 80): KeywordHit[] {
+  /** All indexed doc ids starting with `prefix` — enumerates a deleted
+   *  file's chunk ids ("f:<fileId>#"), which exist nowhere else once the
+   *  Dexie row is gone. */
+  idsWithPrefix(prefix: string): string[] {
+    const out: string[] = [];
+    for (const id of this.docs.keys()) {
+      if (id.startsWith(prefix)) out.push(id);
+    }
+    return out;
+  }
+
+  /** `filter` runs BEFORE the limit slice — scoped retrieval (graph
+   *  corpora, file allow-lists) must not have its pool slots eaten by
+   *  out-of-scope docs (one uploaded file alone can contribute thousands
+   *  of chunk docs to the global index). */
+  search(query: string, limit = 80, filter?: (id: string) => boolean): KeywordHit[] {
     const q = query.trim();
     if (!q) return [];
     const results: SearchResult[] = this.mini.search(q);
-    return results.slice(0, limit).map(r => ({
+    const kept = filter ? results.filter(r => filter(String(r.id))) : results;
+    return kept.slice(0, limit).map(r => ({
       id:    String(r.id),
       score: r.score,
       terms: r.terms,
