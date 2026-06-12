@@ -51,6 +51,12 @@ export interface Prefs {
   /** Follow the reply (and a thinking model's reasoning) to the bottom as it
    *  streams. On by default; turn off to keep the scroll where you put it. */
   autoScroll:      boolean;
+  /** Managed-mode model picker: "simple" shows the 2–3 abstract tiers
+   *  (Fast / Thinking); "advanced" shows the full catalog. Local mode is
+   *  always advanced regardless of this pref. */
+  pickerMode:      "simple" | "advanced";
+  /** Last tier chosen in simple mode. */
+  defaultTierKey:  string;
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -63,6 +69,8 @@ const DEFAULT_PREFS: Prefs = {
   semanticSearch: true,
   embeddingModelId: "bge-small",
   autoScroll:     true,
+  pickerMode:     "simple",
+  defaultTierKey: "fast",
 };
 
 function readStoredTheme(): ThemeMode | null {

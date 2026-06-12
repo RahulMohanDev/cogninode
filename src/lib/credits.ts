@@ -31,3 +31,20 @@ export function formatCreditsShort(n: number): string {
 export function formatCreditsEstimate(usd: number): string {
   return `~${usdToCredits(usd)} cr`;
 }
+
+// A "typical" message for per-model credit estimates on picker rows:
+// ~1.5k input tokens (short path + question) and the same 550-token output
+// convention estimateCostUsd uses.
+export const EST_MSG_INPUT_TOKENS  = 1500;
+export const EST_MSG_OUTPUT_TOKENS = 550;
+
+/** "~N cr / message" figure for a model's picker row. */
+export function estimateCreditsPerMessage(
+  inputPricePerM: number,
+  outputPricePerM: number,
+): number {
+  const usd =
+    (EST_MSG_INPUT_TOKENS * inputPricePerM +
+     EST_MSG_OUTPUT_TOKENS * outputPricePerM) / 1_000_000;
+  return usdToCredits(usd);
+}

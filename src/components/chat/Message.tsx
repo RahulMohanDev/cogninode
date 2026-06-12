@@ -18,6 +18,8 @@ import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { formatCost }       from "../../lib/cost";
 import { formatCreditsShort, usdToCredits } from "../../lib/credits";
+import { useTiers }          from "../../hooks/useTiers";
+import { tierDotColor }      from "./TierPicker";
 import { useModels }        from "../../hooks/ModelsProvider";
 import { MarkdownBody }     from "./MarkdownBody";
 import { Reasoning }        from "./Reasoning";
@@ -167,6 +169,14 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
     ? resolve(message.modelId)
     : undefined;
 
+  // Simple-mode replies are labeled by tier; the live tier list supplies
+  // display names, falling back to a capitalized key for retired tiers.
+  const { tiers } = useTiers();
+  const tierLabel = isAssistant && message.tierKey
+    ? tiers?.find(t => t.key === message.tierKey)?.displayName
+      ?? message.tierKey.charAt(0).toUpperCase() + message.tierKey.slice(1)
+    : null;
+
   const initials = model
     ? model.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2)
     : "";
@@ -297,14 +307,26 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
 
       <div className="tw:flex tw:items-center tw:gap-2 tw:font-mono tw:text-[10px] tw:tracking-[0.1em] tw:text-ink-3 tw:uppercase">
         {isAssistant ? (
-          <>
-            {model && (
-              <span className="tw:w-[18px] tw:h-[18px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[9px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>
-                {initials}
-              </span>
-            )}
-            <span>{model?.name ?? "assistant"}</span>
-          </>
+          tierLabel ? (
+            // Simple-mode reply: the tier IS the identity — model name in
+            // the tooltip for the curious.
+            <>
+              <span
+                className="tw:w-[8px] tw:h-[8px] tw:rounded-[50%]"
+                style={{ background: tierDotColor(message.tierKey!) }}
+              />
+              <span title={model?.name}>{tierLabel}</span>
+            </>
+          ) : (
+            <>
+              {model && (
+                <span className="tw:w-[18px] tw:h-[18px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[9px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>
+                  {initials}
+                </span>
+              )}
+              <span>{model?.name ?? "assistant"}</span>
+            </>
+          )
         ) : (
           <span>You</span>
         )}

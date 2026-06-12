@@ -64,6 +64,9 @@ export interface Message {
   /** Which key pool paid for this assistant reply (non-indexed, no
    *  migration): "managed" replies show credits, "byok" shows USD. */
   keySource?:   "byok" | "managed";
+  /** Simple-mode tier this send used ("fast" | "thinking" | …) — the UI
+   *  labels the reply with the tier instead of the raw model name. */
+  tierKey?:     string;
   /** Whether costUsd came from OpenRouter's usage accounting ("upstream")
    *  or client fallback math ("estimated"). */
   costSource?:  "upstream" | "estimated";

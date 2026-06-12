@@ -4,6 +4,7 @@ import { AccessGate } from "./components/setup/AccessGate";
 import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
 import { CreditsProvider } from "./hooks/useCredits";
+import { TiersProvider } from "./hooks/useTiers";
 import { ModelsProvider } from "./hooks/ModelsProvider";
 import { ToastProvider } from "./components/ui/Toast";
 import { SearchOverlay } from "./components/search/SearchOverlay";
@@ -28,6 +29,7 @@ export default function App() {
                 <ModelsProvider>
                     <StreamsProvider>
                         <CreditsProvider>
+                        <TiersProvider>
                         <AccessGate>
                             <Routes>
                                 <Route path="/" element={<Chats />} />
@@ -48,6 +50,7 @@ export default function App() {
                                 also bootstraps the search index + semantic layer. */}
                             <SearchOverlay />
                         </AccessGate>
+                        </TiersProvider>
                         </CreditsProvider>
                     </StreamsProvider>
                 </ModelsProvider>

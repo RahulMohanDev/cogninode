@@ -51,6 +51,9 @@ export interface SendParams {
   /** Run an OpenRouter web search for this message. Captured at send time
    *  so the per-message toggle value sticks to this specific stream. */
   webSearch?:   boolean;
+  /** Simple-mode tier that picked the model — persisted on the assistant
+   *  reply so the UI labels it "Fast"/"Thinking" instead of the model. */
+  tierKey?:     string;
   /** Graph-RAG injection (dock chats): retrieval-built system context plus
    *  the [S#]→canvas-node map, persisted onto the assistant message. */
   graphContext?: { text: string; sources: RagSourceRef[] };
@@ -416,6 +419,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
                 ? { ragSources: params.graphContext.sources }
                 : {}),
               modelId:      params.modelId,
+              ...(params.tierKey ? { tierKey: params.tierKey } : {}),
               costUsd,
               costSource,
               keySource:    sendKeySource,

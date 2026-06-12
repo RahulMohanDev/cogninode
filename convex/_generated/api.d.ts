@@ -22,6 +22,7 @@ import type * as lib_env from "../lib/env.js";
 import type * as lib_razorpay from "../lib/razorpay.js";
 import type * as models from "../models.js";
 import type * as payments from "../payments.js";
+import type * as tiers from "../tiers.js";
 import type * as openrouter from "../openrouter.js";
 import type * as users from "../users.js";
 
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   models: typeof models;
   payments: typeof payments;
   openrouter: typeof openrouter;
+  tiers: typeof tiers;
   users: typeof users;
 }>;
 export declare const api: FilterApi<

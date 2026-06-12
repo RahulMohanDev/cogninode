@@ -82,6 +82,19 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_orderId", ["razorpayOrderId"]),
 
+  /** The Apple-style tier mapping ("Fast" / "Thinking" → concrete model).
+   *  Rows are edited in the dashboard — remapping a tier to a new model is
+   *  a data change, never a deploy. */
+  tiers: defineTable({
+    key: v.string(),                 // stable id, e.g. "fast" | "thinking"
+    displayName: v.string(),
+    blurb: v.string(),
+    modelId: v.string(),             // OpenRouter model id
+    sortOrder: v.number(),
+    active: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   /** Daily snapshot of OpenRouter's public per-model pricing (syncCatalog
    *  cron). Serves tier pricing + credit estimates without trusting the
    *  client's own catalog cache. */
