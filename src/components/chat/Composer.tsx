@@ -117,6 +117,18 @@ export function Composer({
     ta.style.height = Math.min(200, ta.scrollHeight) + "px";
   }, [text]);
 
+  // When a quote is attached (Branch from selection / Continue in chat), drop
+  // the cursor straight into the composer so the user can type without an extra
+  // click. Place the caret at the end of any existing draft.
+  useEffect(() => {
+    if (!quote) return;
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.focus();
+    const end = ta.value.length;
+    ta.setSelectionRange(end, end);
+  }, [quote]);
+
   // Resolve model object — selected id, falling back to the user default,
   // then the first available model (the list is never empty: the fallback
   // snapshot backs it before the live catalog loads).
