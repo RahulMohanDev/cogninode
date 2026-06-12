@@ -58,13 +58,22 @@ interface ClerkProfile {
 async function upsertUser(ctx: MutationCtx, profile: ClerkProfile) {
   const existing = await userByClerkId(ctx, profile.clerkUserId);
   if (!existing) {
+    const now = Date.now();
     const userId = await ctx.db.insert("users", {
       clerkUserId: profile.clerkUserId,
       ...(profile.email ? { email: profile.email } : {}),
       ...(profile.name ? { name: profile.name } : {}),
       keyStatus: "provisioning",
       creditsBalance: starterCredits(),
-      createdAt: Date.now(),
+      createdAt: now,
+    });
+    // Ledger invariant: creditsBalance always equals the sum of the user's
+    // ledger rows — the starter grant lands in the same transaction.
+    await ctx.db.insert("creditLedger", {
+      userId,
+      kind: "grant_starter",
+      credits: starterCredits(),
+      createdAt: now,
     });
     await ctx.scheduler.runAfter(0, internal.openrouter.provisionKey, { userId });
     return userId;
@@ -146,5 +155,34 @@ export const getInternal = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
     return await ctx.db.get(userId);
+  },
+});
+
+export const getByClerkIdInternal = internalQuery({
+  args: { clerkUserId: v.string() },
+  handler: async (ctx, { clerkUserId }) => {
+    return await userByClerkId(ctx, clerkUserId);
+  },
+});
+
+/** Ids of all live (non-deleted, key-active) users — the reconcile cron's
+ *  fan-out list. Fine as a full scan until the user count says otherwise. */
+export const listActiveIdsInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users
+      .filter((u) => u.deletedAt === undefined && u.keyStatus === "active")
+      .map((u) => u._id);
+  },
+});
+
+export const recordReconcile = internalMutation({
+  args: { userId: v.id("users"), driftUsd: v.number() },
+  handler: async (ctx, { userId, driftUsd }) => {
+    await ctx.db.patch(userId, {
+      lastReconciledAt: Date.now(),
+      reconcileDriftUsd: driftUsd,
+    });
   },
 });

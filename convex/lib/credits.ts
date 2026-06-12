@@ -29,3 +29,19 @@ export function starterCredits(): number {
 export function creditsToUsdBudget(credits: number): number {
   return Math.round(credits * usdPerCredit() * 1e6) / 1e6;
 }
+
+/** Per-message charge: whole credits, minimum 1. The ratio is rounded to 6
+ *  decimals before ceil so float noise (0.001/0.0005 → 2.0000000000000004)
+ *  can't bump a message into the next credit. Mirror of the client's
+ *  src/lib/credits.ts — keep in sync. */
+export function usdToCredits(usd: number): number {
+  if (!(usd > 0)) return 1;
+  const ratio = Math.round((usd / usdPerCredit()) * 1e6) / 1e6;
+  return Math.max(1, Math.ceil(ratio));
+}
+
+/** Flat surcharge applied when a send used OpenRouter's web plugin but the
+ *  response carried no upstream cost (estimated fallback) — the plugin fee
+ *  (~$0.02 at 5 results) would otherwise go uncharged entirely. When the
+ *  upstream usage.cost is present it already includes the plugin fee. */
+export const WEB_SEARCH_FALLBACK_USD = 0.02;

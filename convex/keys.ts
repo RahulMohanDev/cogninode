@@ -61,6 +61,17 @@ export const store = internalMutation({
   },
 });
 
+export const setLimit = internalMutation({
+  args: { userId: v.id("users"), limitUsd: v.number() },
+  handler: async (ctx, { userId, limitUsd }) => {
+    const row = await ctx.db
+      .query("openrouterKeys")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+    if (row) await ctx.db.patch(row._id, { limitUsd });
+  },
+});
+
 export const setDisabled = internalMutation({
   args: { userId: v.id("users"), disabled: v.boolean() },
   handler: async (ctx, { userId, disabled }) => {

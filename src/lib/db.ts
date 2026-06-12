@@ -61,6 +61,12 @@ export interface Message {
   fileIds?:     string[];      // references to files table
   citations?:   Citation[];    // web-search sources (non-indexed, no migration)
   ragSources?:  RagSourceRef[]; // graph-RAG citations (non-indexed, no migration)
+  /** Which key pool paid for this assistant reply (non-indexed, no
+   *  migration): "managed" replies show credits, "byok" shows USD. */
+  keySource?:   "byok" | "managed";
+  /** Whether costUsd came from OpenRouter's usage accounting ("upstream")
+   *  or client fallback math ("estimated"). */
+  costSource?:  "upstream" | "estimated";
   createdAt:    number;
 }
 

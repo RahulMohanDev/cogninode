@@ -6,7 +6,7 @@
 // if we ever fail to store it, the orphaned key must be disabled upstream
 // before re-provisioning (handled below).
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { creditsToUsdBudget, starterCredits } from "./lib/credits";
 import { env } from "./lib/env";
@@ -91,6 +91,99 @@ export const provisionKey = internalAction({
       });
       throw err;
     }
+  },
+});
+
+interface RuntimeKeyInfo {
+  data?: { usage?: number; limit?: number | null; limit_remaining?: number | null };
+}
+
+/** THE RE-PEG INVARIANT. The key's upstream USD limit must always equal
+ *  (authoritative usage so far) + (the USD budget the current credit
+ *  balance buys). This single rule:
+ *   - absorbs costs we deliberately don't charge (auto-titles) into margin,
+ *   - heals client under-reporting (killed tabs, failed outbox drains),
+ *   - keeps the upstream 402 backstop aligned with "balance ≈ 0".
+ *  Top-ups don't PATCH the limit directly — they bump the balance and run
+ *  this, so there is exactly one code path that touches the limit. */
+export const reconcileUser = internalAction({
+  args: { userId: v.id("users") },
+  // Return types annotated on the reconcile* trio: they reference
+  // internal.openrouter.* from inside this module, and without annotations
+  // TS flags the self-referential inference (TS7022).
+  handler: async (ctx, { userId }): Promise<void> => {
+    const keyRow = await ctx.runQuery(internal.keys.getForUserInternal, { userId });
+    if (!keyRow || keyRow.disabled) return;
+    const user = await ctx.runQuery(internal.users.getInternal, { userId });
+    if (!user || user.deletedAt !== undefined) return;
+
+    // Authoritative per-key usage — queried with the RUNTIME key itself
+    // (O(1), no management-key pagination across all customers).
+    const res = await fetch("https://openrouter.ai/api/v1/key", {
+      headers: { Authorization: `Bearer ${keyRow.apiKey}` },
+    });
+    if (!res.ok) {
+      throw new Error(`key info fetch failed: HTTP ${res.status}`);
+    }
+    const info = (await res.json()) as RuntimeKeyInfo;
+    const usage = typeof info.data?.usage === "number" ? info.data.usage : 0;
+
+    const targetLimit =
+      Math.round(
+        (usage + creditsToUsdBudget(Math.max(0, user.creditsBalance))) * 1e6,
+      ) / 1e6;
+    if (Math.abs(targetLimit - keyRow.limitUsd) > 0.001) {
+      const patch = await fetch(`${KEYS_URL}/${keyRow.keyHash}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ limit: targetLimit }),
+      });
+      if (!patch.ok) {
+        const body = await patch.text();
+        throw new Error(`limit re-peg failed: HTTP ${patch.status} ${body.slice(0, 300)}`);
+      }
+      await ctx.runMutation(internal.keys.setLimit, {
+        userId,
+        limitUsd: targetLimit,
+      });
+    }
+
+    await ctx.runMutation(internal.users.recordReconcile, {
+      userId,
+      driftUsd: Math.round((usage - (user.usdReportedTotal ?? 0)) * 1e6) / 1e6,
+    });
+  },
+});
+
+/** Cron entry: fan reconciliation out over all active users, staggered so
+ *  the management API never sees a burst. */
+export const reconcileAll = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ scheduled: number }> => {
+    const userIds = await ctx.runQuery(internal.users.listActiveIdsInternal, {});
+    for (let i = 0; i < userIds.length; i++) {
+      await ctx.scheduler.runAfter(
+        i * 2000,
+        internal.openrouter.reconcileUser,
+        { userId: userIds[i]! },
+      );
+    }
+    return { scheduled: userIds.length };
+  },
+});
+
+/** Client-callable belt-and-braces: run my own reconcile (fired once on app
+ *  open, and right after a top-up lands). */
+export const reconcileMe = action({
+  args: {},
+  handler: async (ctx): Promise<void> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("reconcileMe requires authentication");
+    const user = await ctx.runQuery(internal.users.getByClerkIdInternal, {
+      clerkUserId: identity.subject,
+    });
+    if (!user) return;
+    await ctx.runAction(internal.openrouter.reconcileUser, { userId: user._id });
   },
 });
 

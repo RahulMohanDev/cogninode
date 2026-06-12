@@ -4,6 +4,7 @@
 // raw keys are only ever visible to their authenticated owner, and the
 // starter balance is granted exactly once at creation.
 // @vitest-environment node
+/// <reference types="vite/client" />
 import { describe, expect, it } from "vitest";
 import { convexTest } from "convex-test";
 import { api, internal } from "./_generated/api";

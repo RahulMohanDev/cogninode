@@ -15,6 +15,8 @@ import { tokenizeQuery }     from "../../lib/search/service";
 import { Message }           from "./Message";
 import { MarkdownBody }      from "./MarkdownBody";
 import { Reasoning }         from "./Reasoning";
+import { useSettings }       from "../../hooks/useSettings";
+import { useCredits }        from "../../hooks/useCredits";
 
 export interface StreamProps {
   currentNodeId:        string;
@@ -69,6 +71,10 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   },
   ref,
 ) {
+  // Error-card copy depends on which key pool the failed send spent.
+  const { keySource } = useSettings();
+  const { managed, openTopUp } = useCredits();
+
   // Messages for the current node only — parent-node messages are sent to the
   // model via buildPathMessages but we don't clutter the UI with them.
   const liveMessages = useLiveQuery(
@@ -346,12 +352,18 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
                 }}
               >
                 <strong style={{ color: "var(--coral)" }}>
-                  Your API key was rejected
+                  {keySource === "managed"
+                    ? "Your account key was refused"
+                    : "Your API key was rejected"}
                 </strong>
                 <span style={{ opacity: 0.8 }}>
-                  OpenRouter refused this key (HTTP 401) — it may have been
-                  revoked or is no longer valid. Clear it and reconnect to
-                  continue.
+                  {keySource === "managed"
+                    ? "OpenRouter refused your account's key (HTTP 401). This " +
+                      "usually fixes itself — try the send again, or sign out " +
+                      "and back in."
+                    : "OpenRouter refused this key (HTTP 401) — it may have " +
+                      "been revoked or is no longer valid. Clear it and " +
+                      "reconnect to continue."}
                 </span>
                 <div>
                   <button
@@ -359,7 +371,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
                     type="button"
                     onClick={() => onAuthReset?.()}
                   >
-                    Clear key &amp; return to setup
+                    {keySource === "managed" ? "Dismiss" : "Clear key & return to setup"}
                   </button>
                 </div>
               </div>
@@ -371,6 +383,15 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
                 {streamError ?? "Unknown error — see browser console for details."}
                 {streamErrorStatus !== undefined ? ` (HTTP ${streamErrorStatus})` : ""}
               </div>
+              {streamErrorStatus === 402 && managed && keySource === "managed" && (
+                <button
+                  className="tw:bg-coral tw:text-bg tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:hover:bg-[#ff4520]"
+                  type="button"
+                  onClick={openTopUp}
+                >
+                  Top up credits
+                </button>
+              )}
             </div>
           )
         )}

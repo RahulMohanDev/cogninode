@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { AccessGate } from "./components/setup/AccessGate";
 import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
+import { CreditsProvider } from "./hooks/useCredits";
 import { ModelsProvider } from "./hooks/ModelsProvider";
 import { ToastProvider } from "./components/ui/Toast";
 import { SearchOverlay } from "./components/search/SearchOverlay";
@@ -26,6 +27,7 @@ export default function App() {
             <ToastProvider>
                 <ModelsProvider>
                     <StreamsProvider>
+                        <CreditsProvider>
                         <AccessGate>
                             <Routes>
                                 <Route path="/" element={<Chats />} />
@@ -46,6 +48,7 @@ export default function App() {
                                 also bootstraps the search index + semantic layer. */}
                             <SearchOverlay />
                         </AccessGate>
+                        </CreditsProvider>
                     </StreamsProvider>
                 </ModelsProvider>
             </ToastProvider>

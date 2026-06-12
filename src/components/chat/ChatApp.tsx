@@ -35,7 +35,7 @@ export interface ChatAppProps {
 }
 
 export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: ChatAppProps) {
-  const { prefs, clearApiKey } = useSettings();
+  const { prefs, keySource, clearApiKey } = useSettings();
 
   const chat = useLiveQuery(() => db.chats.get(chatId), [chatId]);
   const currentNodeId = chat?.currentNodeId ?? chat?.rootNodeId ?? "";
@@ -406,10 +406,13 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
           {...(streamErrorStatus !== undefined ? { streamErrorStatus } : {})}
           onAuthReset={() => {
             // Drop the dead error slot so the node is clean when we come
-            // back, then clear the key — the shared settings context flips
-            // ApiKeyGate to the setup screen immediately.
+            // back. BYOK keys also get cleared — the shared settings context
+            // flips ApiKeyGate to the setup screen immediately. A managed
+            // 401 is OUR provisioning's problem, not the user's key: keep
+            // state, the card just dismisses (Convex reactivity re-delivers
+            // the key if it was rotated server-side).
             cancel();
-            clearApiKey();
+            if (keySource === "byok") clearApiKey();
           }}
           onBranchFromMessage={(msg, q) => void handleBranchFromMessage(msg, q)}
           reflectionsMode={reflectionsMode}

@@ -17,6 +17,7 @@ import {
 import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { formatCost }       from "../../lib/cost";
+import { formatCreditsShort, usdToCredits } from "../../lib/credits";
 import { useModels }        from "../../hooks/ModelsProvider";
 import { MarkdownBody }     from "./MarkdownBody";
 import { Reasoning }        from "./Reasoning";
@@ -403,9 +404,20 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
         </div>
       ) : isAssistant && !reflectionsMode ? (
         <div className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1">
-          <span className="tw:inline-flex tw:items-center tw:gap-[5px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px]">
+          <span
+            className="tw:inline-flex tw:items-center tw:gap-[5px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px]"
+            title={
+              message.keySource === "managed" && typeof message.costUsd === "number"
+                ? `${formatCost(message.costUsd)} API cost${message.costSource === "estimated" ? " (estimated)" : ""}`
+                : undefined
+            }
+          >
             <span className="tw:w-[5px] tw:h-[5px] tw:rounded-[50%] tw:bg-teal" />
-            {typeof message.costUsd === "number" ? formatCost(message.costUsd) : "—"}
+            {typeof message.costUsd === "number"
+              ? message.keySource === "managed"
+                ? formatCreditsShort(usdToCredits(message.costUsd))
+                : formatCost(message.costUsd)
+              : "—"}
             {typeof message.inputTokens === "number" && typeof message.outputTokens === "number" && (
               <span className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:tracking-[0.02em]">
                 &nbsp;·&nbsp;{message.inputTokens.toLocaleString()} in + {message.outputTokens.toLocaleString()} out

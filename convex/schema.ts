@@ -21,9 +21,59 @@ export default defineSchema({
     /** Denormalized credit balance. Every ledger-writing mutation updates it
      *  in the same transaction, so it can never drift from the ledger. */
     creditsBalance: v.number(),
+    /** Running total of upstream USD this user's client has reported via
+     *  credits.reportUsage. Reconciliation compares it against OpenRouter's
+     *  authoritative per-key usage; the gap is `reconcileDriftUsd`. */
+    usdReportedTotal: v.optional(v.number()),
+    lastReconciledAt: v.optional(v.number()),
+    /** authoritative usage − reported usage at last reconcile. Large
+     *  positive drift = lost client reports or an extracted key. */
+    reconcileDriftUsd: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_clerkUserId", ["clerkUserId"]),
+
+  /** Append-only money trail. `credits` is signed (grants +, spends −);
+   *  users.creditsBalance always equals the sum of a user's rows. */
+  creditLedger: defineTable({
+    userId: v.id("users"),
+    kind: v.union(
+      v.literal("grant_starter"),
+      v.literal("purchase"),
+      v.literal("message"),
+      v.literal("reconcile_adjust"),
+    ),
+    credits: v.number(),
+    usdCost: v.optional(v.number()),
+    /** "upstream" = OpenRouter's usage.cost from the final SSE frame;
+     *  "estimated" = client fallback math (no upstream cost in response). */
+    costSource: v.optional(
+      v.union(v.literal("upstream"), v.literal("estimated")),
+    ),
+    /** Client-generated assistant-message id — the idempotency key for
+     *  kind "message" rows (StrictMode/retry safe). */
+    messageClientId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    webSearch: v.optional(v.boolean()),
+    razorpayPaymentId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_user_message", ["userId", "messageClientId"]),
+
+  /** Daily snapshot of OpenRouter's public per-model pricing (syncCatalog
+   *  cron). Serves tier pricing + credit estimates without trusting the
+   *  client's own catalog cache. */
+  modelPricing: defineTable({
+    modelId: v.string(),
+    name: v.string(),
+    promptPerM: v.number(),
+    completionPerM: v.number(),
+    contextLength: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_modelId", ["modelId"]),
 
   openrouterKeys: defineTable({
     userId: v.id("users"),

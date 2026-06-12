@@ -10,7 +10,15 @@ import { calculateCostUsd, type ModelDef } from "./cost";
 
 export type StreamEvent =
   | { type: "chunk";  content: string }
-  | { type: "done";   usage: { inputTokens: number; outputTokens: number; costUsd: number } }
+  | { type: "done";   usage: {
+        inputTokens:  number;
+        outputTokens: number;
+        costUsd:      number;
+        /** "upstream" when OpenRouter's usage.cost arrived in the final SSE
+         *  frame (authoritative — includes web-plugin fees); "estimated"
+         *  when we fell back to client-side per-token math. */
+        costSource:   "upstream" | "estimated";
+      } }
   | { type: "error";  message: string; status?: number };
 
 /** A web-search source surfaced by OpenRouter's `web` plugin as a
@@ -44,6 +52,9 @@ interface StreamParams {
   /** When true, attach OpenRouter's `web` plugin so the model can run a
    *  paid web search for this request. */
   webSearch?:   boolean;
+  /** Which pool the key spends — managed (cogninode credits) gets
+   *  credits-phrased 401/402 errors instead of "check Settings". */
+  keySource?:   "byok" | "managed";
 }
 
 export async function streamMessage(params: StreamParams): Promise<void> {
@@ -76,6 +87,11 @@ export async function streamMessage(params: StreamParams): Promise<void> {
         ],
         stream:             true,
         stream_options:     { include_usage: true },
+        // OpenRouter usage accounting: puts the actual USD `cost` charged
+        // (web-plugin fees included) into the final SSE frame's usage
+        // object. Newer accounts get it automatically; sending the opt-in
+        // is a harmless no-op there and covers older behavior.
+        usage:              { include: true },
         // Reasoning models (DeepSeek R1, Tencent HY3, o1-style, etc) emit
         // their chain-of-thought into delta.reasoning. Without this opt-in,
         // some providers swallow it and the user sees an empty assistant
@@ -109,8 +125,20 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       const parsed = JSON.parse(body) as { error?: { message?: string } };
       if (parsed.error?.message) message = parsed.error.message;
     } catch { /* keep HTTP fallback */ }
-    if (response.status === 401) message = "Invalid API key. Check Settings.";
-    if (response.status === 402) message = "Insufficient OpenRouter credits.";
+    const managed = params.keySource === "managed";
+    if (response.status === 401) {
+      message = managed
+        ? "Your account key was refused. Try again — or sign out and back in."
+        : "Invalid API key. Check Settings.";
+    }
+    if (response.status === 402) {
+      message = managed
+        ? "You're out of credits — top up to keep chatting."
+        : "Insufficient OpenRouter credits.";
+    }
+    if (response.status === 403 && managed) {
+      message = "This model isn't available on your plan yet.";
+    }
     if (response.status === 429) message = "Rate limited. Wait a moment.";
     params.onError(message, response.status);
     return;
@@ -123,6 +151,7 @@ export async function streamMessage(params: StreamParams): Promise<void> {
 
   let inputTokens  = 0;
   let outputTokens = 0;
+  let upstreamCostUsd: number | null = null;
   let finishReason: string | null = null;
   let midStreamError: string | null = null;
 
@@ -148,7 +177,7 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       };
       finish_reason?: string | null;
     }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
     error?: { message?: string; code?: number | string };
   };
 
@@ -190,6 +219,9 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       if (parsed.usage) {
         inputTokens  = parsed.usage.prompt_tokens     ?? inputTokens;
         outputTokens = parsed.usage.completion_tokens ?? outputTokens;
+        if (typeof parsed.usage.cost === "number") {
+          upstreamCostUsd = parsed.usage.cost;
+        }
       }
       if (parsed.error?.message) midStreamError = parsed.error.message;
     },
@@ -237,7 +269,8 @@ export async function streamMessage(params: StreamParams): Promise<void> {
     params.onDone({
       inputTokens,
       outputTokens,
-      costUsd: calculateCostUsd(inputTokens, outputTokens, params.model),
+      costUsd:    upstreamCostUsd ?? calculateCostUsd(inputTokens, outputTokens, params.model),
+      costSource: upstreamCostUsd !== null ? "upstream" : "estimated",
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") return;

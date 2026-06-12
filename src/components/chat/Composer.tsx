@@ -5,6 +5,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCostEstimate }      from "../../hooks/useCostEstimate";
+import { useCredits }           from "../../hooks/useCredits";
+import { BalancePill }          from "../credits/BalancePill";
+import { formatCreditsEstimate } from "../../lib/credits";
 import { useSettings }          from "../../hooks/useSettings";
 import { useModels }            from "../../hooks/ModelsProvider";
 import { formatEstimate, formatPerM, type ModelDef } from "../../lib/cost";
@@ -86,7 +89,8 @@ export function Composer({
   onOpenSettings,
   onCreateBlankBranch,
 }: ComposerProps) {
-  const { prefs }            = useSettings();
+  const { prefs, keySource } = useSettings();
+  const { managed, balance, openTopUp } = useCredits();
   const { models, resolve, pinnedIds, togglePinned, catalogCount } = useModels();
   const [text,   setText]    = useState(() => initialText ?? loadDraft(chatId, currentNodeId));
   const [files,  setFiles]   = useState<ProcessedFile[]>([]);
@@ -215,6 +219,13 @@ export function Composer({
     if (!composerText && files.length === 0) return;
     if (streamState === "streaming") return;
     if (uploading) return;
+    // Credits gate: charging happens after a stream completes, so this is
+    // the moment a depleted (or negative) balance blocks. BYOK sends spend
+    // the user's own OpenRouter account — never blocked here.
+    if (managed && keySource === "managed" && balance !== null && balance <= 0) {
+      openTopUp();
+      return;
+    }
     const fileIds = files.map(f => f.fileId);
     // Clear local state before firing — the assistant tail handles itself.
     setText("");
@@ -453,8 +464,12 @@ export function Composer({
           </div>
 
           <span className={`tw:font-mono tw:text-[11px] tw:font-medium tw:tracking-[0.04em] tw:py-[3px] tw:px-[9px] tw:rounded-[999px] tw:transition-[background-color,color] tw:duration-200 tw:ease-[ease] ${PILL[pillClass]}`} title={`Estimated cost on ${model.name}`}>
-            {formatEstimate(estCost)}
+            {managed && keySource === "managed"
+              ? formatCreditsEstimate(estCost)
+              : formatEstimate(estCost)}
           </span>
+
+          <BalancePill />
 
           {onCreateBlankBranch && (
             <button

@@ -18,6 +18,7 @@ import {
 } from "react";
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
+import { drainUsageOutbox, enqueueUsageReport } from "../lib/usageOutbox";
 import { retrieveForFiles }                from "../lib/docrag/retrieve";
 import { buildFileContext }                from "../lib/docrag/prompt";
 import { resolveModelSync }               from "../lib/models";
@@ -91,14 +92,26 @@ export interface StreamsProviderProps {
 }
 
 export function StreamsProvider({ children }: StreamsProviderProps) {
-  const { apiKey, prefs } = useSettings();
+  const { apiKey, keySource, prefs } = useSettings();
   // Settings live in refs too so `send`'s captured closure always sees the
   // latest values without forcing every consumer of context to re-render
   // when the user swaps their key or adds a custom model mid-session.
-  const apiKeyRef = useRef(apiKey);
-  const prefsRef  = useRef(prefs);
-  useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
-  useEffect(() => { prefsRef.current  = prefs;  }, [prefs]);
+  const apiKeyRef    = useRef(apiKey);
+  const keySourceRef = useRef(keySource);
+  const prefsRef     = useRef(prefs);
+  useEffect(() => { apiKeyRef.current    = apiKey;    }, [apiKey]);
+  useEffect(() => { keySourceRef.current = keySource; }, [keySource]);
+  useEffect(() => { prefsRef.current     = prefs;     }, [prefs]);
+
+  // Flush any usage reports a previous session failed to deliver (killed
+  // tab, offline). Safe to fire eagerly: drains coalesce, the server
+  // mutation is idempotent, and without a Convex client it's a no-op.
+  const drainedRef = useRef(false);
+  useEffect(() => {
+    if (drainedRef.current || !apiKey) return;
+    drainedRef.current = true;
+    void drainUsageOutbox();
+  }, [apiKey]);
 
   // Once a key is available, sweep any chats/branches that never got an LLM
   // title (e.g. created before this ran, or whose send-time titling failed for
@@ -227,6 +240,10 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
     emit(slot);
     recomputeActive();
 
+    // Which pool this send spends — captured NOW so a mid-stream settings
+    // change (adding/removing a BYOK key) can't misattribute the charge.
+    const sendKeySource = keySourceRef.current;
+
     // Kick off the async work — we don't await; send() is fire-and-forget
     // from the caller's perspective. All state updates flow through the
     // slot's emit() so subscribers see them via useSyncExternalStore.
@@ -353,6 +370,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
 
         await streamMessage({
           apiKey: apiKeyRef.current,
+          keySource: sendKeySource,
           openRouterId: model.openRouterId,
           messages: pathMessages,
           ...(systemExtra ? { systemExtra } : {}),
@@ -381,12 +399,13 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
             });
           },
 
-          onDone: async ({ inputTokens, outputTokens, costUsd }) => {
+          onDone: async ({ inputTokens, outputTokens, costUsd, costSource }) => {
             // Persist assistant message — reasoning is optional separate
             // field so the UI can render it in a collapsible "Thinking"
             // section.
+            const assistantMsgId = crypto.randomUUID();
             await db.messages.add({
-              _id:          crypto.randomUUID(),
+              _id:          assistantMsgId,
               nodeId,
               chatId,
               role:         "assistant",
@@ -398,12 +417,30 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
                 : {}),
               modelId:      params.modelId,
               costUsd,
+              costSource,
+              keySource:    sendKeySource,
               inputTokens,
               outputTokens,
               pathDepth:    pathMessages.length,
               createdAt:    Date.now(),
             });
             await db.chats.update(chatId, { updatedAt: Date.now() });
+
+            // Managed sends charge credits: queue the report durably (same
+            // Dexie store as the message), then drain. BYOK sends spend the
+            // user's own OpenRouter account — never reported.
+            if (sendKeySource === "managed") {
+              await enqueueUsageReport({
+                messageClientId: assistantMsgId,
+                usdCost:         costUsd,
+                costSource,
+                modelId:         params.modelId,
+                inputTokens,
+                outputTokens,
+                webSearch:       params.webSearch ?? false,
+              });
+              void drainUsageOutbox();
+            }
 
             // First exchange complete — swap the derived title for a short
             // LLM topic title in the background. Fire-and-forget: it never
