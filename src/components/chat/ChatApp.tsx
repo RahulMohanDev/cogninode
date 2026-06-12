@@ -73,6 +73,17 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
   // Branch quote — passed to Composer as a chip when branching from selection
   // or from a message's "Branch from this" action.
   const [quote, setQuote] = useState<string | undefined>(undefined);
+  // Whether the active quote came from branching or from "continue in chat" —
+  // drives the Composer chip label.
+  const [quoteKind, setQuoteKind] = useState<"branch" | "continue">("branch");
+
+  // The quote chip belongs to the chat it was branched in. Switching chats
+  // (e.g. "New chat") reuses this component with a different chatId without
+  // unmounting, so clear any leftover quote on chat change. Branching stays
+  // within the same chat, so this never clears a freshly-set branch quote.
+  useEffect(() => {
+    setQuote(undefined);
+  }, [chatId]);
 
   // Initial prefill applied once via Composer's `initialText` prop.
   const [prefill, setPrefill] = useState<string | null>(initialPrefill);
@@ -184,8 +195,18 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
       }
     });
     setQuote(truncated);
+    setQuoteKind("branch");
     // No further action — the Composer picks up the new currentNodeId
     // reactively via `chat.currentNodeId`.
+  };
+
+  // "Continue in same chat" — attach the selection as a quote to the *current*
+  // node without branching. The next message carries it as context (db.ts
+  // prepends the quoted block), so the user can follow up on a passage inline.
+  const handleContinueWithSelection = (text: string): void => {
+    const truncated = text.length > 80 ? text.slice(0, 80) + "…" : text;
+    setQuote(truncated);
+    setQuoteKind("continue");
   };
 
   const handleBranchFromMessage = async (_msg: DbMessage, maybeQuote?: string): Promise<void> => {
@@ -378,6 +399,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
           {...(focusMessageId ? { focusMessageId } : {})}
           {...(focusQuery ? { focusQuery } : {})}
           streamState={state}
+          autoScroll={prefs.autoScroll}
           streamingText={streamingText}
           streamingReasoning={streamingReasoning}
           {...(streamError !== null ? { streamError } : {})}
@@ -403,7 +425,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
             streamState={state}
             onSend={send}
             onCancel={cancel}
-            {...(quote !== undefined ? { quote } : {})}
+            {...(quote !== undefined ? { quote, quoteKind } : {})}
             {...(prefill !== null   ? { initialText: prefill } : {})}
             onClearQuote={() => setQuote(undefined)}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -416,6 +438,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
         <SelectionPopup
           streamRef={streamRef}
           onBranch={(text) => void handleBranchFromSelection(text)}
+          onContinue={(text) => handleContinueWithSelection(text)}
         />
       )}
 
