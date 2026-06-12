@@ -1,10 +1,16 @@
 // src/components/settings/SettingsModal.tsx
-// Settings modal: API key, default model, branch mode, custom models CRUD,
-// data export/import/clear, and about. Returns null when closed.
+// Settings modal: account (managed mode), API key, default model, branch
+// mode, custom models CRUD, data export/import/clear, and about. Returns
+// null when closed.
 
 import { useMemo, useRef, useState } from "react";
+import { useClerk, useUser } from "@clerk/clerk-react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
-import { db } from "../../lib/db";
+import { clearAllUserData, db } from "../../lib/db";
+import { isManagedMode } from "../../lib/managedConfig";
+import { useApiKeyValidation } from "../../hooks/useApiKeyValidation";
 import {
   formatCost,
   calculateCostUsd,
@@ -31,7 +37,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   useModalBehavior(open, onClose, panelRef);
 
-  const { apiKey, clearApiKey, prefs, setPref, setTheme } = useSettings();
+  const { apiKey, keySource, setApiKey, clearApiKey, prefs, setPref, setTheme } = useSettings();
+  const managed = isManagedMode();
+  // The key section manages the BYOK key only — in managed mode the resolved
+  // apiKey may be the server-provisioned key, which must never be shown.
+  const byokKey = keySource === "byok" ? apiKey : "";
 
   if (!open) return null;
 
@@ -57,9 +67,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         <div className="sm-body tw:flex-1 tw:overflow-y-auto tw:pt-1 tw:px-5 tw:pb-5 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
+          {managed && <ManagedAccountSection />}
+
           <ApiKeySection
-            apiKey={apiKey}
-            onRemoveKey={() => { clearApiKey(); onClose(); }}
+            apiKey={byokKey}
+            managed={managed}
+            onAddKey={setApiKey}
+            onRemoveKey={() => {
+              clearApiKey();
+              // Legacy mode: no key means the gate takes over — close first.
+              // Managed mode: removal just falls back to credits; stay open.
+              if (!managed) onClose();
+            }}
           />
 
           <ModelSection
@@ -98,7 +117,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           />
 
           <DataSection
-            onClearAll={() => { clearApiKey(); onClose(); }}
+            onClearAll={() => {
+              clearApiKey();
+              if (!managed) onClose();
+            }}
           />
 
           <AboutSection />
@@ -110,27 +132,109 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
 export default SettingsModal;
 
+// ── Section 0: Account (managed mode only) ──────────────────────────────────
+// Mounted only when isManagedMode() — its Clerk/Convex hooks need the
+// providers that local mode doesn't render.
+
+function ManagedAccountSection() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const me = useQuery(api.users.current);
+
+  return (
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Account</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Signed in via Clerk. Chats are billed against your credits.</p>
+      </div>
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div className="tw:flex-1 tw:min-w-0">
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink tw:truncate">
+            {user?.primaryEmailAddress?.emailAddress ?? user?.fullName ?? "Signed in"}
+          </div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            {me ? `${me.creditsBalance.toLocaleString()} credits` : "…"}
+          </div>
+        </div>
+        <button
+          className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
+          onClick={() => void signOut()}
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Section 1: API key ───────────────────────────────────────────────────────
 
 function ApiKeySection({
   apiKey,
+  managed,
+  onAddKey,
   onRemoveKey,
 }: {
   apiKey:      string;
+  managed:     boolean;
+  onAddKey:    (key: string) => void;
   onRemoveKey: () => void;
 }) {
   const [reveal, setReveal] = useState(false);
+  const [draft, setDraft] = useState("");
+  const { verifying, error, validate, clearError } = useApiKeyValidation();
 
   const masked = apiKey
     ? apiKey.slice(0, 10) + "•".repeat(20)
     : "";
 
+  const addKey = async () => {
+    const validKey = await validate(draft);
+    if (validKey) {
+      onAddKey(validKey);
+      setDraft("");
+    }
+  };
+
   return (
     <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
       <div className="tw:mb-2">
-        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">OpenRouter API key</h3>
-        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Stored in localStorage on this device only.</p>
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">
+          {managed ? "Your own OpenRouter key" : "OpenRouter API key"}
+        </h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">
+          {managed
+            ? "Optional. When set, chats use your key directly (your OpenRouter account pays) instead of credits. Stored in this browser only."
+            : "Stored in localStorage on this device only."}
+        </p>
       </div>
+
+      {managed && !apiKey && (
+        <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:flex tw:gap-2">
+            <input
+              className="tw:flex-1 tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:font-mono tw:focus:border-ink-3"
+              type="password"
+              placeholder="sk-or-v1-..."
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); if (error) clearError(); }}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              className="tw:bg-bg-3 tw:text-ink tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:hover:border-ink-3 tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
+              disabled={verifying || !draft.trim()}
+              onClick={() => void addKey()}
+            >
+              {verifying ? "Verifying…" : "Use key"}
+            </button>
+          </div>
+          {error && (
+            <div role="alert" className="tw:text-[12px] tw:text-coral tw:mt-2">{error}</div>
+          )}
+        </div>
+      )}
 
       <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div className="tw:flex-1 tw:min-w-0">
@@ -747,22 +851,7 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
     if (confirmText !== "DELETE") return;
     setBusy(true);
     try {
-      await db.transaction(
-        "rw",
-        [db.chats, db.nodes, db.messages, db.reflections, db.files,
-         db.graphs, db.graphNodes, db.graphEdges, db.searchVectors],
-        async () => {
-          await db.chats.clear();
-          await db.nodes.clear();
-          await db.messages.clear();
-          await db.reflections.clear();
-          await db.files.clear();
-          await db.graphs.clear();
-          await db.graphNodes.clear();
-          await db.graphEdges.clear();
-          await db.searchVectors.clear();
-        },
-      );
+      await clearAllUserData();
       setConfirmOpen(false);
       setConfirmText("");
       onClearAll();

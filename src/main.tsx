@@ -1,8 +1,12 @@
 import React            from "react";
 import ReactDOM         from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { ClerkProvider, useAuth } from "@clerk/clerk-react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
 import App              from "./App";
 import type { ThemeMode } from "./hooks/useSettings";
+import { getManagedConfig } from "./lib/managedConfig";
+import { getConvexClient } from "./lib/convexClient";
 import "./styles/app.css";
 
 // Early theme init — index.html's inline <script> already sets the
@@ -19,10 +23,28 @@ import "./styles/app.css";
   } catch { /* ignore */ }
 })();
 
+// Managed mode (Clerk + Convex) switches on only when both env vars are
+// configured — without them the tree below is exactly the original
+// local-first app. See lib/managedConfig.ts.
+function Root() {
+  const managed = getManagedConfig();
+  const convexClient = getConvexClient();
+  if (managed && convexClient) {
+    return (
+      <ClerkProvider publishableKey={managed.clerkPublishableKey} afterSignOutUrl="/">
+        <ConvexProviderWithClerk client={convexClient} useAuth={useAuth}>
+          <App />
+        </ConvexProviderWithClerk>
+      </ClerkProvider>
+    );
+  }
+  return <App />;
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <Root />
     </BrowserRouter>
   </React.StrictMode>,
 );

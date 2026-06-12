@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { ApiKeyGate } from "./components/setup/ApiKeyGate";
+import { AccessGate } from "./components/setup/AccessGate";
 import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
 import { ModelsProvider } from "./hooks/ModelsProvider";
@@ -26,7 +26,7 @@ export default function App() {
             <ToastProvider>
                 <ModelsProvider>
                     <StreamsProvider>
-                        <ApiKeyGate>
+                        <AccessGate>
                             <Routes>
                                 <Route path="/" element={<Chats />} />
                                 <Route path="/reflections" element={<Reflections />} />
@@ -45,7 +45,7 @@ export default function App() {
                             {/* ⌘K palette — global so it works on every page;
                                 also bootstraps the search index + semantic layer. */}
                             <SearchOverlay />
-                        </ApiKeyGate>
+                        </AccessGate>
                     </StreamsProvider>
                 </ModelsProvider>
             </ToastProvider>

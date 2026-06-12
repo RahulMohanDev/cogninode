@@ -31,6 +31,9 @@ const SSE_BODY = [
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.addInitScript(() => {
+  // Force local (BYOK) mode regardless of Clerk/Convex env — see
+  // lib/managedConfig.ts.
+  localStorage.setItem("cogninode_force_local", "1");
   localStorage.setItem("cogninode_api_key", "sk-or-dummy-key-for-ui-testing");
 });
 const page = await ctx.newPage();

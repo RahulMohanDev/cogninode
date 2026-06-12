@@ -3,6 +3,9 @@ const APP = process.env.APP_URL ?? "http://localhost:5173";
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 await ctx.addInitScript(() => {
+  // Force local (BYOK) mode even if the dev server has Clerk/Convex env
+  // configured — keeps the smoke deterministic. See lib/managedConfig.ts.
+  localStorage.setItem("cogninode_force_local", "1");
   localStorage.setItem("cogninode_api_key", "sk-or-dummy-key-for-ui-testing");
   localStorage.setItem("cogninode_theme", "dark");
 });

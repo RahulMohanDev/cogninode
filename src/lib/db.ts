@@ -346,6 +346,45 @@ export async function getMeta<T>(key: string): Promise<T | undefined> {
   return row?.value as T | undefined;
 }
 
+export async function setMeta(key: string, value: unknown): Promise<void> {
+  await db.meta.put({ key, value });
+}
+
+// ── Bulk data helpers ──────────────────────────────────────────
+
+/** Wipe every user-data table (NOT meta/models — bookkeeping and the
+ *  catalog cache survive). Used by Settings → Clear all data and by the
+ *  account-mismatch "wipe & continue" path in the auth gate. */
+export async function clearAllUserData(): Promise<void> {
+  await db.transaction(
+    "rw",
+    [db.chats, db.nodes, db.messages, db.reflections, db.files,
+     db.graphs, db.graphNodes, db.graphEdges, db.searchVectors],
+    async () => {
+      await db.chats.clear();
+      await db.nodes.clear();
+      await db.messages.clear();
+      await db.reflections.clear();
+      await db.files.clear();
+      await db.graphs.clear();
+      await db.graphNodes.clear();
+      await db.graphEdges.clear();
+      await db.searchVectors.clear();
+    },
+  );
+}
+
+/** Does this browser hold any user data worth protecting? Cheap counts —
+ *  feeds the account-link decision (lib/accountLink.ts). */
+export async function hasAnyUserData(): Promise<boolean> {
+  const [chats, graphs, reflections] = await Promise.all([
+    db.chats.count(),
+    db.graphs.count(),
+    db.reflections.count(),
+  ]);
+  return chats + graphs + reflections > 0;
+}
+
 // ── Typed helpers ──────────────────────────────────────────────
 
 export function newId(): string {
