@@ -72,9 +72,19 @@ const KIND_LABEL: Record<ResolvedHit["kind"], string> = {
   node:       "branch",
   chat:       "chat",
   graphNode:  "graph node",
+  fileChunk:  "document",
 };
 
 function KindIcon({ kind }: { kind: ResolvedHit["kind"] }) {
+  if (kind === "fileChunk") {
+    return (
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M4 1.8 H9.5 L12.5 4.8 V14.2 H4 Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+        <path d="M9.5 1.8 V4.8 H12.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+        <path d="M6 8 H10.5 M6 10.5 H10.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (kind === "graphNode") {
     return (
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -214,6 +224,14 @@ export function SearchOverlay() {
         // chatId carries the graph id for graph-node hits.
         navigate(`/graphs/${hit.chatId}?node=${hit.rawId}`);
         break;
+      case "fileChunk": {
+        // Land on the message that attached the file. No ?q= — the matched
+        // terms live inside the document, not the message body.
+        const params = new URLSearchParams({ node: hit.nodeId });
+        if (hit.messageId) params.set("msg", hit.messageId);
+        navigate(`/chat/${hit.chatId}?${params.toString()}`);
+        break;
+      }
     }
     close();
   }, [navigate, close, q]);

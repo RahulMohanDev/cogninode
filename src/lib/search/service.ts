@@ -13,11 +13,13 @@
 // StrictMode mounts effects twice in dev — every entry point here is
 // idempotent.
 
-import { db } from "../db";
+import { db, sweepOrphanFiles, type StoredFile } from "../db";
 import {
   collectAllDocs, loadDoc, parseDocId, textHash, docId as makeDocId,
+  fileChunkDocs, parseFileChunkRawId, invalidateFileDocCache,
   type SearchDoc, type SearchDocKind,
 } from "./docs";
+import { chunksForFile } from "../docrag/chunk";
 import { KeywordIndex, type KeywordHit } from "./keywordIndex";
 import { rrfFuse }                 from "./fusion";
 import { makeSnippet, type Snippet } from "./snippets";
@@ -59,6 +61,9 @@ export interface ResolvedHit {
   title:     string;
   snippet:   Snippet | null;
   role?:     "user" | "assistant";
+  /** fileChunk hits only: the earliest message that attached the file —
+   *  navigation lands on (and can flash) that message. */
+  messageId?: string;
   sources:   HitSource[];
   score:     number;
 }
@@ -82,8 +87,15 @@ function embedText(doc: SearchDoc): string {
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 /** Doc kinds that get vectors (everything else is keyword-only). */
-const EMBEDDED_KINDS = new Set<SearchDocKind>(["message", "reflection", "graphNode"]);
-type EmbeddedKind = "message" | "reflection" | "graphNode";
+const EMBEDDED_KINDS = new Set<SearchDocKind>(["message", "reflection", "graphNode", "fileChunk"]);
+type EmbeddedKind = "message" | "reflection" | "graphNode" | "fileChunk";
+
+/** Global-search results keep at most this many chunk hits per file, so
+ *  one big document can't flood the palette. */
+const FILE_HITS_PER_FILE = 3;
+
+/** Earliest non-dock message that attached a file — drives navigation. */
+interface FileRef { chatId: string; nodeId: string; messageId: string; createdAt: number }
 
 class SearchService {
   private keyword = new KeywordIndex();
@@ -100,6 +112,12 @@ class SearchService {
 
   private pendingUpserts = new Set<string>();  // doc ids
   private pendingRemoves = new Set<string>();
+  /** Touched FILE ids (not doc ids) — one file expands to N chunk docs,
+   *  which the flush resolves outside the write transaction. */
+  private pendingFiles = new Set<string>();
+  /** fileId → earliest non-dock message that attached it. Cached because
+   *  computing it is a full messages scan; nulled on every message write. */
+  private fileRefCache: Map<string, FileRef> | null = null;
   private flushTimer: number | null = null;
   private embedQueue = new Set<string>();      // doc ids awaiting (re)embed
   private pumping = false;
@@ -138,6 +156,9 @@ class SearchService {
   initKeyword(): Promise<void> {
     if (this.keywordInit) return this.keywordInit;
     this.keywordInit = (async () => {
+      // Purge attach-then-abandoned file rows BEFORE indexing — otherwise
+      // their chunks enter the index and can only be dropped at hydrate.
+      try { await sweepOrphanFiles(); } catch { /* best-effort */ }
       const docs = await collectAllDocs();
       this.keyword.build(docs);
       this.installHooks();
@@ -156,10 +177,12 @@ class SearchService {
    *  the debounced flush does the real work afterwards. */
   private installHooks(): void {
     const queueUp = (kind: SearchDocKind) => (rawId: string) => {
+      if (kind === "message") this.fileRefCache = null;
       this.pendingUpserts.add(makeDocId(kind, rawId));
       this.scheduleFlush();
     };
     const queueDel = (kind: SearchDocKind) => (rawId: string) => {
+      if (kind === "message") this.fileRefCache = null;
       const id = makeDocId(kind, rawId);
       this.pendingUpserts.delete(id);
       this.pendingRemoves.add(id);
@@ -177,6 +200,15 @@ class SearchService {
       db[table].hook("updating", (_mods: unknown, primKey: string) => { up(primKey); });
       db[table].hook("deleting", (primKey: string) => { del(primKey); });
     }
+
+    // Files expand to one doc per chunk, so they queue by FILE id and the
+    // flush reconciles. Rows are immutable after upload — no updating hook.
+    const touchFile = (fileId: string) => {
+      this.pendingFiles.add(fileId);
+      this.scheduleFlush();
+    };
+    db.files.hook("creating", (primKey: string) => { touchFile(primKey); });
+    db.files.hook("deleting", (primKey: string) => { touchFile(primKey); });
   }
 
   private scheduleFlush(): void {
@@ -190,8 +222,10 @@ class SearchService {
   private async flush(): Promise<void> {
     const removes = [...this.pendingRemoves];
     const upserts = [...this.pendingUpserts];
+    const files   = [...this.pendingFiles];
     this.pendingRemoves.clear();
     this.pendingUpserts.clear();
+    this.pendingFiles.clear();
 
     for (const id of removes) {
       const parsed = parseDocId(id);
@@ -234,8 +268,38 @@ class SearchService {
       }
     }
 
+    for (const fileId of files) {
+      await this.reconcileFileDocs(fileId);
+    }
+
     this.patch({ docCount: this.keyword.size, vectorCount: this.vectors?.size ?? 0 });
     if (this.state.semantic === "ready") void this.pumpEmbeds();
+  }
+
+  /** Bring the index in line with one file row: upsert every chunk doc
+   *  while the file exists (and isn't an image), remove them all otherwise.
+   *  One diff covers create, delete, and delete-rollback. */
+  private async reconcileFileDocs(fileId: string): Promise<void> {
+    invalidateFileDocCache(fileId);   // never serve stale chunks for a reused id
+    const file = await db.files.get(fileId);
+    const existing = this.keyword.idsWithPrefix(`f:${fileId}#`);
+    const live = new Set<string>();
+
+    if (file && file.kind !== "image") {
+      for (const doc of fileChunkDocs(file)) {
+        live.add(doc.id);
+        this.keyword.upsert(doc);
+        if (this.vectors && this.vectors.hashOf(doc.id) !== textHash(embedText(doc))) {
+          this.embedQueue.add(doc.id);
+        }
+      }
+    }
+    for (const id of existing) {
+      if (live.has(id)) continue;
+      this.keyword.remove(id);
+      this.embedQueue.delete(id);
+      if (this.vectors) await this.vectors.remove(id).catch(() => {});
+    }
   }
 
   // ── semantic layer ─────────────────────────────────────────────
@@ -436,9 +500,13 @@ class SearchService {
   /** Raw keyword hits for corpus-scoped retrieval. The default limit is
    *  high because the caller filters down to a (possibly tiny) corpus —
    *  a global top-80 could be entirely out-of-corpus. */
-  async keywordHits(query: string, limit = 200): Promise<KeywordHit[]> {
+  async keywordHits(
+    query: string,
+    limit = 200,
+    filter?: (id: string) => boolean,
+  ): Promise<KeywordHit[]> {
     await this.initKeyword();
-    return this.keyword.search(query, limit);
+    return this.keyword.search(query, limit, filter);
   }
 
   /** Semantic hits restricted to `allowed` doc ids — or null when the
@@ -486,7 +554,10 @@ class SearchService {
     }
 
     const fused = rrfFuse([keywordHits.map(h => h.id), semanticIds]);
-    const top = fused.slice(0, limit);
+    // Over-fetch: hydrate drops unresolvable rows (vanished records,
+    // unreferenced files, the per-file chunk cap) — slicing to `limit`
+    // first would silently return short result lists.
+    const top = fused.slice(0, limit * 3);
 
     const hits = await this.hydrate(top.map(f => ({
       docId:   f.id,
@@ -495,7 +566,7 @@ class SearchService {
       terms:   termsByDoc.get(f.id) ?? tokenizeQuery(q),
     })));
 
-    return { query, hits, tookMs: Math.round(performance.now() - started) };
+    return { query, hits: hits.slice(0, limit), tookMs: Math.round(performance.now() - started) };
   }
 
   private async hydrate(
@@ -524,6 +595,41 @@ class SearchService {
     const gnById    = new Map(graphNodes.filter(Boolean).map(g => [g!._id, g!]));
     const chatById  = new Map(chats.map(c => [c._id, c]));
     const graphById = new Map(graphs.map(g => [g._id, g]));
+
+    // fileChunk hits resolve navigation lazily: files carry no back-
+    // reference, so scan messages (only when such hits exist) for the
+    // EARLIEST non-dock message that attached each file. Hits whose file
+    // has no live non-dock reference are dropped — nothing to open. The
+    // scan result is cached on the service (invalidated by message writes)
+    // so typing in the search box doesn't re-read the table per keystroke.
+    const fileById  = new Map<string, StoredFile>();
+    let fileRef: Map<string, FileRef> = new Map();
+    const fileRawIds = byKind.get("fileChunk") ?? [];
+    if (fileRawIds.length > 0) {
+      const fileIds = [...new Set(
+        fileRawIds.map(raw => parseFileChunkRawId(raw)?.fileId)
+          .filter((x): x is string => Boolean(x)),
+      )];
+      const files = await db.files.bulkGet(fileIds);
+      for (const f of files) if (f) fileById.set(f._id, f);
+      if (!this.fileRefCache) {
+        const cache = new Map<string, FileRef>();
+        for (const m of await db.messages.toArray()) {
+          if (!m.fileIds?.length) continue;
+          const chat = chatById.get(m.chatId);
+          if (!chat || chat.graphId) continue;   // dock chats stay un-navigable
+          for (const fid of m.fileIds) {
+            const prev = cache.get(fid);
+            if (!prev || m.createdAt < prev.createdAt) {
+              cache.set(fid, { chatId: m.chatId, nodeId: m.nodeId, messageId: m._id, createdAt: m.createdAt });
+            }
+          }
+        }
+        this.fileRefCache = cache;
+      }
+      fileRef = this.fileRefCache;
+    }
+    const fileHitCount = new Map<string, number>();
 
     const out: ResolvedHit[] = [];
     for (const r of rows) {
@@ -565,6 +671,21 @@ class SearchService {
         out.push({
           ...base, kind: "node", chatId: n.chatId, nodeId: n._id,
           chatTitle: chat.title, title: n.label, snippet: null,
+        });
+      } else if (parsed.kind === "fileChunk") {
+        const fc   = parseFileChunkRawId(parsed.rawId);
+        const file = fc ? fileById.get(fc.fileId) : undefined;
+        const ref  = fc ? fileRef.get(fc.fileId) : undefined;
+        if (!fc || !file || !ref) continue;
+        if ((fileHitCount.get(fc.fileId) ?? 0) >= FILE_HITS_PER_FILE) continue;
+        const chunk = chunksForFile(fc.fileId, file.content)[fc.chunkIndex];
+        if (!chunk) continue;
+        fileHitCount.set(fc.fileId, (fileHitCount.get(fc.fileId) ?? 0) + 1);
+        out.push({
+          ...base, kind: "fileChunk", chatId: ref.chatId, nodeId: ref.nodeId,
+          chatTitle: chatById.get(ref.chatId)?.title ?? "", title: file.name,
+          snippet: makeSnippet(chunk.text, r.terms),
+          messageId: ref.messageId,
         });
       } else {
         const chat = chatById.get(parsed.rawId);

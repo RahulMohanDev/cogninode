@@ -4,7 +4,10 @@ import { rrfFuse }             from "./fusion";
 import { makeSnippet, collapseText } from "./snippets";
 import { KeywordIndex }        from "./keywordIndex";
 import { topKByDot }           from "./vectorStore";
-import { textHash, docId, parseDocId, type SearchDoc } from "./docs";
+import {
+  textHash, docId, parseDocId, fileChunkDocId, parseFileChunkRawId,
+  type SearchDoc,
+} from "./docs";
 
 const doc = (id: string, title: string, text: string): SearchDoc => ({
   id, kind: "message", chatId: "c1", nodeId: "n1", title, text, rawId: id.slice(2),
@@ -112,6 +115,22 @@ describe("doc ids", () => {
       expect(parseDocId(id)).toEqual({ kind, rawId: "abc-123" });
     }
     expect(parseDocId("zz:nope")).toBeNull();
+  });
+
+  it("round-trips fileChunk ids with the #index suffix", () => {
+    const id = fileChunkDocId("file-9f2", 3);
+    expect(id).toBe("f:file-9f2#3");
+    expect(parseDocId(id)).toEqual({ kind: "fileChunk", rawId: "file-9f2#3" });
+    expect(parseFileChunkRawId("file-9f2#3")).toEqual({ fileId: "file-9f2", chunkIndex: 3 });
+  });
+
+  it("parseFileChunkRawId rejects malformed raw ids", () => {
+    expect(parseFileChunkRawId("no-hash")).toBeNull();
+    expect(parseFileChunkRawId("#3")).toBeNull();          // empty file id
+    expect(parseFileChunkRawId("file-1#")).toBeNull();     // empty index
+    expect(parseFileChunkRawId("file-1#x")).toBeNull();    // non-numeric
+    expect(parseFileChunkRawId("file-1#-2")).toBeNull();   // negative
+    expect(parseFileChunkRawId("file-1#1.5")).toBeNull();  // fractional
   });
 
   it("textHash is stable and content-sensitive", () => {

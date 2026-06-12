@@ -3,6 +3,9 @@ import Dexie, { type EntityTable } from "dexie";
 import { abortNodes }              from "./streamAborts";
 import { migrateGraphsToV6 }       from "./graphMigration";
 import type { Citation }           from "./stream";
+import {
+  INLINE_MAX_CHARS, ATTACH_TURN_CAP_CHARS, STUB_HEAD_CHARS,
+} from "./docrag/chunk";
 
 // Re-export so message consumers can pull the Citation shape from `db`.
 export type { Citation };
@@ -203,15 +206,17 @@ export interface ConceptLink {
   createdAt:  number;
 }
 
-// One embedding per searchable doc (message / reflection / graph node),
-// keyed by the search doc id ("m:<id>" / "r:<id>" / "g:<id>"). Vectors are
-// pre-normalized so cosine similarity reduces to a dot product. `textHash`
-// detects content edits that require re-embedding; `model` scopes rows to
-// the embedding model that produced them (switching models wipes + rebuilds).
+// One embedding per searchable doc (message / reflection / graph node /
+// file chunk), keyed by the search doc id ("m:<id>" / "r:<id>" / "g:<id>"
+// / "f:<fileId>#<n>"). Vectors are pre-normalized so cosine similarity
+// reduces to a dot product. `textHash` detects content edits that require
+// re-embedding; `model` scopes rows to the embedding model that produced
+// them (switching models wipes + rebuilds). `kind` is unindexed data.
 export interface SearchVector {
   _id:       string;     // search doc id, e.g. "m:<messageId>"
-  kind:      "message" | "reflection" | "graphNode";
-  /** Owning chat id — or the GRAPH id for graphNode docs. */
+  kind:      "message" | "reflection" | "graphNode" | "fileChunk";
+  /** Owning chat id — or the GRAPH id for graphNode docs. Empty for
+   *  fileChunk rows: files are chat-agnostic (reused across chats). */
   chatId:    string;
   nodeId:    string;
   model:     string;     // embedding model id from EMBEDDING_MODELS
@@ -430,11 +435,67 @@ export async function renameNode(nodeId: string, label: string): Promise<void> {
   });
 }
 
-// Walk DFS path from a node to root, return flat message array for prompt
+/** Head-of-document preview for stubbed files — cut at a word boundary. */
+function headPreview(content: string): string {
+  if (content.length <= STUB_HEAD_CHARS) return content;
+  const slice = content.slice(0, STUB_HEAD_CHARS);
+  const ws = Math.max(slice.lastIndexOf(" "), slice.lastIndexOf("\n"));
+  const cut = ws > STUB_HEAD_CHARS / 2 ? slice.slice(0, ws) : slice;
+  // A hard cut can land mid-astral-character — never emit a lone surrogate.
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
+/** Compact stand-in for a large file: orientation (name/kind/size + head
+ *  preview) without the body — the body arrives as retrieved excerpts in
+ *  the system context, keyed by the same "Attached document excerpts"
+ *  heading this stub points at. */
+function documentStub(file: StoredFile): string {
+  return (
+    `<document name="${file.name}" kind="${file.kind}" size="${file.content.length} chars" indexed="true">\n` +
+    `[beginning of document]\n` +
+    `${headPreview(file.content)}\n…\n` +
+    `[Document too large to inline. The most relevant excerpts for the current ` +
+    `question are provided in the system context under "Attached document excerpts".]\n` +
+    `</document>`
+  );
+}
+
+/** Delete file rows that no message references. Rows persist at attach
+ *  time, so attachments abandoned before sending (chip removed in a past
+ *  session, failed sends, closed tabs) otherwise live forever — and their
+ *  chunks would enter the search index only to be dropped at hydrate. The
+ *  grace window spares files sitting in a composer that hasn't sent yet,
+ *  including in other tabs. */
+export async function sweepOrphanFiles(graceMs = 60 * 60 * 1000): Promise<number> {
+  const cutoff = Date.now() - graceMs;
+  const referenced = new Set<string>();
+  await db.messages.each(m => {
+    for (const id of m.fileIds ?? []) referenced.add(id);
+  });
+  const orphanIds: string[] = [];
+  await db.files.each(f => {
+    if (!referenced.has(f._id) && f.createdAt < cutoff) orphanIds.push(f._id);
+  });
+  if (orphanIds.length > 0) await db.files.bulkDelete(orphanIds);
+  return orphanIds.length;
+}
+
+export interface PathMessagesResult {
+  messages: Array<{ role: "user" | "assistant"; content: string | unknown[] }>;
+  /** Files rendered as stubs anywhere on this path — the retrieval targets
+   *  for the current send. Deduped, in path order. */
+  stubbedFileIds: string[];
+}
+
+// Walk DFS path from a node to root, return flat message array for prompt.
+// Large files inline in full only on the attach turn (and only up to a
+// cap); everywhere else they collapse to a stub and ride along as
+// retrieved excerpts instead — see stubbedFileIds.
 export async function buildPathMessages(
   chatId: string,
   nodeId: string,
-): Promise<Array<{ role: "user" | "assistant"; content: string | unknown[] }>> {
+): Promise<PathMessagesResult> {
   const allNodes = await db.nodes.where("chatId").equals(chatId).toArray();
   const nodeMap  = new Map(allNodes.map(n => [n._id, n]));
 
@@ -447,14 +508,31 @@ export async function buildPathMessages(
     currentId = node.parentId;
   }
 
-  const result: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
-
+  // Pass 1 — flatten the path so the LAST user message (the attach turn:
+  // the question being sent right now) is known before rendering.
+  const pathMsgs: Message[] = [];
   for (const node of path) {
     const msgs = await db.messages
       .where("nodeId").equals(node._id)
       .sortBy("createdAt");
+    pathMsgs.push(...msgs);
+  }
+  let lastUserMsgId: string | null = null;
+  for (const msg of pathMsgs) {
+    if (msg.role === "user") lastUserMsgId = msg._id;
+  }
 
-    for (const msg of msgs) {
+  const result: Array<{ role: "user" | "assistant"; content: string | unknown[] }> = [];
+  const stubbedFileIds: string[] = [];
+  const stubbedSeen = new Set<string>();
+  // The attach-turn inline allowance is a SHARED budget across the turn's
+  // large files — per-file caps would let N medium files blow the request.
+  let attachBudget = ATTACH_TURN_CAP_CHARS;
+  // Files inlined in full on the attach turn need no excerpts, even if an
+  // earlier occurrence on the path stubbed them.
+  const inlinedOnAttachTurn = new Set<string>();
+
+  for (const msg of pathMsgs) {
       // User messages with attachments: inject file content here so the
       // composer textarea stays clean (no giant <document> blob visible to
       // the user) while the model still sees the full document context.
@@ -465,13 +543,27 @@ export async function buildPathMessages(
 
         const images    = files.filter(f => f.kind === "image");
         const nonImages = files.filter(f => f.kind !== "image");
+        const isAttachTurn = msg._id === lastUserMsgId;
 
         // Build the text portion: file context first (so the question reads
         // naturally after the attached material), then the branch quote (if
         // any), then the user's typed text.
         const textChunks: string[] = [];
         for (const file of nonImages) {
-          if (file.kind === "pdf") {
+          const inlineFull =
+            file.content.length <= INLINE_MAX_CHARS ||
+            (isAttachTurn && file.content.length <= attachBudget);
+          if (inlineFull && isAttachTurn && file.content.length > INLINE_MAX_CHARS) {
+            attachBudget -= file.content.length;
+            inlinedOnAttachTurn.add(file._id);
+          }
+          if (!inlineFull) {
+            textChunks.push(documentStub(file));
+            if (!stubbedSeen.has(file._id)) {
+              stubbedSeen.add(file._id);
+              stubbedFileIds.push(file._id);
+            }
+          } else if (file.kind === "pdf") {
             textChunks.push(`<document name="${file.name}">\n${file.content}\n</document>`);
           } else if (file.kind === "code") {
             const ext = file.name.split(".").pop() ?? "";
@@ -512,10 +604,14 @@ export async function buildPathMessages(
       } else {
         result.push({ role: msg.role, content: msg.content });
       }
-    }
   }
 
-  return result;
+  // Safe as a post-filter: the attach turn is the last user message, so
+  // every historical stub push happens before it renders.
+  return {
+    messages: result,
+    stubbedFileIds: stubbedFileIds.filter(id => !inlinedOnAttachTurn.has(id)),
+  };
 }
 
 // ── Cascade-delete helpers ─────────────────────────────────────

@@ -18,6 +18,8 @@ import {
 } from "react";
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
+import { retrieveForFiles }                from "../lib/docrag/retrieve";
+import { buildFileContext }                from "../lib/docrag/prompt";
 import { resolveModelSync }               from "../lib/models";
 import { autoTitleChat, autoTitleNode, backfillTitles, deriveTitle } from "../lib/title";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
@@ -231,6 +233,23 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
     void (async (): Promise<void> => {
       // Persist user message to Dexie first so it shows up in the path.
       const userMsgId = crypto.randomUUID();
+
+      // After a failed send the user message is deleted — file rows it
+      // carried become unreachable (and stay search-indexed) unless some
+      // surviving message still references them.
+      const deleteOrphanedSendFiles = async (): Promise<void> => {
+        const ids = params.fileIds ?? [];
+        if (ids.length === 0) return;
+        try {
+          const wanted = new Set(ids);
+          const stillUsed = new Set<string>();
+          await db.messages.each(m => {
+            for (const id of m.fileIds ?? []) if (wanted.has(id)) stillUsed.add(id);
+          });
+          const orphans = ids.filter(id => !stillUsed.has(id));
+          if (orphans.length > 0) await db.files.bulkDelete(orphans);
+        } catch { /* best-effort cleanup */ }
+      };
       try {
         await db.messages.add({
           _id:       userMsgId,
@@ -301,10 +320,32 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         // Build full path context from Dexie. The user message we just
         // added is the CURRENT request — it must be the last message in
         // the request body, not dropped.
-        let pathMessages = await buildPathMessages(chatId, nodeId);
+        const { messages: fullPath, stubbedFileIds } = await buildPathMessages(chatId, nodeId);
+        let pathMessages = fullPath;
         if (params.graphContext) {
           pathMessages = pathMessages.slice(-GRAPH_CHAT_HISTORY_MAX);
         }
+
+        // Large files on the path were rendered as stubs — retrieve the
+        // excerpts most relevant to the current question and send them in
+        // system context. Branch-quote sends carry their real subject in
+        // the quote, so it joins the query. Retrieval failure degrades to
+        // stubs-only; it must never fail the send.
+        let fileContext = "";
+        if (stubbedFileIds.length > 0) {
+          try {
+            const retrievalQuery = [params.quote ?? "", params.composerText]
+              .filter(s => s.length > 0)
+              .join("\n");
+            const retrieval = await retrieveForFiles(stubbedFileIds, retrievalQuery);
+            fileContext = buildFileContext(retrieval).text;
+          } catch (err) {
+            console.warn("[docrag] file retrieval failed — sending stubs only:", err);
+          }
+        }
+        const systemExtra = [params.graphContext?.text ?? "", fileContext]
+          .filter(s => s.length > 0)
+          .join("\n\n");
 
         let fullContent   = "";
         let fullReasoning = "";
@@ -314,7 +355,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           apiKey: apiKeyRef.current,
           openRouterId: model.openRouterId,
           messages: pathMessages,
-          ...(params.graphContext ? { systemExtra: params.graphContext.text } : {}),
+          ...(systemExtra ? { systemExtra } : {}),
           model,
           signal: controller.signal,
           webSearch: params.webSearch ?? false,
@@ -402,6 +443,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           onError: async (msg, status) => {
             // Remove the orphan user message we persisted up top.
             try { await db.messages.delete(userMsgId); } catch { /* ignore */ }
+            await deleteOrphanedSendFiles();
 
             const live = slotsRef.current.get(nodeId);
             if (!live || live !== slot) return;
@@ -433,6 +475,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         const live = slotsRef.current.get(nodeId);
         if (!live || live !== slot) return;
         try { await db.messages.delete(userMsgId); } catch { /* ignore */ }
+        await deleteOrphanedSendFiles();
         const message = err instanceof Error ? err.message : String(err);
         updateSlot(slot, {
           state: "error",
