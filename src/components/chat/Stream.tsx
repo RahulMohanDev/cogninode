@@ -33,6 +33,10 @@ export interface StreamProps {
   /** HTTP status behind `streamError`, when it came from a non-OK response.
    *  A 401 swaps the generic error line for the key-rejected recovery card. */
   streamErrorStatus?:   number;
+  /** Key pool the FAILED send spent (slot-captured at send time). The
+   *  error cards key their copy off this — never the live settings value,
+   *  which the user may have flipped since. */
+  streamKeySource?:     "byok" | "managed";
   /** Invoked from the 401 card: clears the rejected key and returns to setup. */
   onAuthReset?:         () => void;
   onBranchFromMessage?: (msg: DbMessage, quote?: string) => void;
@@ -62,6 +66,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     streamingReasoning,
     streamError,
     streamErrorStatus,
+    streamKeySource,
     onAuthReset,
     onBranchFromMessage,
     reflectionsMode = false,
@@ -71,8 +76,10 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   },
   ref,
 ) {
-  // Error-card copy depends on which key pool the failed send spent.
-  const { keySource } = useSettings();
+  // Error-card copy depends on which key pool the FAILED send spent —
+  // slot-captured value first; live settings only as a fallback.
+  const { keySource: liveKeySource } = useSettings();
+  const keySource = streamKeySource ?? liveKeySource;
   const { managed, openTopUp } = useCredits();
 
   // Messages for the current node only — parent-node messages are sent to the

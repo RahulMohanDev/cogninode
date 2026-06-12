@@ -12,6 +12,7 @@
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ConvexReactClient } from "convex/react";
+import { getMeta, setMeta } from "../db";
 import type { RemoteRow } from "./merge";
 
 /** Contents at or below this inline straight into the synced doc. */
@@ -26,7 +27,10 @@ interface FileDocLike extends Record<string, unknown> {
 }
 
 /** Prepare a files-table row for push. Returns null when the row must be
- *  skipped (over the hard cap). */
+ *  skipped (over the hard cap). Files are immutable, so a successful blob
+ *  upload is cached by row id + length — outbox re-pushes (initial-enqueue
+ *  duplicates, lost-ack retries) reuse the storageId instead of orphaning
+ *  a fresh paid blob each attempt. */
 export async function prepareFileDocForPush(
   client: ConvexReactClient,
   row: Record<string, unknown>,
@@ -34,6 +38,14 @@ export async function prepareFileDocForPush(
   const content = typeof row["content"] === "string" ? row["content"] : "";
   if (content.length > SYNC_FILE_MAX_CHARS) return null;
   if (content.length <= INLINE_SYNC_MAX_CHARS) return row;
+
+  const rowId = typeof row["_id"] === "string" ? row["_id"] : "";
+  const cacheKey = `fileBlobUpload:${rowId}`;
+  const cached = await getMeta<{ len: number; storageId: string }>(cacheKey);
+  if (cached && cached.len === content.length) {
+    return { ...row, content: "", contentStorageId: cached.storageId };
+  }
+
   const uploadUrl = await client.mutation(api.files.generateUploadUrl, {});
   const res = await fetch(uploadUrl, {
     method: "POST",
@@ -42,6 +54,7 @@ export async function prepareFileDocForPush(
   });
   if (!res.ok) throw new Error(`file upload failed: HTTP ${res.status}`);
   const { storageId } = (await res.json()) as { storageId: string };
+  await setMeta(cacheKey, { len: content.length, storageId });
   return { ...row, content: "", contentStorageId: storageId };
 }
 

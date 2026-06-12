@@ -12,6 +12,7 @@ import { api } from "../../../convex/_generated/api";
 import { clearAllUserData, db } from "../../lib/db";
 import { getConvexClient } from "../../lib/convexClient";
 import { isManagedMode } from "../../lib/managedConfig";
+import { resetSyncState } from "../../lib/sync/reset";
 import { useApiKeyValidation } from "../../hooks/useApiKeyValidation";
 import { useCredits } from "../../hooks/useCredits";
 import {
@@ -161,6 +162,7 @@ function ManagedAccountSection() {
       const client = getConvexClient();
       if (client) await client.action(api.account.deleteMyData, {});
       await clearAllUserData();
+      await resetSyncState();
       try { localStorage.removeItem("cogninode_api_key"); } catch { /* ignore */ }
       await user?.delete();
       window.location.assign("/");
@@ -993,6 +995,11 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
     setBusy(true);
     try {
       await clearAllUserData();
+      // Managed mode: the cloud copy survives a local wipe by design — so
+      // the pull cursor must rewind or later pulls would materialize
+      // orphan rows (a message without its chat). Resetting re-downloads
+      // everything cleanly.
+      if (isManagedMode()) await resetSyncState();
       setConfirmOpen(false);
       setConfirmText("");
       onClearAll();
@@ -1047,7 +1054,11 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
       <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
           <div className="tw:font-medium tw:text-[14px] tw:text-ink">Clear all data</div>
-          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Wipes IndexedDB and the API key. Cannot be undone.</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            {isManagedMode()
+              ? "Wipes this browser and the API key. Synced data re-downloads from your account — use Delete account to remove it everywhere."
+              : "Wipes IndexedDB and the API key. Cannot be undone."}
+          </div>
         </div>
         <button
           className="tw:bg-bg-3 tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:border-coral tw:text-coral tw:hover:bg-coral-tint"

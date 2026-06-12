@@ -98,6 +98,34 @@ export const reportUsage = mutation({
   },
 });
 
+/** Reconciliation settlement: dock unreported upstream spend (see
+ *  planReconcile in lib/credits.ts) and true usdReportedTotal up to the
+ *  authoritative figure so the next cycle starts clean. */
+export const applyReconcileAdjust = internalMutation({
+  args: {
+    userId: v.id("users"),
+    credits: v.number(),
+    usdCost: v.number(),
+    reportedTotal: v.number(),
+  },
+  handler: async (ctx, { userId, credits, usdCost, reportedTotal }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) return;
+    await ctx.db.insert("creditLedger", {
+      userId,
+      kind: "reconcile_adjust",
+      credits: -credits,
+      usdCost,
+      costSource: "upstream",
+      createdAt: Date.now(),
+    });
+    await ctx.db.patch(userId, {
+      creditsBalance: user.creditsBalance - credits,
+      usdReportedTotal: reportedTotal,
+    });
+  },
+});
+
 /** One-time backfill: users created before the ledger existed have a
  *  starter balance but no grant row. Run from the dashboard after deploy. */
 export const backfillStarterGrants = internalMutation({

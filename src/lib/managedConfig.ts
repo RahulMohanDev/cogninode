@@ -1,10 +1,12 @@
 // src/lib/managedConfig.ts
 // Decides which mode the app boots in. MANAGED mode (Clerk sign-in, Convex
 // backend, per-user OpenRouter key + credits) switches on only when both env
-// vars are present at build time — without them the app runs exactly as the
-// original local-first build (BYOK key in localStorage, no network deps
-// beyond OpenRouter). That keeps self-hosting and the Playwright smokes
-// working with zero configuration.
+// vars are present at build time — without them the app runs as the
+// original local-first build: BYOK key in localStorage, no network deps
+// beyond OpenRouter, no backend code on any runtime path. (Not bit-for-bit:
+// request attribution headers, the usage-accounting body param, and a few
+// optional persisted message fields are shared with managed mode.) That
+// keeps self-hosting and the Playwright smokes working with zero config.
 //
 // Test seam: setting localStorage "cogninode_force_local" = "1" (e.g. via
 // Playwright addInitScript) forces local mode even when the env is

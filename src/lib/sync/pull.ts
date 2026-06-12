@@ -18,24 +18,40 @@ const CURSOR_KEY = "syncCursor";
 const PAGE = 200;
 
 let pulling = false;
+let pullQueued = false;
 
+/** Coalescing pull: a trigger that lands while a pull is in flight is NOT
+ *  dropped — it queues exactly one follow-up run. (The latestSeq effect
+ *  fires once per distinct value; dropping a trigger that raced an
+ *  in-flight pull would strand the device on stale data until the next
+ *  remote write.) */
 export async function pullOnce(): Promise<{ applied: number }> {
   const client = getConvexClient();
-  if (!client || pulling) return { applied: 0 };
+  if (!client) return { applied: 0 };
+  if (pulling) {
+    pullQueued = true;
+    return { applied: 0 };
+  }
   pulling = true;
   try {
     let applied = 0;
-    let cursor = (await getMeta<number>(CURSOR_KEY)) ?? 0;
-    for (let page = 0; page < 200; page++) {
-      const res = await client.query(api.sync.pullSince, { cursor, limit: PAGE });
-      if (res.rows.length > 0) {
-        const rows = await hydrateRemoteFileDocs(client, res.rows as RemoteRow[]);
-        applied += await applyPage(rows);
+    do {
+      pullQueued = false;
+      let cursor = (await getMeta<number>(CURSOR_KEY)) ?? 0;
+      // The page cap only bounds one inner sweep; `done=false` re-queues,
+      // so initial joins of large accounts keep going to completion.
+      for (let page = 0; page < 200; page++) {
+        const res = await client.query(api.sync.pullSince, { cursor, limit: PAGE });
+        if (res.rows.length > 0) {
+          const rows = await hydrateRemoteFileDocs(client, res.rows as RemoteRow[]);
+          applied += await applyPage(rows);
+        }
+        cursor = res.nextCursor;
+        await setMeta(CURSOR_KEY, cursor);
+        if (res.done) break;
+        if (page === 199) pullQueued = true;
       }
-      cursor = res.nextCursor;
-      await setMeta(CURSOR_KEY, cursor);
-      if (res.done) break;
-    }
+    } while (pullQueued);
     await setMeta("lastSyncedAt", Date.now());
     return { applied };
   } finally {

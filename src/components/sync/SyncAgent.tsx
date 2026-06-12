@@ -30,6 +30,10 @@ export function SyncAgent() {
 function SyncAgentInner() {
   const latest = useQuery(api.sync.latestSeq);
   const pending = useLiveQuery(() => db.outbox.count(), []) ?? 0;
+  const latestRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (typeof latest === "number") latestRef.current = latest;
+  }, [latest]);
 
   // One-time bootstrap: enqueue all existing local rows, then drain.
   const initRef = useRef(false);
@@ -50,12 +54,19 @@ function SyncAgentInner() {
     return () => clearTimeout(t);
   }, [pending]);
 
-  // Sweep: retries failed pushes even when the count didn't change.
+  // Sweep: retries failed pushes even when the count didn't change, and
+  // re-checks the pull cursor (a pull that errored mid-run has no other
+  // re-trigger until the next remote write).
   useEffect(() => {
     const t = setInterval(() => {
       void db.outbox.count().then((n) => {
         if (n > 0) void pushLoop().catch(() => {});
       });
+      void (async () => {
+        const cursor = (await getMeta<number>("syncCursor")) ?? 0;
+        const latest = latestRef.current;
+        if (typeof latest === "number" && latest > cursor) await pullOnce();
+      })().catch(() => {});
     }, 60_000);
     return () => clearInterval(t);
   }, []);

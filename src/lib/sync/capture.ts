@@ -62,6 +62,16 @@ function inRemoteApply(): boolean {
   return Boolean(tx && tx[REMOTE_FLAG]);
 }
 
+/** Schema upgrades must pass through untouched: Dexie rebuilds the
+ *  middleware stack per version step, so during pre-v7 steps the outbox
+ *  store doesn't exist yet (capturing would throw and BRICK the upgrade),
+ *  and during the v7 step the backfill's Collection.modify surfaces here
+ *  as puts — stamping would clobber the historical `_modifiedAt` values
+ *  the upgrade just computed and spuriously enqueue the whole database. */
+function inVersionChange(trans: unknown): boolean {
+  return (trans as { mode?: string } | null)?.mode === "versionchange";
+}
+
 interface TxCreator {
   _createTransaction: (
     mode: IDBTransactionMode,
@@ -99,7 +109,18 @@ export function setupSyncCapture(db: Dexie): void {
           return {
             ...table,
             mutate(req) {
-              if (inRemoteApply()) return table.mutate(req);
+              if (inRemoteApply() || inVersionChange(req.trans)) {
+                return table.mutate(req);
+              }
+              // Belt-and-braces: if this middleware stack was built before
+              // the outbox store existed, capture is impossible — pass
+              // through rather than throw.
+              let outboxTable: ReturnType<DBCore["table"]>;
+              try {
+                outboxTable = core.table("outbox");
+              } catch {
+                return table.mutate(req);
+              }
               const now = Date.now();
               const entries: OutboxEntry[] = [];
               if (req.type === "add" || req.type === "put") {
@@ -125,8 +146,7 @@ export function setupSyncCapture(db: Dexie): void {
               }
               return table.mutate(req).then(async (res) => {
                 if (entries.length > 0) {
-                  await core
-                    .table("outbox")
+                  await outboxTable
                     .mutate({ type: "add", trans: req.trans, values: entries });
                 }
                 return res;

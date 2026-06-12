@@ -5,3 +5,6 @@ dist
 
 # local scratch / handoff notes (not part of the repo)
 handoff.md
+
+# local tool output
+cc.json

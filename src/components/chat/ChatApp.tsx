@@ -68,7 +68,7 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
       .filter((n): n is DbNode => !!n);
   }, [nodes, currentNodeId]);
 
-  const { state, streamingText, streamingReasoning, error: streamError, errorStatus: streamErrorStatus, send, cancel } = useStream(chatId, currentNodeId);
+  const { state, streamingText, streamingReasoning, error: streamError, errorStatus: streamErrorStatus, errorKeySource, send, cancel } = useStream(chatId, currentNodeId);
 
   // Branch quote — passed to Composer as a chip when branching from selection
   // or from a message's "Branch from this" action.
@@ -404,15 +404,17 @@ export function ChatApp({ chatId, initialPrefill, focusMessageId, focusQuery }: 
           streamingReasoning={streamingReasoning}
           {...(streamError !== null ? { streamError } : {})}
           {...(streamErrorStatus !== undefined ? { streamErrorStatus } : {})}
+          {...(errorKeySource !== undefined ? { streamKeySource: errorKeySource } : {})}
           onAuthReset={() => {
             // Drop the dead error slot so the node is clean when we come
-            // back. BYOK keys also get cleared — the shared settings context
-            // flips ApiKeyGate to the setup screen immediately. A managed
-            // 401 is OUR provisioning's problem, not the user's key: keep
-            // state, the card just dismisses (Convex reactivity re-delivers
-            // the key if it was rotated server-side).
+            // back. Key the action off the FAILED send's pool (slot-
+            // captured), not live settings — a user who added a BYOK key
+            // after a managed 401 must not get it cleared. BYOK 401s clear
+            // the key (the shared settings context flips the gate); managed
+            // 401s just dismiss (our provisioning's problem, and Convex
+            // reactivity re-delivers a rotated key).
             cancel();
-            if (keySource === "byok") clearApiKey();
+            if ((errorKeySource ?? keySource) === "byok") clearApiKey();
           }}
           onBranchFromMessage={(msg, q) => void handleBranchFromMessage(msg, q)}
           reflectionsMode={reflectionsMode}

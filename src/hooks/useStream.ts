@@ -23,6 +23,10 @@ export function useStream(chatId: string, nodeId: string) {
   const streamingReasoning = slot?.streamingReasoning ?? "";
   const error              = slot?.error              ?? null;
   const errorStatus        = slot?.errorStatus;
+  /** Key pool the FAILED/streaming send spent — error recovery must key
+   *  off this, not the live settings value (which the user may have
+   *  flipped since by adding/removing a BYOK key). */
+  const errorKeySource     = slot?.keySource;
 
   const send = useCallback((params: SendParams) => {
     ctx.send(chatId, nodeId, params);
@@ -32,5 +36,5 @@ export function useStream(chatId: string, nodeId: string) {
     ctx.cancel(nodeId);
   }, [ctx, nodeId]);
 
-  return { state, streamingText, streamingReasoning, error, errorStatus, send, cancel };
+  return { state, streamingText, streamingReasoning, error, errorStatus, errorKeySource, send, cancel };
 }

@@ -21,9 +21,26 @@ export const getUrls = query({
   handler: async (ctx, { storageIds }) => {
     const user = await getCurrentUser(ctx);
     if (!user) return [];
+    // Ownership check: only blobs referenced by the CALLER's synced file
+    // rows resolve — a storage id is not a capability (IDOR otherwise).
+    const fileRows = await ctx.db
+      .query("syncRows")
+      .withIndex("by_user_table_client", (q) =>
+        q.eq("userId", user._id).eq("table", "files"),
+      )
+      .collect();
+    const owned = new Set<string>();
+    for (const row of fileRows) {
+      const sid = (row.doc as { contentStorageId?: string } | undefined)
+        ?.contentStorageId;
+      if (sid) owned.add(sid);
+    }
     const out: Array<{ storageId: string; url: string | null }> = [];
     for (const storageId of storageIds.slice(0, 50)) {
-      out.push({ storageId, url: await ctx.storage.getUrl(storageId) });
+      out.push({
+        storageId,
+        url: owned.has(storageId) ? await ctx.storage.getUrl(storageId) : null,
+      });
     }
     return out;
   },

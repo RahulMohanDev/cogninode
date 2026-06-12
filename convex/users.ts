@@ -24,11 +24,15 @@ export async function userByClerkId(ctx: QueryCtx, clerkUserId: string) {
     .unique();
 }
 
-/** Resolve the calling user's row, or null when unauthenticated/unknown. */
+/** Resolve the calling user's row, or null when unauthenticated, unknown,
+ *  or soft-deleted — deletion gating is uniform across EVERY consumer
+ *  (sync, files, credits, payments), not re-checked piecemeal. */
 export async function getCurrentUser(ctx: QueryCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
-  return await userByClerkId(ctx, identity.subject);
+  const user = await userByClerkId(ctx, identity.subject);
+  if (!user || user.deletedAt !== undefined) return null;
+  return user;
 }
 
 export const current = query({
@@ -57,6 +61,9 @@ interface ClerkProfile {
  *  fields, re-scheduling provisioning only from the "error" state. */
 async function upsertUser(ctx: MutationCtx, profile: ClerkProfile) {
   const existing = await userByClerkId(ctx, profile.clerkUserId);
+  // A soft-deleted account stays deleted — webhook re-deliveries and
+  // ensure() calls from a lingering session must not revive it.
+  if (existing && existing.deletedAt !== undefined) return existing._id;
   if (!existing) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {

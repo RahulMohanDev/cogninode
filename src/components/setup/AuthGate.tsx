@@ -39,6 +39,7 @@ import {
   hasAnyUserData,
   setMeta,
 } from "../../lib/db";
+import { resetSyncState } from "../../lib/sync/reset";
 import { exportAllChats } from "../../lib/export";
 import { SetupHero } from "./SetupHero";
 import { Glyph } from "../Glyph";
@@ -88,14 +89,30 @@ function ManagedBoot({ children }: { children: ReactNode }) {
 
   // 3. Create the user row (and schedule key provisioning) if the Clerk
   // webhook hasn't done it yet. Guarded — StrictMode mounts twice and the
-  // `me === null` result can repeat across re-renders.
+  // `me === null` result can repeat across re-renders. A rejection resets
+  // the guard so Retry can re-fire; without that the boot screen would be
+  // permanent (the original deadlock).
   const ensuredRef = useRef(false);
+  const [bootProblem, setBootProblem] = useState<string | null>(null);
   useEffect(() => {
     if (me === null && !ensuredRef.current) {
       ensuredRef.current = true;
-      void ensure();
+      ensure().catch((err: unknown) => {
+        ensuredRef.current = false;
+        setBootProblem(err instanceof Error ? err.message : String(err));
+      });
     }
   }, [me, ensure]);
+
+  // Escape hatch: a boot that hasn't produced a user row after a while
+  // (deleted-but-still-signed-in account, broken deployment) must offer
+  // sign-out — a full-screen spinner with no controls is a dead end.
+  const [bootStuck, setBootStuck] = useState(false);
+  useEffect(() => {
+    if (me !== null && me !== undefined) { setBootStuck(false); return undefined; }
+    const t = setTimeout(() => setBootStuck(true), 12_000);
+    return () => clearTimeout(t);
+  }, [me]);
 
   // 6. Account-link check: one-shot per Clerk user id.
   const [link, setLink] = useState<LinkDecision | null>(null);
@@ -108,7 +125,14 @@ function ManagedBoot({ children }: { children: ReactNode }) {
       const stored = await getMeta<string>(OWNER_META_KEY);
       const hasData = await hasAnyUserData();
       const decision = decideAccountLink(stored, clerkUserId, hasData);
-      if (decision.kind === "fresh") await setMeta(OWNER_META_KEY, clerkUserId);
+      if (decision.kind === "fresh") {
+        // Ownership CHANGED hands (stale stamp over an empty browser):
+        // the previous account's sync cursor/outbox/queued reports must
+        // not leak into this one — a foreign cursor would strand this
+        // account's cloud data unpulled forever.
+        if (stored && stored !== clerkUserId) await resetSyncState();
+        await setMeta(OWNER_META_KEY, clerkUserId);
+      }
       setLink(decision);
     })();
   }, [clerkUser?.id]);
@@ -122,6 +146,27 @@ function ManagedBoot({ children }: { children: ReactNode }) {
   }, [managedKey, setManagedKey]);
 
   if (me === undefined || me === null) {
+    if (bootProblem || bootStuck) {
+      return (
+        <ErrorScreen
+          label={
+            bootProblem
+              ? `We couldn't set up your account: ${bootProblem}`
+              : "Setting up is taking longer than it should. Your account may " +
+                "have been deleted — sign out, or try again."
+          }
+          retry={() => {
+            setBootProblem(null);
+            setBootStuck(false);
+            ensuredRef.current = false;
+            ensure().catch((err: unknown) => {
+              ensuredRef.current = false;
+              setBootProblem(err instanceof Error ? err.message : String(err));
+            });
+          }}
+        />
+      );
+    }
     return <BootScreen label="Setting up your account…" />;
   }
   if (me.keyStatus === "provisioning") {
@@ -226,6 +271,10 @@ function OwnerMismatch({
     setBusy(true);
     try {
       await clearAllUserData();
+      // The previous owner's sync bookkeeping (cursor, outbox, queued
+      // usage reports) must go with their data — leaking it would strand
+      // this account's cloud pulls and push foreign tombstones/charges.
+      await resetSyncState();
       onResolved(user.id);
     } finally {
       setBusy(false);

@@ -25,6 +25,9 @@ export interface ComposerSendParams {
   /** Set when the simple (tier) picker chose the model — persisted on the
    *  reply so the UI can label it "Fast"/"Thinking" instead of the model. */
   tierKey?:     string;
+  /** The already-resolved model — lets the send proceed even when the
+   *  catalog mirror can't resolve modelId (tier models on cold start). */
+  modelDef?:    ModelDef;
 }
 
 export interface ComposerProps {
@@ -264,6 +267,7 @@ export function Composer({
     onClearQuote?.();
     void onSend({
       modelId: model.id,
+      modelDef: model,
       composerText,
       ...(quote !== undefined ? { quote } : {}),
       ...(fileIds.length ? { fileIds } : {}),

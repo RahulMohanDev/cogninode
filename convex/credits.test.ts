@@ -123,6 +123,57 @@ describe("reportUsage", () => {
   });
 });
 
+describe("planReconcile (authoritative billing math)", () => {
+  it("absorbs drift under the allowance (auto-titles stay free)", async () => {
+    const { planReconcile } = await import("./lib/credits");
+    const plan = planReconcile(0.0042, 0.0, 100); // $0.0042 of titles, nothing reported
+    expect(plan.dockCredits).toBe(0);
+    expect(plan.targetLimitUsd).toBeCloseTo(0.0042 + 0.05, 6);
+  });
+
+  it("docks unreported spend and pegs to the post-dock balance", async () => {
+    const { planReconcile } = await import("./lib/credits");
+    // User streamed $0.03 but reported nothing: dock ceil(0.03/0.0005)=60.
+    const plan = planReconcile(0.03, 0.0, 100);
+    expect(plan.dockCredits).toBe(60);
+    expect(plan.dockUsd).toBeCloseTo(0.03, 6);
+    // post-dock balance 40 → budget $0.02; limit = usage + 0.02.
+    expect(plan.targetLimitUsd).toBeCloseTo(0.05, 6);
+  });
+
+  it("never re-pegs below usage even when the dock sends balance negative", async () => {
+    const { planReconcile } = await import("./lib/credits");
+    const plan = planReconcile(0.08, 0.0, 100); // dock 160 > balance 100
+    expect(plan.dockCredits).toBe(160);
+    expect(plan.targetLimitUsd).toBeCloseTo(0.08, 6); // max(0, -60) budget
+  });
+
+  it("honest reporters get the plain re-peg", async () => {
+    const { planReconcile } = await import("./lib/credits");
+    const plan = planReconcile(0.05, 0.05, 60);
+    expect(plan.dockCredits).toBe(0);
+    expect(plan.targetLimitUsd).toBeCloseTo(0.05 + 0.03, 6);
+  });
+
+  it("applyReconcileAdjust writes the ledger row and trues up", async () => {
+    const { tx, asUser } = await seededUser();
+    const user = await tx.run(async (ctx) => ctx.db.query("users").first());
+    await tx.mutation(internal.credits.applyReconcileAdjust, {
+      userId: user!._id,
+      credits: 60,
+      usdCost: 0.03,
+      reportedTotal: 0.03,
+    });
+    expect(await asUser.query(api.credits.balance, {})).toBe(40);
+    const rows = await tx.run(async (ctx) =>
+      ctx.db.query("creditLedger").collect(),
+    );
+    expect(rows.find((r) => r.kind === "reconcile_adjust")?.credits).toBe(-60);
+    const after = await tx.run(async (ctx) => ctx.db.query("users").first());
+    expect(after!.usdReportedTotal).toBe(0.03);
+  });
+});
+
 describe("backfillStarterGrants", () => {
   it("adds rows only for users missing one", async () => {
     const { tx } = await seededUser();

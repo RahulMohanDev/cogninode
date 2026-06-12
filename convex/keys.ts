@@ -79,6 +79,13 @@ export const setDisabled = internalMutation({
       .query("openrouterKeys")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .unique();
-    if (row) await ctx.db.patch(row._id, { disabled });
+    if (!row) return;
+    // Disabling scrubs the raw key string: it's dead upstream, and a
+    // deleted account must not leave a plaintext secret behind. keyHash
+    // stays for upstream bookkeeping.
+    await ctx.db.patch(row._id, {
+      disabled,
+      ...(disabled ? { apiKey: "" } : {}),
+    });
   },
 });

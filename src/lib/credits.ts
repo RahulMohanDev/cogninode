@@ -7,6 +7,19 @@
 
 export const USD_PER_CREDIT = 0.0005;
 export const CREDIT_PRICE_INR = 0.10;
+/** Mirror of the server's flat surcharge for web-search sends whose
+ *  response carried no upstream cost (convex/lib/credits.ts) — the
+ *  per-reply chip must show what the ledger actually deducted. */
+export const WEB_SEARCH_FALLBACK_USD = 0.02;
+
+/** The USD figure the server charges for a message — surcharge included. */
+export function chargedUsd(
+  costUsd: number,
+  costSource: "upstream" | "estimated" | undefined,
+  webSearch: boolean | undefined,
+): number {
+  return costUsd + (webSearch && costSource === "estimated" ? WEB_SEARCH_FALLBACK_USD : 0);
+}
 
 /** Per-message charge: whole credits, minimum 1. Ratio rounded to 6dp
  *  before ceil so float noise can't bump a message into the next credit.

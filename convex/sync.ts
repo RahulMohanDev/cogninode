@@ -53,6 +53,19 @@ export const pushOps = mutation({
       if (existing && existing.modifiedAt >= op.modifiedAt) continue;
       lastSeq++;
       if (existing) {
+        // A replaced or tombstoned files row releases its old blob —
+        // nothing else ever cleans Convex storage up.
+        const oldStorageId = (existing.doc as { contentStorageId?: string } | undefined)
+          ?.contentStorageId;
+        const newStorageId = (op.doc as { contentStorageId?: string } | undefined)
+          ?.contentStorageId;
+        if (oldStorageId && oldStorageId !== newStorageId) {
+          try {
+            await ctx.storage.delete(oldStorageId as Parameters<typeof ctx.storage.delete>[0]);
+          } catch {
+            // already gone — fine
+          }
+        }
         await ctx.db.patch(existing._id, {
           modifiedAt: op.modifiedAt,
           syncSeq: lastSeq,

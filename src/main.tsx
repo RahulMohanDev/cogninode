@@ -24,8 +24,8 @@ import "./styles/app.css";
 })();
 
 // Managed mode (Clerk + Convex) switches on only when both env vars are
-// configured — without them the tree below is exactly the original
-// local-first app. See lib/managedConfig.ts.
+// configured — without them the tree below is the original local-first
+// app with no backend on any runtime path. See lib/managedConfig.ts.
 function Root() {
   const managed = getManagedConfig();
   const convexClient = getConvexClient();

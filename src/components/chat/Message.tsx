@@ -17,7 +17,7 @@ import {
 import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { formatCost }       from "../../lib/cost";
-import { formatCreditsShort, usdToCredits } from "../../lib/credits";
+import { chargedUsd, formatCreditsShort, usdToCredits } from "../../lib/credits";
 import { useTiers }          from "../../hooks/useTiers";
 import { tierDotColor }      from "./TierPicker";
 import { useModels }        from "../../hooks/ModelsProvider";
@@ -437,7 +437,10 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
             <span className="tw:w-[5px] tw:h-[5px] tw:rounded-[50%] tw:bg-teal" />
             {typeof message.costUsd === "number"
               ? message.keySource === "managed"
-                ? formatCreditsShort(usdToCredits(message.costUsd))
+                // chargedUsd mirrors the server's web-search fallback
+                // surcharge — the chip must match the ledger deduction.
+                ? formatCreditsShort(usdToCredits(
+                    chargedUsd(message.costUsd, message.costSource, message.webSearch)))
                 : formatCost(message.costUsd)
               : "—"}
             {typeof message.inputTokens === "number" && typeof message.outputTokens === "number" && (

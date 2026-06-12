@@ -76,6 +76,9 @@ export interface Message {
   /** Simple-mode tier this send used ("fast" | "thinking" | …) — the UI
    *  labels the reply with the tier instead of the raw model name. */
   tierKey?:     string;
+  /** Whether this send ran OpenRouter's paid web-search plugin — the
+   *  credits chip mirrors the server's estimated-cost surcharge with it. */
+  webSearch?:   boolean;
   /** Whether costUsd came from OpenRouter's usage accounting ("upstream")
    *  or client fallback math ("estimated"). */
   costSource?:  "upstream" | "estimated";

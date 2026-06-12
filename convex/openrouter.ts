@@ -8,7 +8,7 @@
 import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { creditsToUsdBudget, starterCredits } from "./lib/credits";
+import { creditsToUsdBudget, planReconcile, starterCredits } from "./lib/credits";
 import { env } from "./lib/env";
 
 const KEYS_URL = "https://openrouter.ai/api/v1/keys";
@@ -50,8 +50,11 @@ export const provisionKey = internalAction({
 
     try {
       // Limit covers the user's full current balance (starter grant now;
-      // after Phase B the reconciliation re-peg owns this number).
-      const limitUsd = creditsToUsdBudget(user.creditsBalance || starterCredits());
+      // the reconciliation re-peg owns this number afterwards). Clamped —
+      // a negative balance must never reach OpenRouter as a limit.
+      const limitUsd = creditsToUsdBudget(
+        Math.max(0, user.creditsBalance) || starterCredits(),
+      );
       const res = await fetch(KEYS_URL, {
         method: "POST",
         headers: authHeaders(),
@@ -98,12 +101,14 @@ interface RuntimeKeyInfo {
   data?: { usage?: number; limit?: number | null; limit_remaining?: number | null };
 }
 
-/** THE RE-PEG INVARIANT. The key's upstream USD limit must always equal
- *  (authoritative usage so far) + (the USD budget the current credit
- *  balance buys). This single rule:
- *   - absorbs costs we deliberately don't charge (auto-titles) into margin,
- *   - heals client under-reporting (killed tabs, failed outbox drains),
- *   - keeps the upstream 402 backstop aligned with "balance ≈ 0".
+/** THE RE-PEG INVARIANT, with authoritative billing. OpenRouter's per-key
+ *  usage is the ground truth: drift between it and what the client
+ *  reported gets DOCKED from the balance (above a small allowance that
+ *  keeps auto-titles free), and only then is the key's upstream limit
+ *  re-pegged to usage + the post-dock balance's budget. Client usage
+ *  reports are an optimistic fast path — a client that under-reports or
+ *  never reports settles up here, so skipped reports buy at most
+ *  DRIFT_ALLOWANCE_USD per cycle instead of an ever-refilling limit.
  *  Top-ups don't PATCH the limit directly — they bump the balance and run
  *  this, so there is exactly one code path that touches the limit. */
 export const reconcileUser = internalAction({
@@ -128,15 +133,26 @@ export const reconcileUser = internalAction({
     const info = (await res.json()) as RuntimeKeyInfo;
     const usage = typeof info.data?.usage === "number" ? info.data.usage : 0;
 
-    const targetLimit =
-      Math.round(
-        (usage + creditsToUsdBudget(Math.max(0, user.creditsBalance))) * 1e6,
-      ) / 1e6;
-    if (Math.abs(targetLimit - keyRow.limitUsd) > 0.001) {
+    const reported = user.usdReportedTotal ?? 0;
+    const plan = planReconcile(usage, reported, user.creditsBalance);
+
+    if (plan.dockCredits > 0) {
+      // Settle the unreported spend: ledger row + balance dock + true-up
+      // of usdReportedTotal to the authoritative figure (so the next
+      // cycle's drift starts from zero).
+      await ctx.runMutation(internal.credits.applyReconcileAdjust, {
+        userId,
+        credits: plan.dockCredits,
+        usdCost: plan.dockUsd,
+        reportedTotal: usage,
+      });
+    }
+
+    if (Math.abs(plan.targetLimitUsd - keyRow.limitUsd) > 0.001) {
       const patch = await fetch(`${KEYS_URL}/${keyRow.keyHash}`, {
         method: "PATCH",
         headers: authHeaders(),
-        body: JSON.stringify({ limit: targetLimit }),
+        body: JSON.stringify({ limit: plan.targetLimitUsd }),
       });
       if (!patch.ok) {
         const body = await patch.text();
@@ -144,18 +160,17 @@ export const reconcileUser = internalAction({
       }
       await ctx.runMutation(internal.keys.setLimit, {
         userId,
-        limitUsd: targetLimit,
+        limitUsd: plan.targetLimitUsd,
       });
     }
 
-    const driftUsd =
-      Math.round((usage - (user.usdReportedTotal ?? 0)) * 1e6) / 1e6;
-    // Loud log → alertable via Convex log streams. Positive drift beyond
-    // noise = lost client reports or an extracted key being used outside
-    // the app; auto-titles contribute a small expected baseline.
+    const driftUsd = Math.round((usage - reported) * 1e6) / 1e6;
+    // Loud log → alertable via Convex log streams. Big drift = lost client
+    // reports or an extracted key being used outside the app (it's billed
+    // either way now, but the pattern is worth eyes).
     if (driftUsd > 0.5 || (usage > 1 && driftUsd / usage > 0.1)) {
       console.error(
-        `[alert] reconcile drift $${driftUsd} for user ${userId} (usage $${usage})`,
+        `[alert] reconcile drift $${driftUsd} for user ${userId} (usage $${usage}) — docked ${plan.dockCredits} credits`,
       );
     }
     await ctx.runMutation(internal.users.recordReconcile, { userId, driftUsd });

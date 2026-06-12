@@ -55,3 +55,47 @@ export function packInr(): number {
 export function packCredits(): number {
   return envNumber("PACK_CREDITS", 3000);
 }
+
+/** Drift below this is absorbed into margin: auto-title calls (~$0.0001
+ *  per session) and rounding noise stay free. Above it, reconciliation
+ *  DOCKS the credits — client usage reports are an optimistic fast path,
+ *  but OpenRouter's authoritative per-key usage is what ultimately bills.
+ *  Without docking, a client that under-reports (or never reports) would
+ *  keep its balance — and the re-peg would keep refilling its upstream
+ *  headroom — forever. Worst-case free ride: this allowance per cycle. */
+export const DRIFT_ALLOWANCE_USD = 0.005;
+
+export interface ReconcilePlan {
+  /** Credits to dock via a reconcile_adjust ledger row (0 = none). */
+  dockCredits: number;
+  /** Drift in USD that the dock covers (0 when below allowance). */
+  dockUsd: number;
+  /** Upstream limit to PATCH: usage + budget of the post-dock balance. */
+  targetLimitUsd: number;
+}
+
+function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
+}
+
+/** Pure reconciliation math (unit-tested; the action applies it). */
+export function planReconcile(
+  usageUsd: number,
+  reportedUsd: number,
+  balanceCredits: number,
+): ReconcilePlan {
+  const drift = round6(usageUsd - reportedUsd);
+  const dock = drift > DRIFT_ALLOWANCE_USD;
+  const dockUsd = dock ? drift : 0;
+  const dockCredits = dock
+    ? Math.max(1, Math.ceil(round6(drift / usdPerCredit())))
+    : 0;
+  const newBalance = balanceCredits - dockCredits;
+  return {
+    dockCredits,
+    dockUsd,
+    targetLimitUsd: round6(
+      usageUsd + creditsToUsdBudget(Math.max(0, newBalance)),
+    ),
+  };
+}

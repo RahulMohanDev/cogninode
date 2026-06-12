@@ -104,4 +104,32 @@ describe("sync capture middleware", () => {
     expect(await db.outbox.count()).toBe(0);
     expect(await db.chats.count()).toBe(0);
   });
+
+  it("passes schema upgrades through untouched (no brick, no stamp clobber, no enqueue)", async () => {
+    // Simulates the real shape: data exists at v1 (no outbox store yet),
+    // the middleware is installed before open — as db.ts does — and a
+    // later version adds the outbox + runs a backfill-style upgrade.
+    // Without the versionchange guard this THROWS "Table outbox not
+    // found" mid-upgrade (pre-outbox steps) and clobbers backfilled
+    // stamps / floods the outbox (the outbox-era step).
+    const name = `capture-upgrade-${Math.random()}`;
+    const v1 = new Dexie(name) as TestDb;
+    v1.version(1).stores({ chats: "_id" });
+    await v1.chats.add({ _id: "c1", title: "old" } as Row);
+    v1.close();
+
+    const v2 = new Dexie(name) as TestDb;
+    v2.version(1).stores({ chats: "_id" });
+    v2.version(2).stores({ meta: "key", outbox: "++seq" }).upgrade(async (tx) => {
+      await tx.table("chats").toCollection().modify((row) => {
+        (row as Row)._modifiedAt = 12345; // backfill-style historical stamp
+      });
+    });
+    setupSyncCapture(v2);
+
+    const row = await v2.chats.get("c1"); // triggers open + upgrade
+    expect(row!._modifiedAt).toBe(12345); // NOT clobbered to Date.now()
+    expect(await v2.outbox.count()).toBe(0); // upgrade writes not enqueued
+    await v2.delete();
+  });
 });
