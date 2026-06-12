@@ -104,17 +104,30 @@ export function GraphCanvas({
   const [nodes, setNodes, onNodesChange] = useNodesState(graphData.nodes as FlowNode[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graphData.edges as FlowEdge[]);
 
-  // Re-sync from Dexie — but never mid-drag, or the dragged card would
-  // snap back to its last persisted position.
+  // Reconcile React Flow's local state with the live (Dexie-derived) graph.
+  // Nodes and edges MUST be pushed from the same snapshot, together: an edge
+  // that outlives the node it points at makes React Flow throw while it
+  // measures edge geometry, and with no error boundary that throw blanks the
+  // whole canvas. buildGraphFlow keeps each snapshot internally consistent
+  // (orphan edges are filtered), so the only way to desync is to apply one
+  // half and not the other.
+  //
+  // We skip mid-drag — a sync would snap the dragged card back to its last
+  // persisted position. The drag's moveNodes write echoes back through
+  // liveQuery on drop, which re-runs this effect (no longer dragging) with a
+  // fresh snapshot, so anything that changed during the drag lands then.
   const draggingRef = useRef(false);
-  useEffect(() => {
-    if (draggingRef.current) return;
+  const syncFromData = useCallback(() => {
     setNodes(
       (graphData.nodes as FlowNode[]).map(n =>
         n.id === selectedId ? { ...n, selected: true } : n),
     );
-  }, [graphData.nodes, selectedId, setNodes]);
-  useEffect(() => { setEdges(graphData.edges as FlowEdge[]); }, [graphData.edges, setEdges]);
+    setEdges(graphData.edges as FlowEdge[]);
+  }, [graphData, selectedId, setNodes, setEdges]);
+  useEffect(() => {
+    if (draggingRef.current) return;
+    syncFromData();
+  }, [syncFromData]);
 
   // Citation chips / dock → pan to a node (nonce re-fires for repeats).
   // Slight delay: the dock may be mid-resize (or just un-hiding the

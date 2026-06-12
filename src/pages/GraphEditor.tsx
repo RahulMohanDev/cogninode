@@ -28,6 +28,7 @@ import { GraphCanvas } from "../components/graph/GraphCanvas";
 import { GraphDock, type DockMode } from "../components/graph/GraphDock";
 import { LibraryDrawer } from "../components/graph/LibraryDrawer";
 import { NodePanel } from "../components/graph/NodePanel";
+import { ErrorBoundary } from "../components/ui/ErrorBoundary";
 import { Sidebar } from "../components/chat/Sidebar";
 import { SettingsModal } from "../components/settings/SettingsModal";
 import { useSettings } from "../hooks/useSettings";
@@ -242,24 +243,29 @@ export default function GraphEditor() {
             {/* React Flow stays mounted while maximized — just hidden — so
                 glow state, viewport, and selection survive the round trip. */}
             <div className={`tw:flex-1 tw:relative tw:min-w-0 tw:min-h-0 ${dockMode === "max" ? "tw:hidden" : ""}`}>
-              <ReactFlowProvider>
-                <GraphCanvas
-                  graphId={graphId}
-                  rootNodeId={graph?.rootNodeId ?? ""}
-                  graphNodes={graphNodes}
-                  graphEdges={graphEdges}
-                  resolvers={resolvers}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  focusNodeId={focusNodeId}
-                  libraryOpen={libraryOpen}
-                  onToggleLibrary={() => setLibraryOpen(v => !v)}
-                  onUnfold={doUnfold}
-                  glowIds={glowIds}
-                  centerRequest={centerRequest}
-                  fitNonce={fitNonce}
-                />
-              </ReactFlowProvider>
+              {/* A bad render must never blank the canvas for good — the
+                  boundary catches it and re-mounts on the next data tick
+                  (graphNodes/graphEdges identity changes on every edit). */}
+              <ErrorBoundary label="graph canvas" resetKeys={[graphNodes, graphEdges]}>
+                <ReactFlowProvider>
+                  <GraphCanvas
+                    graphId={graphId}
+                    rootNodeId={graph?.rootNodeId ?? ""}
+                    graphNodes={graphNodes}
+                    graphEdges={graphEdges}
+                    resolvers={resolvers}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    focusNodeId={focusNodeId}
+                    libraryOpen={libraryOpen}
+                    onToggleLibrary={() => setLibraryOpen(v => !v)}
+                    onUnfold={doUnfold}
+                    glowIds={glowIds}
+                    centerRequest={centerRequest}
+                    fitNonce={fitNonce}
+                  />
+                </ReactFlowProvider>
+              </ErrorBoundary>
             </div>
             <GraphDock
               graphId={graphId}
