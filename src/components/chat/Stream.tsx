@@ -206,10 +206,22 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   // Standard autoscroll: follow the bottom as content grows — including a
   // thinking model's reasoning (streamingReasoning is in the deps). Gated by
   // the user's autoScroll preference, so it can be turned off in Settings.
+  //
+  // Skip the first settled render after entering a node: the restore layout
+  // effect runs first and clears restorePendingRef in the SAME commit, so
+  // without this guard the snap-to-bottom here would immediately undo the
+  // saved-offset restore (the bug where returning to a chat jumped to the
+  // bottom). Only growth that happens AFTER entry — i.e. a streaming reply —
+  // should follow.
+  const autoscrollBaselineRef = useRef<string | null>(null);
   useEffect(() => {
     if (restorePendingRef.current || !autoScroll) return;
+    if (autoscrollBaselineRef.current !== currentNodeId) {
+      autoscrollBaselineRef.current = currentNodeId;
+      return;
+    }
     bottomRef.current?.scrollIntoView({ behavior: "instant", block: "end" });
-  }, [pathMessages.length, streamingText, streamingReasoning, streamState, autoScroll]);
+  }, [pathMessages.length, streamingText, streamingReasoning, streamState, autoScroll, currentNodeId]);
 
   // Recompute the jump affordance as content grows: a reply streaming in below
   // a scrolled-up viewport doesn't fire a scroll event, so reflect it here.
