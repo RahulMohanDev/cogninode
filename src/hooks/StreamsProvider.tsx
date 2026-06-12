@@ -19,7 +19,7 @@ import {
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
 import { resolveModelSync }               from "../lib/models";
-import { autoTitleChat } from "../lib/title";
+import { autoTitleChat, autoTitleNode, backfillTitles, deriveTitle } from "../lib/title";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
 import { useSettings }                    from "./useSettings";
 
@@ -57,16 +57,6 @@ export interface SendParams {
  *  The just-persisted user message is last in the path, so it always
  *  survives the slice. */
 const GRAPH_CHAT_HISTORY_MAX = 16;
-
-// Derive a chat/root-node title from the user's first message. Truncates at
-// the first user-typed fenced code block (or pasted <document> block) so the
-// title reflects the question, not pasted content. Attached-file content never
-// reaches composerText — buildPathMessages injects it at prompt time.
-function deriveTitle(text: string): string {
-  const firstBlock = text.split(/\n\n(?:<document|```)/)[0] ?? text;
-  const cleaned    = firstBlock.replace(/\s+/g, " ").trim();
-  return cleaned.length > 60 ? cleaned.slice(0, 60).trimEnd() + "…" : cleaned;
-}
 
 // ── Internal slot ─────────────────────────────────────────────────────
 // A StreamSlot owns its own snapshot + subscriber set. Updates replace
@@ -107,6 +97,17 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
   const prefsRef  = useRef(prefs);
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
   useEffect(() => { prefsRef.current  = prefs;  }, [prefs]);
+
+  // Once a key is available, sweep any chats/branches that never got an LLM
+  // title (e.g. created before this ran, or whose send-time titling failed for
+  // lack of a key) and compress them with full context. One run per session;
+  // the sweep is idempotent (compare-and-swap), so re-runs cost nothing.
+  const backfilledRef = useRef(false);
+  useEffect(() => {
+    if (backfilledRef.current || !apiKey) return;
+    backfilledRef.current = true;
+    void backfillTitles({ apiKey, customModels: prefs.customModels });
+  }, [apiKey, prefs.customModels]);
 
   // The actual store. A ref so identity is stable for the lifetime of
   // the provider and `send`/`cancel` can mutate without re-creating.
@@ -254,6 +255,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         // topic title (compare-and-swap in lib/title.ts — a user rename
         // mid-flight wins).
         let autoTitleExpected: string | null = null;
+        let nodeTitleExpected: string | null = null;
         const chatRecord = await db.chats.get(chatId);
         if (chatRecord && !chatRecord.graphId) {
           // "First user message on this node" = the message we just added
@@ -288,7 +290,10 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
             } else if (title) {
               // Non-root branch node: retitle from the question,
               // overwriting the selected-quote / "New branch" placeholder.
+              // Arm the same LLM compression the root chat gets, so the
+              // branch label tightens to a short topic after the first reply.
               await db.nodes.update(nodeId, { label: title });
+              nodeTitleExpected = title;
             }
           }
         }
@@ -366,6 +371,20 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
               void autoTitleChat({
                 chatId,
                 expectedTitle: autoTitleExpected,
+                question:      params.composerText,
+                answer:        fullContent,
+                apiKey:        apiKeyRef.current,
+                customModels:  prefsRef.current.customModels,
+              });
+            }
+
+            // Same for a non-root branch: compress its derived label to a
+            // short topic. Compare-and-swap on the label, so a manual rename
+            // wins and creation order in the sidebar tree is preserved.
+            if (nodeTitleExpected !== null) {
+              void autoTitleNode({
+                nodeId,
+                expectedLabel: nodeTitleExpected,
                 question:      params.composerText,
                 answer:        fullContent,
                 apiKey:        apiKeyRef.current,

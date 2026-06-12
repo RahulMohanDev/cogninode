@@ -141,14 +141,17 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   }, [currentNodeId]);
 
   // Once the new node's content has rendered (true height), place the scroll:
-  // with autoscroll on we sit at the bottom; with it off we return to the saved
-  // offset. One-shot per node entry — clears the pending flag.
+  // returning to a node we've seen before lands at the saved offset — leaving a
+  // chat and coming back continues where you left off rather than snapping to
+  // the bottom. Only a node with no remembered position (first visit) starts at
+  // the bottom. The `autoScroll` pref governs following a *live* stream, not
+  // this initial placement. One-shot per node entry — clears the pending flag.
   useLayoutEffect(() => {
     if (!restorePendingRef.current || !messagesReady) return;
     const el = scrollRef.current;
     if (!el) return;
     const saved = scrollMemory.get(currentNodeId);
-    if (!autoScroll && saved !== undefined) {
+    if (saved !== undefined) {
       el.scrollTop = saved;
     } else {
       el.scrollTop = el.scrollHeight;

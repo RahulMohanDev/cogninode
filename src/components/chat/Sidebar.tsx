@@ -787,9 +787,6 @@ export function Sidebar({
                   <span className="tw:flex-1 tw:truncate" title={chat.title || "Untitled"}>{chat.title || "Untitled"}</span>
                 )}
                 {!isRenaming && (
-                  <span className={`tw:font-mono tw:text-[10px] tw:px-1.5 tw:py-px tw:rounded-[999px] tw:flex-none ${isActive ? "tw:bg-[var(--veil-white-14)] tw:text-[color-mix(in_oklab,var(--bg)_80%,transparent)]" : "tw:text-ink-3 tw:bg-bg-2"}`}>{relativeTime(chat.updatedAt)}</span>
-                )}
-                {!isRenaming && (
                   <button
                     className={`tw:opacity-0 tw:w-[22px] tw:h-[22px] tw:inline-grid tw:place-items-center tw:rounded-[6px] tw:flex-none tw:transition-[opacity,background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:group-hover/row:opacity-85 tw:focus-visible:opacity-85 tw:ml-1 ${isActive ? "tw:text-[color-mix(in_oklab,var(--bg)_75%,transparent)] tw:hover:bg-[color-mix(in_oklab,var(--lilac)_30%,transparent)] tw:hover:text-bg" : "tw:text-ink-3 tw:hover:bg-[color-mix(in_oklab,var(--lilac)_18%,transparent)] tw:hover:text-lilac"}`}
                     title="Rename chat"
