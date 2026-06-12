@@ -1,10 +1,20 @@
 // src/components/settings/SettingsModal.tsx
-// Settings modal: API key, default model, branch mode, custom models CRUD,
-// data export/import/clear, and about. Returns null when closed.
+// Settings modal: account (managed mode), API key, default model, branch
+// mode, custom models CRUD, data export/import/clear, and about. Returns
+// null when closed.
 
 import { useMemo, useRef, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { useClerk, useUser } from "@clerk/clerk-react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
-import { db } from "../../lib/db";
+import { clearAllUserData, db } from "../../lib/db";
+import { getConvexClient } from "../../lib/convexClient";
+import { isManagedMode } from "../../lib/managedConfig";
+import { resetSyncState } from "../../lib/sync/reset";
+import { useApiKeyValidation } from "../../hooks/useApiKeyValidation";
+import { useCredits } from "../../hooks/useCredits";
 import {
   formatCost,
   calculateCostUsd,
@@ -31,7 +41,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   useModalBehavior(open, onClose, panelRef);
 
-  const { apiKey, clearApiKey, prefs, setPref, setTheme } = useSettings();
+  const { apiKey, keySource, setApiKey, clearApiKey, prefs, setPref, setTheme } = useSettings();
+  const managed = isManagedMode();
+  // The key section manages the BYOK key only — in managed mode the resolved
+  // apiKey may be the server-provisioned key, which must never be shown.
+  const byokKey = keySource === "byok" ? apiKey : "";
 
   if (!open) return null;
 
@@ -57,9 +71,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         <div className="sm-body tw:flex-1 tw:overflow-y-auto tw:pt-1 tw:px-5 tw:pb-5 tw:[scrollbar-width:thin] tw:[scrollbar-color:var(--line)_transparent]">
+          {managed && <ManagedAccountSection />}
+
           <ApiKeySection
-            apiKey={apiKey}
-            onRemoveKey={() => { clearApiKey(); onClose(); }}
+            apiKey={byokKey}
+            managed={managed}
+            onAddKey={setApiKey}
+            onRemoveKey={() => {
+              clearApiKey();
+              // Legacy mode: no key means the gate takes over — close first.
+              // Managed mode: removal just falls back to credits; stay open.
+              if (!managed) onClose();
+            }}
           />
 
           <ModelSection
@@ -98,7 +121,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           />
 
           <DataSection
-            onClearAll={() => { clearApiKey(); onClose(); }}
+            onClearAll={() => {
+              clearApiKey();
+              if (!managed) onClose();
+            }}
           />
 
           <AboutSection />
@@ -110,27 +136,248 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
 export default SettingsModal;
 
+// ── Section 0: Account (managed mode only) ──────────────────────────────────
+// Mounted only when isManagedMode() — its Clerk/Convex hooks need the
+// providers that local mode doesn't render.
+
+function ManagedAccountSection() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const me = useQuery(api.users.current);
+  const purchases = useQuery(api.payments.listMine);
+  const { openTopUp } = useCredits();
+
+  const [delOpen, setDelOpen] = useState(false);
+  const [delText, setDelText] = useState("");
+  const [delBusy, setDelBusy] = useState(false);
+  const [delError, setDelError] = useState<string | null>(null);
+
+  const deleteAccount = async (): Promise<void> => {
+    if (delText !== "DELETE") return;
+    setDelBusy(true);
+    setDelError(null);
+    try {
+      // Server first (synced rows + blobs + key disable), then local, then
+      // the Clerk identity — its user.deleted webhook is a harmless re-run.
+      const client = getConvexClient();
+      if (client) await client.action(api.account.deleteMyData, {});
+      await clearAllUserData();
+      await resetSyncState();
+      try { localStorage.removeItem("cogninode_api_key"); } catch { /* ignore */ }
+      await user?.delete();
+      window.location.assign("/");
+    } catch (err) {
+      setDelBusy(false);
+      setDelError(
+        `Your data was removed, but the sign-in couldn't be deleted automatically (${(err as Error).message}). ` +
+        "Contact support to finish removing it.",
+      );
+    }
+  };
+
+  return (
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Account & billing</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Signed in via Clerk. Chats are billed against your credits.</p>
+      </div>
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div className="tw:flex-1 tw:min-w-0">
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink tw:truncate">
+            {user?.primaryEmailAddress?.emailAddress ?? user?.fullName ?? "Signed in"}
+          </div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            {me ? `${me.creditsBalance.toLocaleString()} credits` : "…"}
+          </div>
+        </div>
+        <div className="tw:flex tw:gap-1">
+          <button
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-teal tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-teal-tint"
+            onClick={openTopUp}
+          >
+            Top up
+          </button>
+          <button
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
+            onClick={() => void signOut()}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+
+      <SyncStatusRow />
+
+      {purchases !== undefined && purchases.length > 0 && (
+        <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink tw:mb-1.5">Purchases</div>
+          <div className="tw:flex tw:flex-col tw:gap-1">
+            {purchases.map(p => (
+              <div key={p._id} className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[12px] tw:text-ink-2">
+                <span>{new Date(p.createdAt).toLocaleDateString()}</span>
+                <span>₹{p.amountInr}</span>
+                <span>{p.credits.toLocaleString()} cr</span>
+                <span className={`tw:ml-auto ${p.status === "paid" ? "tw:text-teal" : p.status === "failed" ? "tw:text-coral" : "tw:text-ink-3"}`}>
+                  {p.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Delete account</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            Removes synced data, disables your key, and erases your sign-in.
+            Unspent credits are forfeited.
+          </div>
+        </div>
+        <button
+          className="tw:bg-bg-3 tw:py-[7px] tw:px-3 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
+          onClick={() => { setDelOpen(true); setDelText(""); setDelError(null); }}
+          disabled={delBusy}
+        >
+          Delete…
+        </button>
+      </div>
+
+      {delOpen && (
+        <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:text-[13px] tw:text-coral tw:mb-2">
+            Type <strong>DELETE</strong> to permanently delete your account.
+            Export a backup first if you want to keep your chats.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              autoFocus
+              value={delText}
+              onChange={e => setDelText(e.target.value)}
+              placeholder="DELETE"
+              style={{
+                flex: 1, padding: "8px 12px",
+                border: "1px solid var(--line)", borderRadius: "var(--radius-sm)",
+                background: "var(--bg-3)", color: "var(--ink)",
+                fontFamily: "var(--mono)", fontSize: 13, outline: "none",
+              }}
+            />
+            <button
+              className="tw:bg-bg-3 tw:text-ink tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:hover:border-ink-3"
+              onClick={() => setDelOpen(false)}
+              disabled={delBusy}
+            >
+              Cancel
+            </button>
+            <button
+              className="tw:bg-coral tw:text-bg tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:hover:bg-[#ff4520] tw:disabled:bg-ink-4 tw:disabled:cursor-not-allowed"
+              onClick={() => void deleteAccount()}
+              disabled={delBusy || delText !== "DELETE"}
+            >
+              {delBusy ? "Deleting…" : "Delete forever"}
+            </button>
+          </div>
+          {delError && (
+            <div role="alert" className="tw:text-[12px] tw:text-coral tw:mt-2">{delError}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SyncStatusRow() {
+  const pending = useLiveQuery(() => db.outbox.count(), []) ?? 0;
+  const lastSyncedAt = useLiveQuery(
+    async () => (await db.meta.get("lastSyncedAt"))?.value as number | undefined,
+    [],
+  );
+  return (
+    <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+      <div>
+        <div className="tw:font-medium tw:text-[14px] tw:text-ink">Sync</div>
+        <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+          {pending > 0
+            ? `${pending.toLocaleString()} change${pending === 1 ? "" : "s"} waiting to upload`
+            : "All changes backed up"}
+          {typeof lastSyncedAt === "number"
+            ? ` · last sync ${new Date(lastSyncedAt).toLocaleTimeString()}`
+            : ""}
+        </div>
+      </div>
+      <span className={`tw:w-[8px] tw:h-[8px] tw:rounded-[50%] ${pending > 0 ? "tw:bg-butter" : "tw:bg-teal"}`} />
+    </div>
+  );
+}
+
 // ── Section 1: API key ───────────────────────────────────────────────────────
 
 function ApiKeySection({
   apiKey,
+  managed,
+  onAddKey,
   onRemoveKey,
 }: {
   apiKey:      string;
+  managed:     boolean;
+  onAddKey:    (key: string) => void;
   onRemoveKey: () => void;
 }) {
   const [reveal, setReveal] = useState(false);
+  const [draft, setDraft] = useState("");
+  const { verifying, error, validate, clearError } = useApiKeyValidation();
 
   const masked = apiKey
     ? apiKey.slice(0, 10) + "•".repeat(20)
     : "";
 
+  const addKey = async () => {
+    const validKey = await validate(draft);
+    if (validKey) {
+      onAddKey(validKey);
+      setDraft("");
+    }
+  };
+
   return (
     <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
       <div className="tw:mb-2">
-        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">OpenRouter API key</h3>
-        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Stored in localStorage on this device only.</p>
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">
+          {managed ? "Your own OpenRouter key" : "OpenRouter API key"}
+        </h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">
+          {managed
+            ? "Optional. When set, chats use your key directly (your OpenRouter account pays) instead of credits. Stored in this browser only."
+            : "Stored in localStorage on this device only."}
+        </p>
       </div>
+
+      {managed && !apiKey && (
+        <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:flex tw:gap-2">
+            <input
+              className="tw:flex-1 tw:py-2 tw:px-3 tw:border tw:border-line tw:rounded-app-sm tw:text-[13px] tw:outline-none tw:bg-bg-3 tw:font-mono tw:focus:border-ink-3"
+              type="password"
+              placeholder="sk-or-v1-..."
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); if (error) clearError(); }}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button
+              className="tw:bg-bg-3 tw:text-ink tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:hover:border-ink-3 tw:disabled:opacity-35 tw:disabled:cursor-not-allowed"
+              disabled={verifying || !draft.trim()}
+              onClick={() => void addKey()}
+            >
+              {verifying ? "Verifying…" : "Use key"}
+            </button>
+          </div>
+          {error && (
+            <div role="alert" className="tw:text-[12px] tw:text-coral tw:mt-2">{error}</div>
+          )}
+        </div>
+      )}
 
       <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div className="tw:flex-1 tw:min-w-0">
@@ -747,22 +994,12 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
     if (confirmText !== "DELETE") return;
     setBusy(true);
     try {
-      await db.transaction(
-        "rw",
-        [db.chats, db.nodes, db.messages, db.reflections, db.files,
-         db.graphs, db.graphNodes, db.graphEdges, db.searchVectors],
-        async () => {
-          await db.chats.clear();
-          await db.nodes.clear();
-          await db.messages.clear();
-          await db.reflections.clear();
-          await db.files.clear();
-          await db.graphs.clear();
-          await db.graphNodes.clear();
-          await db.graphEdges.clear();
-          await db.searchVectors.clear();
-        },
-      );
+      await clearAllUserData();
+      // Managed mode: the cloud copy survives a local wipe by design — so
+      // the pull cursor must rewind or later pulls would materialize
+      // orphan rows (a message without its chat). Resetting re-downloads
+      // everything cleanly.
+      if (isManagedMode()) await resetSyncState();
       setConfirmOpen(false);
       setConfirmText("");
       onClearAll();
@@ -817,7 +1054,11 @@ function DataSection({ onClearAll }: { onClearAll: () => void }) {
       <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
         <div>
           <div className="tw:font-medium tw:text-[14px] tw:text-ink">Clear all data</div>
-          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Wipes IndexedDB and the API key. Cannot be undone.</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            {isManagedMode()
+              ? "Wipes this browser and the API key. Synced data re-downloads from your account — use Delete account to remove it everywhere."
+              : "Wipes IndexedDB and the API key. Cannot be undone."}
+          </div>
         </div>
         <button
           className="tw:bg-bg-3 tw:py-[11px] tw:px-[18px] tw:rounded-app-sm tw:text-[14px] tw:font-medium tw:border tw:inline-flex tw:items-center tw:justify-center tw:gap-2 tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
@@ -887,6 +1128,9 @@ function AboutSection() {
       <div className="tw:flex tw:gap-[18px] tw:mt-2.5">
         <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="https://github.com/RahulMohanDev/cogninode" target="_blank" rel="noopener noreferrer">
           GitHub
+        </a>
+        <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="/legal" target="_blank" rel="noopener noreferrer">
+          Privacy · Terms · Refunds
         </a>
       </div>
     </div>

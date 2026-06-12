@@ -5,6 +5,13 @@
 // the gate — which lives in a different part of the tree — must immediately
 // re-render and show the setup screen. Independent useState copies would
 // each hold their own stale value, so the change is lifted here instead.
+//
+// Two key sources since the managed backend landed: the user's own BYOK key
+// (localStorage, exactly the original behavior) and the per-user MANAGED key
+// (provisioned server-side, pushed in by AuthGate after sign-in, held in
+// memory only — never persisted). `apiKey` resolves BYOK-first; `keySource`
+// tells send paths which pool the call spends (BYOK = the user's own
+// OpenRouter account, managed = cogninode credits).
 import {
   createContext, useCallback, useContext, useMemo, useState,
   type ReactNode,
@@ -44,6 +51,12 @@ export interface Prefs {
   /** Follow the reply (and a thinking model's reasoning) to the bottom as it
    *  streams. On by default; turn off to keep the scroll where you put it. */
   autoScroll:      boolean;
+  /** Managed-mode model picker: "simple" shows the 2–3 abstract tiers
+   *  (Fast / Thinking); "advanced" shows the full catalog. Local mode is
+   *  always advanced regardless of this pref. */
+  pickerMode:      "simple" | "advanced";
+  /** Last tier chosen in simple mode. */
+  defaultTierKey:  string;
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -56,6 +69,8 @@ const DEFAULT_PREFS: Prefs = {
   semanticSearch: true,
   embeddingModelId: "bge-small",
   autoScroll:     true,
+  pickerMode:     "simple",
+  defaultTierKey: "fast",
 };
 
 function readStoredTheme(): ThemeMode | null {
@@ -98,10 +113,21 @@ export function applyTheme(mode: ThemeMode): void {
   } catch { /* ignore */ }
 }
 
+export type KeySource = "byok" | "managed";
+
 export interface SettingsContextValue {
+  /** Resolved key for OpenRouter calls: BYOK when the user set their own,
+   *  else the managed per-user key (empty until AuthGate pushes it). */
   apiKey:      string;
+  /** Which pool `apiKey` draws from. Only meaningful while apiKey is set. */
+  keySource:   KeySource;
+  /** Set/clear the BYOK key (names kept from the BYOK-only era — every
+   *  existing consumer keeps compiling). */
   setApiKey:   (key: string) => void;
   clearApiKey: () => void;
+  /** Internal: AuthGate pushes the managed key here after sign-in (and
+   *  clears it on sign-out). Nothing else should call this. */
+  setManagedKey: (key: string) => void;
   prefs:       Prefs;
   setPref:     <K extends keyof Prefs>(key: K, value: Prefs[K]) => void;
   setTheme:    (mode: ThemeMode) => void;
@@ -114,27 +140,29 @@ export interface SettingsProviderProps {
 }
 
 export function SettingsProvider({ children }: SettingsProviderProps) {
-  const [apiKey, _setApiKey] = useState(() => {
+  const [byokKey, _setByokKey] = useState(() => {
     try {
       return localStorage.getItem(KEYS.apiKey) ?? "";
     } catch {
       return "";
     }
   });
+  // In-memory only — the managed key must never touch localStorage.
+  const [managedKey, setManagedKey] = useState("");
   const [prefs,  _setPrefs]  = useState<Prefs>(loadPrefs);
 
   const setApiKey = useCallback((key: string) => {
     try {
       localStorage.setItem(KEYS.apiKey, key.trim());
     } catch { /* ignore */ }
-    _setApiKey(key.trim());
+    _setByokKey(key.trim());
   }, []);
 
   const clearApiKey = useCallback(() => {
     try {
       localStorage.removeItem(KEYS.apiKey);
     } catch { /* ignore */ }
-    _setApiKey("");
+    _setByokKey("");
   }, []);
 
   const setPref = useCallback(<K extends keyof Prefs>(key: K, value: Prefs[K]) => {
@@ -155,9 +183,14 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     setPref("theme", mode);
   }, [setPref]);
 
+  const apiKey    = byokKey || managedKey;
+  const keySource: KeySource = byokKey ? "byok" : "managed";
+
   const value = useMemo<SettingsContextValue>(() => ({
-    apiKey, setApiKey, clearApiKey, prefs, setPref, setTheme,
-  }), [apiKey, setApiKey, clearApiKey, prefs, setPref, setTheme]);
+    apiKey, keySource, setApiKey, clearApiKey, setManagedKey,
+    prefs, setPref, setTheme,
+  }), [apiKey, keySource, setApiKey, clearApiKey, setManagedKey,
+       prefs, setPref, setTheme]);
 
   return (
     <SettingsContext.Provider value={value}>

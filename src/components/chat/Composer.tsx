@@ -5,6 +5,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCostEstimate }      from "../../hooks/useCostEstimate";
+import { useCredits }           from "../../hooks/useCredits";
+import { useTiers }             from "../../hooks/useTiers";
+import { BalancePill }          from "../credits/BalancePill";
+import { TierPicker, tierDotColor } from "./TierPicker";
+import { estimateCreditsPerMessage, formatCreditsEstimate } from "../../lib/credits";
 import { useSettings }          from "../../hooks/useSettings";
 import { useModels }            from "../../hooks/ModelsProvider";
 import { formatEstimate, formatPerM, type ModelDef } from "../../lib/cost";
@@ -17,6 +22,12 @@ export interface ComposerSendParams {
   quote?:       string;
   fileIds?:     string[];
   webSearch?:   boolean;
+  /** Set when the simple (tier) picker chose the model — persisted on the
+   *  reply so the UI can label it "Fast"/"Thinking" instead of the model. */
+  tierKey?:     string;
+  /** The already-resolved model — lets the send proceed even when the
+   *  catalog mirror can't resolve modelId (tier models on cold start). */
+  modelDef?:    ModelDef;
 }
 
 export interface ComposerProps {
@@ -86,7 +97,9 @@ export function Composer({
   onOpenSettings,
   onCreateBlankBranch,
 }: ComposerProps) {
-  const { prefs }            = useSettings();
+  const { prefs, setPref, keySource } = useSettings();
+  const { managed, balance, openTopUp } = useCredits();
+  const { tiers } = useTiers();
   const { models, resolve, pinnedIds, togglePinned, catalogCount } = useModels();
   const [text,   setText]    = useState(() => initialText ?? loadDraft(chatId, currentNodeId));
   const [files,  setFiles]   = useState<ProcessedFile[]>([]);
@@ -130,10 +143,34 @@ export function Composer({
     ta.setSelectionRange(end, end);
   }, [quote]);
 
-  // Resolve model object — selected id, falling back to the user default,
-  // then the first available model (the list is never empty: the fallback
-  // snapshot backs it before the live catalog loads).
-  const model: ModelDef = resolve(modelId) ?? resolve(prefs.defaultModelId) ?? models[0]!;
+  // Simple (tier) mode: managed product default — the picker shows
+  // Fast/Thinking instead of model names. Falls back to advanced whenever
+  // tiers aren't available (local mode, unseeded deployment, cold start).
+  const simpleMode = managed && prefs.pickerMode !== "advanced" && !!tiers && tiers.length > 0;
+  const activeTier = simpleMode
+    ? (tiers!.find(t => t.key === prefs.defaultTierKey) ?? tiers![0]!)
+    : null;
+  const selectTier = (key: string): void => {
+    setPref("defaultTierKey", key);
+    closePicker();
+  };
+
+  // Resolve model object. In simple mode the tier dictates the model id —
+  // if the catalog mirror doesn't know it yet, synthesize a ModelDef from
+  // the tier's server-side pricing so the send still targets the mapped
+  // model rather than silently falling back.
+  const tierModel: ModelDef | null = activeTier
+    ? resolve(activeTier.modelId) ?? {
+        id: activeTier.modelId,
+        openRouterId: activeTier.modelId,
+        name: activeTier.displayName,
+        vendor: "cogninode",
+        tag: "tier",
+        inputPricePerM: activeTier.promptPerM,
+        outputPricePerM: activeTier.completionPerM,
+      }
+    : null;
+  const model: ModelDef = tierModel ?? resolve(modelId) ?? resolve(prefs.defaultModelId) ?? models[0]!;
   const initials = model.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2);
 
   // Picker rows: search filters the whole catalog flat; otherwise pinned
@@ -215,6 +252,13 @@ export function Composer({
     if (!composerText && files.length === 0) return;
     if (streamState === "streaming") return;
     if (uploading) return;
+    // Credits gate: charging happens after a stream completes, so this is
+    // the moment a depleted (or negative) balance blocks. BYOK sends spend
+    // the user's own OpenRouter account — never blocked here.
+    if (managed && keySource === "managed" && balance !== null && balance <= 0) {
+      openTopUp();
+      return;
+    }
     const fileIds = files.map(f => f.fileId);
     // Clear local state before firing — the assistant tail handles itself.
     setText("");
@@ -223,10 +267,12 @@ export function Composer({
     onClearQuote?.();
     void onSend({
       modelId: model.id,
+      modelDef: model,
       composerText,
       ...(quote !== undefined ? { quote } : {}),
       ...(fileIds.length ? { fileIds } : {}),
       ...(webSearch ? { webSearch: true } : {}),
+      ...(activeTier ? { tierKey: activeTier.key } : {}),
     });
   };
 
@@ -335,22 +381,54 @@ export function Composer({
           />
 
           <div className="tw:relative">
-            <button
-              className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-[5px] tw:pr-[9px] tw:pl-1.5 tw:rounded-[8px] tw:border tw:border-line tw:bg-bg-3 tw:text-[12px] tw:text-ink tw:hover:border-ink-3"
-              type="button"
-              onClick={() => (modelPickerOpen ? closePicker() : setModelPickerOpen(true))}
-              aria-expanded={modelPickerOpen}
-              title={`${model.name} — ${model.vendor} · ${model.tag}`}
-            >
-              <span className="tw:w-4 tw:h-4 tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[8px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>{initials}</span>
-              <span>{model.name.split(" ").slice(0, 2).join(" ")}</span>
-              <svg className="tw:w-2 tw:h-2 tw:opacity-50" viewBox="0 0 10 10">
-                <path d="M2 4 L5 7 L8 4" stroke="currentColor" strokeWidth="1.4" fill="none"
-                      strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            {activeTier ? (
+              <button
+                className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-[5px] tw:px-[9px] tw:rounded-[8px] tw:border tw:border-line tw:bg-bg-3 tw:text-[12px] tw:text-ink tw:hover:border-ink-3"
+                type="button"
+                onClick={() => (modelPickerOpen ? closePicker() : setModelPickerOpen(true))}
+                aria-expanded={modelPickerOpen}
+                title={`${activeTier.displayName} — ${activeTier.blurb}`}
+              >
+                <span className="tw:w-[8px] tw:h-[8px] tw:rounded-[50%]" style={{ background: tierDotColor(activeTier.key) }} />
+                <span>{activeTier.displayName}</span>
+                <svg className="tw:w-2 tw:h-2 tw:opacity-50" viewBox="0 0 10 10">
+                  <path d="M2 4 L5 7 L8 4" stroke="currentColor" strokeWidth="1.4" fill="none"
+                        strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-[5px] tw:pr-[9px] tw:pl-1.5 tw:rounded-[8px] tw:border tw:border-line tw:bg-bg-3 tw:text-[12px] tw:text-ink tw:hover:border-ink-3"
+                type="button"
+                onClick={() => (modelPickerOpen ? closePicker() : setModelPickerOpen(true))}
+                aria-expanded={modelPickerOpen}
+                title={`${model.name} — ${model.vendor} · ${model.tag}`}
+              >
+                <span className="tw:w-4 tw:h-4 tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[8px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>{initials}</span>
+                <span>{model.name.split(" ").slice(0, 2).join(" ")}</span>
+                <svg className="tw:w-2 tw:h-2 tw:opacity-50" viewBox="0 0 10 10">
+                  <path d="M2 4 L5 7 L8 4" stroke="currentColor" strokeWidth="1.4" fill="none"
+                        strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
 
-            {modelPickerOpen && (
+            {modelPickerOpen && activeTier && (
+              <>
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 29 }}
+                  onClick={closePicker}
+                />
+                <TierPicker
+                  tiers={tiers!}
+                  selectedKey={activeTier.key}
+                  onSelect={selectTier}
+                  onShowAllModels={() => setPref("pickerMode", "advanced")}
+                />
+              </>
+            )}
+
+            {modelPickerOpen && !activeTier && (
               <>
                 <div
                   style={{ position: "fixed", inset: 0, zIndex: 29 }}
@@ -405,6 +483,7 @@ export function Composer({
                         m={m}
                         selected={m.id === model.id}
                         pinned
+                        creditsMode={managed && keySource === "managed"}
                         onSelect={() => { setModelId(m.id); closePicker(); }}
                         onTogglePin={() => togglePinned(m.id)}
                       />
@@ -418,6 +497,7 @@ export function Composer({
                         m={m}
                         selected={m.id === model.id}
                         pinned={pinnedIds.includes(m.id)}
+                        creditsMode={managed && keySource === "managed"}
                         onSelect={() => { setModelId(m.id); closePicker(); }}
                         onTogglePin={() => togglePinned(m.id)}
                       />
@@ -429,6 +509,21 @@ export function Composer({
                       <div className="tw:py-5 tw:px-2.5 tw:text-[12px] tw:text-ink-3 tw:text-center">No models match.</div>
                     )}
                   </div>
+
+                  {managed && tiers && tiers.length > 0 && (
+                    <div
+                      className="tw:flex tw:items-center tw:gap-2 tw:py-2 tw:px-2.5 tw:text-[12px] tw:cursor-pointer tw:text-ink-3 tw:border-t tw:border-line tw:hover:text-ink tw:hover:bg-bg-2"
+                      onClick={() => { setPref("pickerMode", "simple"); closePicker(); }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPref("pickerMode", "simple"); closePicker(); } }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                        <path d="M13 8 H3 M7 4 L3 8 L7 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span>Simple mode — just Fast & Thinking</span>
+                    </div>
+                  )}
 
                   {onOpenSettings && (
                     <div
@@ -453,8 +548,12 @@ export function Composer({
           </div>
 
           <span className={`tw:font-mono tw:text-[11px] tw:font-medium tw:tracking-[0.04em] tw:py-[3px] tw:px-[9px] tw:rounded-[999px] tw:transition-[background-color,color] tw:duration-200 tw:ease-[ease] ${PILL[pillClass]}`} title={`Estimated cost on ${model.name}`}>
-            {formatEstimate(estCost)}
+            {managed && keySource === "managed"
+              ? formatCreditsEstimate(estCost)
+              : formatEstimate(estCost)}
           </span>
+
+          <BalancePill />
 
           {onCreateBlankBranch && (
             <button
@@ -527,11 +626,13 @@ interface PickerRowProps {
   m:           ModelDef;
   selected:    boolean;
   pinned:      boolean;
+  /** Managed-credits sends price rows in "~N cr/msg" instead of $/M. */
+  creditsMode: boolean;
   onSelect:    () => void;
   onTogglePin: () => void;
 }
 
-function PickerRow({ m, selected, pinned, onSelect, onTogglePin }: PickerRowProps) {
+function PickerRow({ m, selected, pinned, creditsMode, onSelect, onTogglePin }: PickerRowProps) {
   const mInitials = m.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2);
   const isFree = m.inputPricePerM === 0 && m.outputPricePerM === 0;
   return (
@@ -549,9 +650,15 @@ function PickerRow({ m, selected, pinned, onSelect, onTogglePin }: PickerRowProp
       </div>
       <span
         className={`tw:font-mono tw:text-[10px] tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:flex-none ${selected ? "tw:bg-butter" : "tw:bg-bg-2"} ${isFree ? "tw:text-teal" : selected ? "tw:text-ink" : "tw:text-ink-2"}`}
-        title="input / output, USD per 1M tokens"
+        title={creditsMode
+          ? "approximate credits per message — the exact amount shows under each reply"
+          : "input / output, USD per 1M tokens"}
       >
-        {isFree ? "free" : `${formatPerM(m.inputPricePerM)} / ${formatPerM(m.outputPricePerM)}`}
+        {isFree
+          ? "free"
+          : creditsMode
+            ? `~${estimateCreditsPerMessage(m.inputPricePerM, m.outputPricePerM)} cr`
+            : `${formatPerM(m.inputPricePerM)} / ${formatPerM(m.outputPricePerM)}`}
       </span>
       <button
         className={`tw:w-[22px] tw:h-[22px] tw:grid tw:place-items-center tw:rounded-[5px] tw:flex-none tw:transition-[color,opacity] tw:duration-[120ms] tw:ease-[ease] ${pinned ? "tw:text-butter" : "tw:text-ink-4 tw:opacity-0 tw:group-hover/row:opacity-100 tw:hover:text-ink"}`}

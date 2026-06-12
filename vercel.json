@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/hf/:path*",
+      "destination": "https://huggingface.co/:path*"
+    },
+    {
+      "source": "/((?!assets/|hf/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

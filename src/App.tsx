@@ -1,11 +1,14 @@
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { ApiKeyGate } from "./components/setup/ApiKeyGate";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { AccessGate } from "./components/setup/AccessGate";
 import { SettingsProvider } from "./hooks/useSettings";
 import { StreamsProvider } from "./hooks/StreamsProvider";
+import { CreditsProvider } from "./hooks/useCredits";
+import { TiersProvider } from "./hooks/useTiers";
 import { ModelsProvider } from "./hooks/ModelsProvider";
 import { ToastProvider } from "./components/ui/Toast";
 import { SearchOverlay } from "./components/search/SearchOverlay";
+import { SyncAgent } from "./components/sync/SyncAgent";
 import Chats from "./pages/Chats";
 import Chat from "./pages/Chat";
 import Reflections from "./pages/Reflections";
@@ -13,8 +16,19 @@ import Graphs from "./pages/Graphs";
 
 // The graph editor pulls in React Flow — lazy so it loads on first visit.
 const GraphEditor = lazy(() => import("./pages/GraphEditor"));
+const Legal = lazy(() => import("./pages/Legal"));
 
 export default function App() {
+    // /legal is public by requirement (payment-provider KYC reviewers and
+    // signed-out users must reach it) — short-circuit before the gate.
+    const { pathname } = useLocation();
+    if (pathname === "/legal") {
+        return (
+            <Suspense fallback={null}>
+                <Legal />
+            </Suspense>
+        );
+    }
     // SettingsProvider sits above everything so the shared apiKey it owns is
     // visible to StreamsProvider (which reads it to make requests) and to the
     // gate (which shows the setup screen when it's empty). A 401 reset clears
@@ -26,7 +40,9 @@ export default function App() {
             <ToastProvider>
                 <ModelsProvider>
                     <StreamsProvider>
-                        <ApiKeyGate>
+                        <CreditsProvider>
+                        <TiersProvider>
+                        <AccessGate>
                             <Routes>
                                 <Route path="/" element={<Chats />} />
                                 <Route path="/reflections" element={<Reflections />} />
@@ -45,7 +61,13 @@ export default function App() {
                             {/* ⌘K palette — global so it works on every page;
                                 also bootstraps the search index + semantic layer. */}
                             <SearchOverlay />
-                        </ApiKeyGate>
+                            {/* Sync runs only past the gate: auth + the
+                                account-link check must settle before any
+                                local data leaves the device. */}
+                            <SyncAgent />
+                        </AccessGate>
+                        </TiersProvider>
+                        </CreditsProvider>
                     </StreamsProvider>
                 </ModelsProvider>
             </ToastProvider>

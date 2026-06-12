@@ -6,9 +6,18 @@ import type { Citation }           from "./stream";
 import {
   INLINE_MAX_CHARS, ATTACH_TURN_CAP_CHARS, STUB_HEAD_CHARS,
 } from "./docrag/chunk";
+import {
+  SYNCED_TABLES, setupSyncCapture, type OutboxEntry,
+} from "./sync/capture";
+import { isManagedMode } from "./managedConfig";
 
 // Re-export so message consumers can pull the Citation shape from `db`.
 export type { Citation };
+
+// NOTE on `_modifiedAt`: in managed mode the sync middleware (lib/sync/
+// capture.ts) stamps every row of the synced tables with a `_modifiedAt`
+// LWW clock at write time. It is deliberately NOT declared on the domain
+// interfaces — nothing outside lib/sync/ may read or write it.
 
 // ── Local types ────────────────────────────────────────────────
 
@@ -61,6 +70,18 @@ export interface Message {
   fileIds?:     string[];      // references to files table
   citations?:   Citation[];    // web-search sources (non-indexed, no migration)
   ragSources?:  RagSourceRef[]; // graph-RAG citations (non-indexed, no migration)
+  /** Which key pool paid for this assistant reply (non-indexed, no
+   *  migration): "managed" replies show credits, "byok" shows USD. */
+  keySource?:   "byok" | "managed";
+  /** Simple-mode tier this send used ("fast" | "thinking" | …) — the UI
+   *  labels the reply with the tier instead of the raw model name. */
+  tierKey?:     string;
+  /** Whether this send ran OpenRouter's paid web-search plugin — the
+   *  credits chip mirrors the server's estimated-cost surcharge with it. */
+  webSearch?:   boolean;
+  /** Whether costUsd came from OpenRouter's usage accounting ("upstream")
+   *  or client fallback math ("estimated"). */
+  costSource?:  "upstream" | "estimated";
   createdAt:    number;
 }
 
@@ -240,6 +261,7 @@ export const db = new Dexie("cogninode") as Dexie & {
   graphs:     EntityTable<KnowledgeGraph, "_id">;
   graphNodes: EntityTable<GraphNode,     "_id">;
   graphEdges: EntityTable<GraphEdge,     "_id">;
+  outbox:     EntityTable<OutboxEntry,   "seq">;
 };
 
 db.version(1).stores({
@@ -339,11 +361,77 @@ db.version(6).stores({
   }
 });
 
+// v7: the sync outbox (managed mode mirrors user data to Convex). Every
+// synced row gains a `_modifiedAt` LWW stamp, backfilled from the best
+// timestamp the row already carries.
+db.version(7).stores({
+  outbox: "++seq",
+}).upgrade(async tx => {
+  const now = Date.now();
+  for (const tableName of SYNCED_TABLES) {
+    await tx.table(tableName).toCollection().modify(row => {
+      const r = row as Record<string, unknown>;
+      if (typeof r["_modifiedAt"] !== "number") {
+        r["_modifiedAt"] =
+          (typeof r["updatedAt"] === "number" ? r["updatedAt"] : undefined) ??
+          (typeof r["createdAt"] === "number" ? r["createdAt"] : undefined) ??
+          now;
+      }
+    });
+  }
+});
+
+// Managed mode: capture every synced-table write into the outbox (see
+// lib/sync/capture.ts). Must install before the db opens; local mode
+// skips it so the outbox never grows without a drain.
+if (isManagedMode()) {
+  setupSyncCapture(db);
+}
+
 // ── Meta helpers ───────────────────────────────────────────────
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {
   const row = await db.meta.get(key);
   return row?.value as T | undefined;
+}
+
+export async function setMeta(key: string, value: unknown): Promise<void> {
+  await db.meta.put({ key, value });
+}
+
+// ── Bulk data helpers ──────────────────────────────────────────
+
+/** Wipe every user-data table (NOT meta/models — bookkeeping and the
+ *  catalog cache survive). Used by Settings → Clear all data and by the
+ *  account-mismatch "wipe & continue" path in the auth gate. */
+export async function clearAllUserData(): Promise<void> {
+  await db.transaction(
+    "rw",
+    [db.chats, db.nodes, db.messages, db.reflections, db.files,
+     db.graphs, db.graphNodes, db.graphEdges, db.searchVectors],
+    async () => {
+      await db.chats.clear();
+      await db.nodes.clear();
+      await db.messages.clear();
+      await db.reflections.clear();
+      await db.files.clear();
+      await db.graphs.clear();
+      await db.graphNodes.clear();
+      await db.graphEdges.clear();
+      await db.searchVectors.clear();
+    },
+  );
+}
+
+/** Does this browser hold any user data worth protecting? Cheap counts —
+ *  feeds the account-link decision (lib/accountLink.ts). */
+export async function hasAnyUserData(): Promise<boolean> {
+  const [chats, graphs, reflections] = await Promise.all([
+    db.chats.count(),
+    db.graphs.count(),
+    db.reflections.count(),
+  ]);
+  return chats + graphs + reflections > 0;
 }
 
 // ── Typed helpers ──────────────────────────────────────────────

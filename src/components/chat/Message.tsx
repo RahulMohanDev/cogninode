@@ -17,6 +17,9 @@ import {
 import { useLiveQuery }     from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { formatCost }       from "../../lib/cost";
+import { chargedUsd, formatCreditsShort, usdToCredits } from "../../lib/credits";
+import { useTiers }          from "../../hooks/useTiers";
+import { tierDotColor }      from "./TierPicker";
 import { useModels }        from "../../hooks/ModelsProvider";
 import { MarkdownBody }     from "./MarkdownBody";
 import { Reasoning }        from "./Reasoning";
@@ -166,6 +169,14 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
     ? resolve(message.modelId)
     : undefined;
 
+  // Simple-mode replies are labeled by tier; the live tier list supplies
+  // display names, falling back to a capitalized key for retired tiers.
+  const { tiers } = useTiers();
+  const tierLabel = isAssistant && message.tierKey
+    ? tiers?.find(t => t.key === message.tierKey)?.displayName
+      ?? message.tierKey.charAt(0).toUpperCase() + message.tierKey.slice(1)
+    : null;
+
   const initials = model
     ? model.name.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2)
     : "";
@@ -296,14 +307,26 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
 
       <div className="tw:flex tw:items-center tw:gap-2 tw:font-mono tw:text-[10px] tw:tracking-[0.1em] tw:text-ink-3 tw:uppercase">
         {isAssistant ? (
-          <>
-            {model && (
-              <span className="tw:w-[18px] tw:h-[18px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[9px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>
-                {initials}
-              </span>
-            )}
-            <span>{model?.name ?? "assistant"}</span>
-          </>
+          tierLabel ? (
+            // Simple-mode reply: the tier IS the identity — model name in
+            // the tooltip for the curious.
+            <>
+              <span
+                className="tw:w-[8px] tw:h-[8px] tw:rounded-[50%]"
+                style={{ background: tierDotColor(message.tierKey!) }}
+              />
+              <span title={model?.name}>{tierLabel}</span>
+            </>
+          ) : (
+            <>
+              {model && (
+                <span className="tw:w-[18px] tw:h-[18px] tw:rounded-[50%] tw:grid tw:place-items-center tw:text-white tw:text-[9px] tw:font-bold tw:tracking-[-0.04em]" style={{ background: "var(--ink-2)" }}>
+                  {initials}
+                </span>
+              )}
+              <span>{model?.name ?? "assistant"}</span>
+            </>
+          )
         ) : (
           <span>You</span>
         )}
@@ -403,9 +426,23 @@ export function Message({ message, onBranch, reflectionsMode = false, prevMessag
         </div>
       ) : isAssistant && !reflectionsMode ? (
         <div className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[11px] tw:text-ink-3 tw:mt-1">
-          <span className="tw:inline-flex tw:items-center tw:gap-[5px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px]">
+          <span
+            className="tw:inline-flex tw:items-center tw:gap-[5px] tw:bg-bg-2 tw:py-[3px] tw:px-2 tw:rounded-[999px]"
+            title={
+              message.keySource === "managed" && typeof message.costUsd === "number"
+                ? `${formatCost(message.costUsd)} API cost${message.costSource === "estimated" ? " (estimated)" : ""}`
+                : undefined
+            }
+          >
             <span className="tw:w-[5px] tw:h-[5px] tw:rounded-[50%] tw:bg-teal" />
-            {typeof message.costUsd === "number" ? formatCost(message.costUsd) : "—"}
+            {typeof message.costUsd === "number"
+              ? message.keySource === "managed"
+                // chargedUsd mirrors the server's web-search fallback
+                // surcharge — the chip must match the ledger deduction.
+                ? formatCreditsShort(usdToCredits(
+                    chargedUsd(message.costUsd, message.costSource, message.webSearch)))
+                : formatCost(message.costUsd)
+              : "—"}
             {typeof message.inputTokens === "number" && typeof message.outputTokens === "number" && (
               <span className="tw:font-mono tw:text-[11px] tw:text-ink-3 tw:tracking-[0.02em]">
                 &nbsp;·&nbsp;{message.inputTokens.toLocaleString()} in + {message.outputTokens.toLocaleString()} out

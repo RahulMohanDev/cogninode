@@ -18,9 +18,11 @@ import {
 } from "react";
 import { streamMessage, type Citation }   from "../lib/stream";
 import { buildPathMessages, db, type RagSourceRef } from "../lib/db";
+import { drainUsageOutbox, enqueueUsageReport } from "../lib/usageOutbox";
 import { retrieveForFiles }                from "../lib/docrag/retrieve";
 import { buildFileContext }                from "../lib/docrag/prompt";
 import { resolveModelSync }               from "../lib/models";
+import type { ModelDef }                  from "../lib/cost";
 import { autoTitleChat, autoTitleNode, backfillTitles, deriveTitle } from "../lib/title";
 import { registerAborter, unregisterAborter } from "../lib/streamAborts";
 import { useSettings }                    from "./useSettings";
@@ -39,6 +41,10 @@ export interface StreamSlotSnapshot {
    *  OpenRouter response. The UI keys its 401 ("key rejected") recovery flow
    *  off this rather than string-matching the message. */
   errorStatus?:       number;
+  /** Key pool this send spent — captured at send time so error-card copy
+   *  and recovery actions describe the FAILED send, not whatever the live
+   *  settings flipped to since. */
+  keySource:          "byok" | "managed";
   startedAt:          number;
 }
 
@@ -50,6 +56,14 @@ export interface SendParams {
   /** Run an OpenRouter web search for this message. Captured at send time
    *  so the per-message toggle value sticks to this specific stream. */
   webSearch?:   boolean;
+  /** Simple-mode tier that picked the model — persisted on the assistant
+   *  reply so the UI labels it "Fast"/"Thinking" instead of the model. */
+  tierKey?:     string;
+  /** The Composer's already-resolved model. Fallback when the catalog
+   *  mirror can't resolve modelId (tier-mapped models before the live
+   *  catalog loads) — without it the send would error "Unknown model"
+   *  in exactly the case the tier picker synthesized a def for. */
+  modelDef?:    ModelDef;
   /** Graph-RAG injection (dock chats): retrieval-built system context plus
    *  the [S#]→canvas-node map, persisted onto the assistant message. */
   graphContext?: { text: string; sources: RagSourceRef[] };
@@ -91,14 +105,26 @@ export interface StreamsProviderProps {
 }
 
 export function StreamsProvider({ children }: StreamsProviderProps) {
-  const { apiKey, prefs } = useSettings();
+  const { apiKey, keySource, prefs } = useSettings();
   // Settings live in refs too so `send`'s captured closure always sees the
   // latest values without forcing every consumer of context to re-render
   // when the user swaps their key or adds a custom model mid-session.
-  const apiKeyRef = useRef(apiKey);
-  const prefsRef  = useRef(prefs);
-  useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
-  useEffect(() => { prefsRef.current  = prefs;  }, [prefs]);
+  const apiKeyRef    = useRef(apiKey);
+  const keySourceRef = useRef(keySource);
+  const prefsRef     = useRef(prefs);
+  useEffect(() => { apiKeyRef.current    = apiKey;    }, [apiKey]);
+  useEffect(() => { keySourceRef.current = keySource; }, [keySource]);
+  useEffect(() => { prefsRef.current     = prefs;     }, [prefs]);
+
+  // Flush any usage reports a previous session failed to deliver (killed
+  // tab, offline). Safe to fire eagerly: drains coalesce, the server
+  // mutation is idempotent, and without a Convex client it's a no-op.
+  const drainedRef = useRef(false);
+  useEffect(() => {
+    if (drainedRef.current || !apiKey) return;
+    drainedRef.current = true;
+    void drainUsageOutbox();
+  }, [apiKey]);
 
   // Once a key is available, sweep any chats/branches that never got an LLM
   // title (e.g. created before this ran, or whose send-time titling failed for
@@ -173,10 +199,16 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
     const existing = slotsRef.current.get(nodeId);
     if (existing && existing.snapshot.state === "streaming") return;
 
+    // Which pool this send spends — captured NOW so a mid-stream settings
+    // change (adding/removing a BYOK key) can't misattribute the charge or
+    // flip the error card's copy under the user.
+    const sendKeySource = keySourceRef.current;
+
     // Resolves through the live catalog mirror (custom → catalog → legacy
     // slug map), so even historical ids keep working. undefined only when
     // the id is genuinely unknown — e.g. a model OpenRouter removed.
-    const model = resolveModelSync(params.modelId, prefsRef.current.customModels);
+    const model = resolveModelSync(params.modelId, prefsRef.current.customModels)
+      ?? params.modelDef;
     if (!model) {
       // Create an error-state slot so the failure surfaces in the UI.
       const errSubs = existing?.subscribers ?? new Set<() => void>();
@@ -192,6 +224,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
           state: "error",
           streamingText: "", streamingReasoning: "",
           error: `Unknown model "${params.modelId}" — it may have been removed from OpenRouter. Pick another model and resend.`,
+          keySource: sendKeySource,
           startedAt: Date.now(),
         },
         subscribers: errSubs,
@@ -217,6 +250,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
         state: "streaming",
         streamingText: "", streamingReasoning: "",
         error: null,
+        keySource: sendKeySource,
         startedAt: Date.now(),
       },
       subscribers: subs,
@@ -353,6 +387,7 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
 
         await streamMessage({
           apiKey: apiKeyRef.current,
+          keySource: sendKeySource,
           openRouterId: model.openRouterId,
           messages: pathMessages,
           ...(systemExtra ? { systemExtra } : {}),
@@ -381,29 +416,54 @@ export function StreamsProvider({ children }: StreamsProviderProps) {
             });
           },
 
-          onDone: async ({ inputTokens, outputTokens, costUsd }) => {
+          onDone: async ({ inputTokens, outputTokens, costUsd, costSource }) => {
             // Persist assistant message — reasoning is optional separate
             // field so the UI can render it in a collapsible "Thinking"
-            // section.
-            await db.messages.add({
-              _id:          crypto.randomUUID(),
-              nodeId,
-              chatId,
-              role:         "assistant",
-              content:      fullContent,
-              ...(fullReasoning ? { reasoning: fullReasoning } : {}),
-              ...(citations.length ? { citations } : {}),
-              ...(params.graphContext?.sources.length
-                ? { ragSources: params.graphContext.sources }
-                : {}),
-              modelId:      params.modelId,
-              costUsd,
-              inputTokens,
-              outputTokens,
-              pathDepth:    pathMessages.length,
-              createdAt:    Date.now(),
+            // section. ONE transaction with the chat bump and (managed)
+            // the usage report: a tab killed between separate transactions
+            // would leave a persisted-and-synced reply nobody was charged
+            // for — message and charge commit or roll back together.
+            const assistantMsgId = crypto.randomUUID();
+            await db.transaction("rw", [db.messages, db.chats, db.meta], async () => {
+              await db.messages.add({
+                _id:          assistantMsgId,
+                nodeId,
+                chatId,
+                role:         "assistant",
+                content:      fullContent,
+                ...(fullReasoning ? { reasoning: fullReasoning } : {}),
+                ...(citations.length ? { citations } : {}),
+                ...(params.graphContext?.sources.length
+                  ? { ragSources: params.graphContext.sources }
+                  : {}),
+                modelId:      params.modelId,
+                ...(params.tierKey ? { tierKey: params.tierKey } : {}),
+                costUsd,
+                costSource,
+                keySource:    sendKeySource,
+                ...(params.webSearch ? { webSearch: true } : {}),
+                inputTokens,
+                outputTokens,
+                pathDepth:    pathMessages.length,
+                createdAt:    Date.now(),
+              });
+              await db.chats.update(chatId, { updatedAt: Date.now() });
+              // Managed sends charge credits: the report queues durably in
+              // the SAME transaction. BYOK sends spend the user's own
+              // OpenRouter account — never reported.
+              if (sendKeySource === "managed") {
+                await enqueueUsageReport({
+                  messageClientId: assistantMsgId,
+                  usdCost:         costUsd,
+                  costSource,
+                  modelId:         params.modelId,
+                  inputTokens,
+                  outputTokens,
+                  webSearch:       params.webSearch ?? false,
+                });
+              }
             });
-            await db.chats.update(chatId, { updatedAt: Date.now() });
+            if (sendKeySource === "managed") void drainUsageOutbox();
 
             // First exchange complete — swap the derived title for a short
             // LLM topic title in the background. Fire-and-forget: it never

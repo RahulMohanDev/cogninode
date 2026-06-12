@@ -75,8 +75,8 @@ export async function generateChatTitle(params: GenerateParams): Promise<string 
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${params.apiKey}`,
-        "HTTP-Referer":  "https://github.com/RahulMohanDev/cogninode",
-        "X-Title":       "cogninode beta",
+        "HTTP-Referer":  globalThis.location?.origin ?? "https://github.com/RahulMohanDev/cogninode",
+        "X-Title":       "cogninode",
       },
       body: JSON.stringify({
         model:      model.openRouterId,

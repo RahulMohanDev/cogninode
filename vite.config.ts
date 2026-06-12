@@ -46,6 +46,9 @@ export default defineConfig({
           // Split into its own chunk so it loads in parallel with the main
           // bundle and stays cached across our app updates.
           streamdown: ["streamdown"],
+          // Managed-mode backend stack (Clerk + Convex). Local mode never
+          // exercises it at runtime — keep it out of the hot main chunk.
+          account:    ["@clerk/clerk-react", "convex"],
         },
       },
     },
