@@ -7,7 +7,7 @@
 // the stream and each message receives the visible edit/delete/merge
 // affordances via its own props.
 
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, type MutableRefObject, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { highlightTermsInElement, clearSearchHighlight } from "../../lib/domHighlight";
@@ -95,6 +95,12 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   // fire against stale/short content mid-switch.
   const restorePendingRef = useRef(true);
 
+  // Shows a "jump to latest" affordance whenever the user is scrolled away from
+  // the bottom — so a reply streaming in below the fold (e.g. with autoscroll
+  // off) is never silently missed.
+  const NEAR_BOTTOM_PX = 80;
+  const [showJump, setShowJump] = useState(false);
+
   // Remember where the user is, live, so returning to a chat lands where they
   // left off (used when autoscroll is off). Skip while a restore is pending —
   // stale content would save a bogus offset under the new node.
@@ -102,7 +108,25 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     const el = scrollRef.current;
     if (!el || restorePendingRef.current) return;
     scrollMemory.set(currentNodeId, el.scrollTop);
+    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > NEAR_BOTTOM_PX);
   }, [currentNodeId]);
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
+
+  // Lift a message toward the top of the viewport (leaving a small gap above
+  // and the rest of the space below for the reply), rather than pinning it to
+  // the very bottom. Used on send / reply-start when autoscroll is off so the
+  // new turn is comfortably on screen.
+  const LIFT_GAP_PX = 24;
+  const liftIntoView = useCallback((msgId: string, behavior: ScrollBehavior) => {
+    const el = scrollRef.current;
+    const node = el?.querySelector(`[data-msg-id="${CSS.escape(msgId)}"]`);
+    if (el && node instanceof HTMLElement) {
+      el.scrollTo({ top: Math.max(0, node.offsetTop - LIFT_GAP_PX), behavior });
+    }
+  }, []);
 
   // The messages query lags a frame behind currentNodeId on a node switch
   // (Dexie resolves async). Since the query filters by nodeId, the list is
@@ -132,10 +156,10 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     restorePendingRef.current = false;
   }, [currentNodeId, messagesReady, autoScroll]);
 
-  // Reveal a message the user just sent — even when autoscroll is off — so it
-  // jumps to the bottom once on send, then leaves the streaming reply alone.
-  // Detects an appended user message in the *same* node (not a node switch),
-  // and skips the first settled render of each node so a restore isn't undone.
+  // Reveal a message the user just sent — even when autoscroll is off — then
+  // leave the streaming reply alone. Detects an appended user message in the
+  // *same* node (not a node switch), and skips the first settled render of each
+  // node so a restore isn't undone.
   const prevLenRef      = useRef(pathMessages.length);
   const baselineNodeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -148,10 +172,33 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
       return;
     }
     if (pathMessages.length > prevLenRef.current && last?.role === "user") {
-      bottomRef.current?.scrollIntoView({ behavior: "instant", block: "end" });
+      if (autoScroll) {
+        bottomRef.current?.scrollIntoView({ behavior: "instant", block: "end" });
+      } else {
+        // Lift the sent message up a bit so it's clearly on screen with room
+        // below for the reply, instead of pinned to the bottom edge.
+        liftIntoView(last._id, "instant");
+      }
     }
     prevLenRef.current = pathMessages.length;
-  }, [pathMessages.length, currentNodeId, messagesReady]);
+  }, [pathMessages.length, currentNodeId, messagesReady, autoScroll, liftIntoView]);
+
+  // Even with autoscroll off, reveal the *start* of a reply: when the stream
+  // begins, scroll once so the new assistant block is visible, then stop
+  // following. (With autoscroll on, the effect below already keeps up.)
+  const prevStreamStateRef = useRef(streamState);
+  useEffect(() => {
+    const justStarted =
+      streamState === "streaming" && prevStreamStateRef.current !== "streaming";
+    prevStreamStateRef.current = streamState;
+    if (justStarted && !restorePendingRef.current && !autoScroll) {
+      // Lift the turn (its user message) toward the top so the reply, which
+      // renders just below, comes up onto the screen as it begins.
+      const last = pathMessages[pathMessages.length - 1];
+      if (last) liftIntoView(last._id, "smooth");
+      else bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [streamState, autoScroll, pathMessages, liftIntoView]);
 
   // Standard autoscroll: follow the bottom as content grows — including a
   // thinking model's reasoning (streamingReasoning is in the deps). Gated by
@@ -160,6 +207,16 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
     if (restorePendingRef.current || !autoScroll) return;
     bottomRef.current?.scrollIntoView({ behavior: "instant", block: "end" });
   }, [pathMessages.length, streamingText, streamingReasoning, streamState, autoScroll]);
+
+  // Recompute the jump affordance as content grows: a reply streaming in below
+  // a scrolled-up viewport doesn't fire a scroll event, so reflect it here.
+  // Runs after the autoscroll effect, so when following is on the distance
+  // reads ~0 and the button stays hidden.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || restorePendingRef.current) return;
+    setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > NEAR_BOTTOM_PX);
+  }, [pathMessages.length, streamingText, streamingReasoning, streamState]);
 
   // Search deep link: once the target message is rendered, center + flash
   // it, and highlight the matched terms inside it (semantic-only hits may
@@ -305,6 +362,25 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
 
         <div ref={bottomRef} />
       </div>
+
+      {showJump && (
+        <div className="tw:sticky tw:bottom-[120px] tw:z-[8] tw:flex tw:justify-end tw:pr-6 tw:pointer-events-none">
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            title={streamState === "streaming" ? "AI is responding — jump to latest" : "Jump to latest"}
+            aria-label={streamState === "streaming" ? "AI is responding — jump to latest" : "Jump to latest"}
+            className="tw:pointer-events-auto tw:relative tw:grid tw:place-items-center tw:w-9 tw:h-9 tw:rounded-full tw:bg-bg-3 tw:text-ink tw:border tw:border-line tw:shadow-2 tw:transition-[border-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:hover:border-ink-3 tw:hover:[transform:translateY(-1px)]"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 3 V12 M4 8.5 L8 12.5 L12 8.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {streamState === "streaming" && (
+              <span className="tw:absolute tw:-top-0.5 tw:-right-0.5 tw:w-2.5 tw:h-2.5 tw:rounded-full tw:bg-coral tw:border-2 tw:border-bg-3 tw:animate-pulse" aria-hidden="true" />
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 });
