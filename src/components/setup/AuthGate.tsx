@@ -56,8 +56,16 @@ export function AuthGate({ children }: AuthGateProps) {
       <Unauthenticated>
         <div className="tw:h-dvh tw:grid tw:grid-cols-2 tw:max-[880px]:grid-cols-1">
           <SetupHero />
-          <div className="tw:bg-bg-3 tw:grid tw:place-items-center tw:p-8">
+          <div className="tw:bg-bg-3 tw:flex tw:flex-col tw:items-center tw:justify-center tw:gap-4 tw:p-8">
             <SignIn routing="hash" />
+            <a
+              className="tw:text-[12px] tw:text-ink-3 tw:hover:text-ink"
+              href="/legal"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Privacy · Terms · Refunds
+            </a>
           </div>
         </div>
       </Unauthenticated>

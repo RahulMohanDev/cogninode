@@ -148,10 +148,17 @@ export const reconcileUser = internalAction({
       });
     }
 
-    await ctx.runMutation(internal.users.recordReconcile, {
-      userId,
-      driftUsd: Math.round((usage - (user.usdReportedTotal ?? 0)) * 1e6) / 1e6,
-    });
+    const driftUsd =
+      Math.round((usage - (user.usdReportedTotal ?? 0)) * 1e6) / 1e6;
+    // Loud log → alertable via Convex log streams. Positive drift beyond
+    // noise = lost client reports or an extracted key being used outside
+    // the app; auto-titles contribute a small expected baseline.
+    if (driftUsd > 0.5 || (usage > 1 && driftUsd / usage > 0.1)) {
+      console.error(
+        `[alert] reconcile drift $${driftUsd} for user ${userId} (usage $${usage})`,
+      );
+    }
+    await ctx.runMutation(internal.users.recordReconcile, { userId, driftUsd });
   },
 });
 

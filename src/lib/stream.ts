@@ -65,8 +65,11 @@ export async function streamMessage(params: StreamParams): Promise<void> {
       headers: {
         "Content-Type":  "application/json",
         "Authorization": `Bearer ${params.apiKey}`,
-        "HTTP-Referer":  "https://github.com/RahulMohanDev/cogninode",
-        "X-Title":       "cogninode beta",
+        // App attribution: the origin is OpenRouter's primary app
+        // identifier (rankings/analytics) — the real product origin in
+        // production, localhost in dev.
+        "HTTP-Referer":  globalThis.location?.origin ?? "https://github.com/RahulMohanDev/cogninode",
+        "X-Title":       "cogninode",
       },
       body: JSON.stringify({
         model:          params.openRouterId,

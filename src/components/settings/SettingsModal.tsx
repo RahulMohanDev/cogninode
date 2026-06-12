@@ -10,6 +10,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 
 import { clearAllUserData, db } from "../../lib/db";
+import { getConvexClient } from "../../lib/convexClient";
 import { isManagedMode } from "../../lib/managedConfig";
 import { useApiKeyValidation } from "../../hooks/useApiKeyValidation";
 import { useCredits } from "../../hooks/useCredits";
@@ -145,6 +146,33 @@ function ManagedAccountSection() {
   const purchases = useQuery(api.payments.listMine);
   const { openTopUp } = useCredits();
 
+  const [delOpen, setDelOpen] = useState(false);
+  const [delText, setDelText] = useState("");
+  const [delBusy, setDelBusy] = useState(false);
+  const [delError, setDelError] = useState<string | null>(null);
+
+  const deleteAccount = async (): Promise<void> => {
+    if (delText !== "DELETE") return;
+    setDelBusy(true);
+    setDelError(null);
+    try {
+      // Server first (synced rows + blobs + key disable), then local, then
+      // the Clerk identity — its user.deleted webhook is a harmless re-run.
+      const client = getConvexClient();
+      if (client) await client.action(api.account.deleteMyData, {});
+      await clearAllUserData();
+      try { localStorage.removeItem("cogninode_api_key"); } catch { /* ignore */ }
+      await user?.delete();
+      window.location.assign("/");
+    } catch (err) {
+      setDelBusy(false);
+      setDelError(
+        `Your data was removed, but the sign-in couldn't be deleted automatically (${(err as Error).message}). ` +
+        "Contact support to finish removing it.",
+      );
+    }
+  };
+
   return (
     <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
       <div className="tw:mb-2">
@@ -194,6 +222,63 @@ function ManagedAccountSection() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Delete account</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+            Removes synced data, disables your key, and erases your sign-in.
+            Unspent credits are forfeited.
+          </div>
+        </div>
+        <button
+          className="tw:bg-bg-3 tw:py-[7px] tw:px-3 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-coral tw:text-coral tw:hover:bg-coral-tint"
+          onClick={() => { setDelOpen(true); setDelText(""); setDelError(null); }}
+          disabled={delBusy}
+        >
+          Delete…
+        </button>
+      </div>
+
+      {delOpen && (
+        <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:text-[13px] tw:text-coral tw:mb-2">
+            Type <strong>DELETE</strong> to permanently delete your account.
+            Export a backup first if you want to keep your chats.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              autoFocus
+              value={delText}
+              onChange={e => setDelText(e.target.value)}
+              placeholder="DELETE"
+              style={{
+                flex: 1, padding: "8px 12px",
+                border: "1px solid var(--line)", borderRadius: "var(--radius-sm)",
+                background: "var(--bg-3)", color: "var(--ink)",
+                fontFamily: "var(--mono)", fontSize: 13, outline: "none",
+              }}
+            />
+            <button
+              className="tw:bg-bg-3 tw:text-ink tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:border tw:border-line tw:hover:border-ink-3"
+              onClick={() => setDelOpen(false)}
+              disabled={delBusy}
+            >
+              Cancel
+            </button>
+            <button
+              className="tw:bg-coral tw:text-bg tw:py-2 tw:px-4 tw:rounded-app-sm tw:text-[13px] tw:font-medium tw:hover:bg-[#ff4520] tw:disabled:bg-ink-4 tw:disabled:cursor-not-allowed"
+              onClick={() => void deleteAccount()}
+              disabled={delBusy || delText !== "DELETE"}
+            >
+              {delBusy ? "Deleting…" : "Delete forever"}
+            </button>
+          </div>
+          {delError && (
+            <div role="alert" className="tw:text-[12px] tw:text-coral tw:mt-2">{delError}</div>
+          )}
         </div>
       )}
     </div>
@@ -1032,6 +1117,9 @@ function AboutSection() {
       <div className="tw:flex tw:gap-[18px] tw:mt-2.5">
         <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="https://github.com/RahulMohanDev/cogninode" target="_blank" rel="noopener noreferrer">
           GitHub
+        </a>
+        <a className="tw:inline-flex tw:items-center tw:gap-[5px] tw:text-[13px] tw:text-ink-3 tw:transition-[color] tw:duration-[120ms] tw:ease-[ease] tw:hover:text-ink" href="/legal" target="_blank" rel="noopener noreferrer">
+          Privacy · Terms · Refunds
         </a>
       </div>
     </div>

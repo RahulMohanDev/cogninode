@@ -35,15 +35,14 @@ const ctx = self as unknown as {
 
 env.allowLocalModels = false;
 
-// On localhost, download model files through the Vite dev-server proxy
-// (vite.config.ts → /hf) instead of huggingface.co directly: HF's
-// cross-origin redirect to its cas-bridge storage host fails the
-// browser's CORS check from a localhost origin (AllowOriginMismatch).
-// Same-origin requests have no CORS to fail; the dev server follows the
-// redirect in Node. Deployed origins keep the direct default.
-const isLocalhost =
-  self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1";
-if (isLocalhost) {
+// Download model files through the same-origin /hf proxy instead of
+// huggingface.co directly: HF's cross-origin redirect to its cas-bridge
+// storage host fails the browser's CORS check (AllowOriginMismatch).
+// Same-origin requests have no CORS to fail. The proxy is served by the
+// Vite dev server in dev/preview (vite.config.ts) and by a hosting rewrite
+// in production (vercel.json). Hosts without an /hf rewrite can set
+// VITE_HF_DIRECT=1 to try huggingface.co directly.
+if (import.meta.env.VITE_HF_DIRECT !== "1") {
   env.remoteHost = `${self.location.origin}/hf`;
 }
 
