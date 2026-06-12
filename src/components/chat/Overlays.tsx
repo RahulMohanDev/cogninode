@@ -102,23 +102,6 @@ interface QuickJumpRow {
   snippet?: string;
 }
 
-/** Relative-time label for a past timestamp, e.g. "3m ago", "2d ago". */
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 0) return "just now";
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d ago`;
-  const mon = Math.floor(day / 30);
-  if (mon < 12) return `${mon}mo ago`;
-  return `${Math.floor(mon / 12)}y ago`;
-}
-
 function QuickJump({
   currentNodeId,
   onClose,
@@ -323,9 +306,11 @@ function QuickJump({
                   {i === 0 && q.trim() === "" && row.visited && (
                     <span className="tw:text-[11px] tw:text-ink-3 tw:py-0.5 tw:px-[7px] tw:rounded-[999px] tw:bg-bg-2">← back</span>
                   )}
-                  <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:tracking-[0.02em]">
-                    {row.visited ? relativeTime(row.node.createdAt) : "not visited"}
-                  </span>
+                  {!row.visited && (
+                    <span className="tw:font-mono tw:text-[10px] tw:text-ink-3 tw:tracking-[0.02em]">
+                      not visited
+                    </span>
+                  )}
                 </div>
               );
             })
