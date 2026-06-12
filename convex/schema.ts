@@ -95,6 +95,32 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
+  /** The sync mirror: one generic row store for all eight synced Dexie
+   *  tables (IndexedDB stays the client source of truth; this is backup +
+   *  cross-device transport). `clientId` is the Dexie `_id` (client UUIDs
+   *  are canonical); `syncSeq` is the per-user monotonic pull cursor;
+   *  tombstones keep `deletedAt` and drop `doc`. Large file contents live
+   *  in Convex File Storage — the doc carries `contentStorageId`. */
+  syncRows: defineTable({
+    userId: v.id("users"),
+    table: v.string(),
+    clientId: v.string(),
+    /** The row's client-side `_modifiedAt` LWW stamp. */
+    modifiedAt: v.number(),
+    syncSeq: v.number(),
+    deletedAt: v.optional(v.number()),
+    doc: v.optional(v.any()),
+  })
+    .index("by_user_table_client", ["userId", "table", "clientId"])
+    .index("by_user_seq", ["userId", "syncSeq"]),
+
+  /** Per-user monotonic sequence backing the one-doc latestSeq
+   *  subscription (near-realtime cross-device sync for free). */
+  syncState: defineTable({
+    userId: v.id("users"),
+    lastSeq: v.number(),
+  }).index("by_userId", ["userId"]),
+
   /** Daily snapshot of OpenRouter's public per-model pricing (syncCatalog
    *  cron). Serves tier pricing + credit estimates without trusting the
    *  client's own catalog cache. */

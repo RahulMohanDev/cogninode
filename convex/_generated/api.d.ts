@@ -15,6 +15,7 @@ import type {
 } from "convex/server";
 import type * as credits from "../credits.js";
 import type * as crons from "../crons.js";
+import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as keys from "../keys.js";
 import type * as lib_credits from "../lib/credits.js";
@@ -22,6 +23,7 @@ import type * as lib_env from "../lib/env.js";
 import type * as lib_razorpay from "../lib/razorpay.js";
 import type * as models from "../models.js";
 import type * as payments from "../payments.js";
+import type * as sync from "../sync.js";
 import type * as tiers from "../tiers.js";
 import type * as openrouter from "../openrouter.js";
 import type * as users from "../users.js";
@@ -37,6 +39,7 @@ import type * as users from "../users.js";
 declare const fullApi: ApiFromModules<{
   credits: typeof credits;
   crons: typeof crons;
+  files: typeof files;
   http: typeof http;
   keys: typeof keys;
   "lib/credits": typeof lib_credits;
@@ -45,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   models: typeof models;
   payments: typeof payments;
   openrouter: typeof openrouter;
+  sync: typeof sync;
   tiers: typeof tiers;
   users: typeof users;
 }>;

@@ -8,6 +8,7 @@ import { TiersProvider } from "./hooks/useTiers";
 import { ModelsProvider } from "./hooks/ModelsProvider";
 import { ToastProvider } from "./components/ui/Toast";
 import { SearchOverlay } from "./components/search/SearchOverlay";
+import { SyncAgent } from "./components/sync/SyncAgent";
 import Chats from "./pages/Chats";
 import Chat from "./pages/Chat";
 import Reflections from "./pages/Reflections";
@@ -49,6 +50,10 @@ export default function App() {
                             {/* ⌘K palette — global so it works on every page;
                                 also bootstraps the search index + semantic layer. */}
                             <SearchOverlay />
+                            {/* Sync runs only past the gate: auth + the
+                                account-link check must settle before any
+                                local data leaves the device. */}
+                            <SyncAgent />
                         </AccessGate>
                         </TiersProvider>
                         </CreditsProvider>

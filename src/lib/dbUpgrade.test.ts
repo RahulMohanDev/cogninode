@@ -71,8 +71,15 @@ describe("dexie v6 upgrade (real db module)", () => {
     expect(s2?.attachment).toEqual({ type: "chat", targetId: "c7" });
     expect(s2?.label).toBe("");
 
-    // Edge copied verbatim into graphEdges.
-    expect(await db.graphEdges.toArray()).toEqual([
+    // Edge copied verbatim into graphEdges. (v7 backfills the sync layer's
+    // `_modifiedAt` stamp onto every synced row — strip it; it's
+    // infra-owned and asserted in its own test below.)
+    const edges = (await db.graphEdges.toArray()).map(e => {
+      const { _modifiedAt, ...rest } = e as typeof e & { _modifiedAt?: number };
+      expect(typeof _modifiedAt).toBe("number");
+      return rest;
+    });
+    expect(edges).toEqual([
       { _id: "e1", graphId: "g1", source: "k1", target: "s1" },
     ]);
 

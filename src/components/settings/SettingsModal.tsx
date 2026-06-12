@@ -4,6 +4,7 @@
 // null when closed.
 
 import { useMemo, useRef, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { useClerk, useUser } from "@clerk/clerk-react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -176,6 +177,8 @@ function ManagedAccountSection() {
         </div>
       </div>
 
+      <SyncStatusRow />
+
       {purchases !== undefined && purchases.length > 0 && (
         <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
           <div className="tw:font-medium tw:text-[14px] tw:text-ink tw:mb-1.5">Purchases</div>
@@ -193,6 +196,30 @@ function ManagedAccountSection() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SyncStatusRow() {
+  const pending = useLiveQuery(() => db.outbox.count(), []) ?? 0;
+  const lastSyncedAt = useLiveQuery(
+    async () => (await db.meta.get("lastSyncedAt"))?.value as number | undefined,
+    [],
+  );
+  return (
+    <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+      <div>
+        <div className="tw:font-medium tw:text-[14px] tw:text-ink">Sync</div>
+        <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">
+          {pending > 0
+            ? `${pending.toLocaleString()} change${pending === 1 ? "" : "s"} waiting to upload`
+            : "All changes backed up"}
+          {typeof lastSyncedAt === "number"
+            ? ` · last sync ${new Date(lastSyncedAt).toLocaleTimeString()}`
+            : ""}
+        </div>
+      </div>
+      <span className={`tw:w-[8px] tw:h-[8px] tw:rounded-[50%] ${pending > 0 ? "tw:bg-butter" : "tw:bg-teal"}`} />
     </div>
   );
 }

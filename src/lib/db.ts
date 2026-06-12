@@ -6,9 +6,18 @@ import type { Citation }           from "./stream";
 import {
   INLINE_MAX_CHARS, ATTACH_TURN_CAP_CHARS, STUB_HEAD_CHARS,
 } from "./docrag/chunk";
+import {
+  SYNCED_TABLES, setupSyncCapture, type OutboxEntry,
+} from "./sync/capture";
+import { isManagedMode } from "./managedConfig";
 
 // Re-export so message consumers can pull the Citation shape from `db`.
 export type { Citation };
+
+// NOTE on `_modifiedAt`: in managed mode the sync middleware (lib/sync/
+// capture.ts) stamps every row of the synced tables with a `_modifiedAt`
+// LWW clock at write time. It is deliberately NOT declared on the domain
+// interfaces — nothing outside lib/sync/ may read or write it.
 
 // ── Local types ────────────────────────────────────────────────
 
@@ -249,6 +258,7 @@ export const db = new Dexie("cogninode") as Dexie & {
   graphs:     EntityTable<KnowledgeGraph, "_id">;
   graphNodes: EntityTable<GraphNode,     "_id">;
   graphEdges: EntityTable<GraphEdge,     "_id">;
+  outbox:     EntityTable<OutboxEntry,   "seq">;
 };
 
 db.version(1).stores({
@@ -347,6 +357,33 @@ db.version(6).stores({
     await tx.table("graphs").update(graphId, { rootNodeId });
   }
 });
+
+// v7: the sync outbox (managed mode mirrors user data to Convex). Every
+// synced row gains a `_modifiedAt` LWW stamp, backfilled from the best
+// timestamp the row already carries.
+db.version(7).stores({
+  outbox: "++seq",
+}).upgrade(async tx => {
+  const now = Date.now();
+  for (const tableName of SYNCED_TABLES) {
+    await tx.table(tableName).toCollection().modify(row => {
+      const r = row as Record<string, unknown>;
+      if (typeof r["_modifiedAt"] !== "number") {
+        r["_modifiedAt"] =
+          (typeof r["updatedAt"] === "number" ? r["updatedAt"] : undefined) ??
+          (typeof r["createdAt"] === "number" ? r["createdAt"] : undefined) ??
+          now;
+      }
+    });
+  }
+});
+
+// Managed mode: capture every synced-table write into the outbox (see
+// lib/sync/capture.ts). Must install before the db opens; local mode
+// skips it so the outbox never grows without a drain.
+if (isManagedMode()) {
+  setupSyncCapture(db);
+}
 
 // ── Meta helpers ───────────────────────────────────────────────
 
