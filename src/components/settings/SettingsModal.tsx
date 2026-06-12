@@ -11,6 +11,7 @@ import { api } from "../../../convex/_generated/api";
 import { clearAllUserData, db } from "../../lib/db";
 import { isManagedMode } from "../../lib/managedConfig";
 import { useApiKeyValidation } from "../../hooks/useApiKeyValidation";
+import { useCredits } from "../../hooks/useCredits";
 import {
   formatCost,
   calculateCostUsd,
@@ -140,11 +141,13 @@ function ManagedAccountSection() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const me = useQuery(api.users.current);
+  const purchases = useQuery(api.payments.listMine);
+  const { openTopUp } = useCredits();
 
   return (
     <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
       <div className="tw:mb-2">
-        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Account</h3>
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Account & billing</h3>
         <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">Signed in via Clerk. Chats are billed against your credits.</p>
       </div>
 
@@ -157,13 +160,39 @@ function ManagedAccountSection() {
             {me ? `${me.creditsBalance.toLocaleString()} credits` : "…"}
           </div>
         </div>
-        <button
-          className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
-          onClick={() => void signOut()}
-        >
-          Sign out
-        </button>
+        <div className="tw:flex tw:gap-1">
+          <button
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-teal tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-teal-tint"
+            onClick={openTopUp}
+          >
+            Top up
+          </button>
+          <button
+            className="tw:px-2 tw:h-[30px] tw:grid tw:place-items-center tw:rounded-[8px] tw:text-ink-2 tw:transition-[background-color,color] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-coral-tint tw:hover:text-coral"
+            onClick={() => void signOut()}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
+
+      {purchases !== undefined && purchases.length > 0 && (
+        <div className="tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink tw:mb-1.5">Purchases</div>
+          <div className="tw:flex tw:flex-col tw:gap-1">
+            {purchases.map(p => (
+              <div key={p._id} className="tw:flex tw:items-center tw:gap-3 tw:font-mono tw:text-[12px] tw:text-ink-2">
+                <span>{new Date(p.createdAt).toLocaleDateString()}</span>
+                <span>₹{p.amountInr}</span>
+                <span>{p.credits.toLocaleString()} cr</span>
+                <span className={`tw:ml-auto ${p.status === "paid" ? "tw:text-teal" : p.status === "failed" ? "tw:text-coral" : "tw:text-ink-3"}`}>
+                  {p.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

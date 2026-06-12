@@ -45,3 +45,13 @@ export function usdToCredits(usd: number): number {
  *  (~$0.02 at 5 results) would otherwise go uncharged entirely. When the
  *  upstream usage.cost is present it already includes the plugin fee. */
 export const WEB_SEARCH_FALLBACK_USD = 0.02;
+
+/** The one credit pack: ₹300 → 3,000 credits (≈52% gross margin after
+ *  Razorpay ~2.36% all-in and OpenRouter's 5.5% credit-purchase fee). */
+export function packInr(): number {
+  return envNumber("PACK_INR", 300);
+}
+
+export function packCredits(): number {
+  return envNumber("PACK_CREDITS", 3000);
+}

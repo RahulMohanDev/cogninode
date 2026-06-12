@@ -63,6 +63,25 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_user_message", ["userId", "messageClientId"]),
 
+  /** Razorpay orders. One order = one ₹ pack purchase attempt; `paid` is
+   *  applied exactly once (webhook and client confirm race benignly). */
+  paymentOrders: defineTable({
+    userId: v.id("users"),
+    razorpayOrderId: v.string(),
+    razorpayPaymentId: v.optional(v.string()),
+    amountInr: v.number(),
+    credits: v.number(),
+    status: v.union(
+      v.literal("created"),
+      v.literal("paid"),
+      v.literal("failed"),
+    ),
+    createdAt: v.number(),
+    paidAt: v.optional(v.number()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_orderId", ["razorpayOrderId"]),
+
   /** Daily snapshot of OpenRouter's public per-model pricing (syncCatalog
    *  cron). Serves tier pricing + credit estimates without trusting the
    *  client's own catalog cache. */

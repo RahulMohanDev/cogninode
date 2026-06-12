@@ -19,7 +19,9 @@ import type * as http from "../http.js";
 import type * as keys from "../keys.js";
 import type * as lib_credits from "../lib/credits.js";
 import type * as lib_env from "../lib/env.js";
+import type * as lib_razorpay from "../lib/razorpay.js";
 import type * as models from "../models.js";
+import type * as payments from "../payments.js";
 import type * as openrouter from "../openrouter.js";
 import type * as users from "../users.js";
 
@@ -38,7 +40,9 @@ declare const fullApi: ApiFromModules<{
   keys: typeof keys;
   "lib/credits": typeof lib_credits;
   "lib/env": typeof lib_env;
+  "lib/razorpay": typeof lib_razorpay;
   models: typeof models;
+  payments: typeof payments;
   openrouter: typeof openrouter;
   users: typeof users;
 }>;

@@ -6,6 +6,7 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Webhook } from "svix";
 import { env } from "./lib/env";
+import { verifyRazorpaySignature } from "./lib/razorpay";
 
 const http = httpRouter();
 
@@ -71,6 +72,54 @@ http.route({
         // Unknown event types are fine — acknowledge so Clerk stops retrying.
         break;
     }
+    return new Response(null, { status: 200 });
+  }),
+});
+
+interface RazorpayWebhookEvent {
+  event?: string;
+  payload?: {
+    payment?: {
+      entity?: { id?: string; order_id?: string };
+    };
+  };
+}
+
+http.route({
+  path: "/razorpay-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = env("RAZORPAY_WEBHOOK_SECRET");
+    if (!secret) {
+      console.error("RAZORPAY_WEBHOOK_SECRET is not configured");
+      return new Response("webhook secret not configured", { status: 500 });
+    }
+    // HMAC is over the raw bytes — read text BEFORE parsing, never
+    // re-serialize.
+    const rawBody = await request.text();
+    const signature = request.headers.get("x-razorpay-signature") ?? "";
+    const valid = await verifyRazorpaySignature(secret, rawBody, signature);
+    if (!valid) return new Response("invalid signature", { status: 400 });
+
+    let event: RazorpayWebhookEvent;
+    try {
+      event = JSON.parse(rawBody) as RazorpayWebhookEvent;
+    } catch {
+      return new Response("malformed payload", { status: 400 });
+    }
+
+    if (event.event === "payment.captured") {
+      const entity = event.payload?.payment?.entity;
+      if (entity?.id && entity.order_id) {
+        // Razorpay retries aggressively — applyPurchase is idempotent and
+        // duplicates must still get a 200.
+        await ctx.runMutation(internal.payments.applyPurchase, {
+          razorpayOrderId: entity.order_id,
+          razorpayPaymentId: entity.id,
+        });
+      }
+    }
+    // Unknown events are acknowledged so Razorpay stops retrying them.
     return new Response(null, { status: 200 });
   }),
 });
