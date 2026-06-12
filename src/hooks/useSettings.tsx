@@ -41,6 +41,9 @@ export interface Prefs {
   /** Which local embedding model powers semantic search — an id from
    *  EMBEDDING_MODELS (lib/search/embedding/models.ts). */
   embeddingModelId: string;
+  /** Follow the reply (and a thinking model's reasoning) to the bottom as it
+   *  streams. On by default; turn off to keep the scroll where you put it. */
+  autoScroll:      boolean;
 }
 
 const DEFAULT_PREFS: Prefs = {
@@ -52,6 +55,7 @@ const DEFAULT_PREFS: Prefs = {
   pinnedModelIds: DEFAULT_PINNED_MODEL_IDS,
   semanticSearch: true,
   embeddingModelId: "bge-small",
+  autoScroll:     true,
 };
 
 function readStoredTheme(): ThemeMode | null {

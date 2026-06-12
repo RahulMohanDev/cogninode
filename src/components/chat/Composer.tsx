@@ -25,6 +25,9 @@ export interface ComposerProps {
   onSend:                (params: ComposerSendParams) => void | Promise<void>;
   onCancel:              () => void;
   quote?:                string;
+  /** How the quote was attached — controls the chip label. "branch" (default)
+   *  means a new branch; "continue" means quoting inline in the same chat. */
+  quoteKind?:            "branch" | "continue";
   initialText?:          string;
   onClearQuote?:         () => void;
   onOpenSettings?:       () => void;
@@ -76,6 +79,7 @@ export function Composer({
   onSend,
   onCancel,
   quote,
+  quoteKind = "branch",
   initialText,
   onClearQuote,
   onOpenSettings,
@@ -211,7 +215,8 @@ export function Composer({
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    // Enter sends; Shift+Enter (or Cmd/Ctrl+Enter) inserts a newline.
+    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
       handleSend();
     }
@@ -221,7 +226,7 @@ export function Composer({
     <div className="tw:max-w-[780px] tw:mx-auto tw:bg-bg-3 tw:border tw:border-line tw:rounded-[16px] tw:shadow-2 tw:p-2 tw:pointer-events-auto tw:transition-[border-color] tw:duration-[120ms] tw:ease-[ease] tw:focus-within:border-ink-3 tw:dark:shadow-[0_14px_30px_-18px_rgba(0,0,0,0.6)]">
       {quote && (
         <span className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1 tw:px-2.5 tw:rounded-[999px] tw:bg-coral-tint tw:border tw:border-coral tw:text-[12px] tw:text-ink tw:max-w-full tw:mt-1 tw:mx-1 tw:mb-1.5">
-          <span className="tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:text-coral tw:flex-none">branched</span>
+          <span className="tw:font-mono tw:text-[9px] tw:tracking-[0.12em] tw:uppercase tw:text-coral tw:flex-none">{quoteKind === "continue" ? "quoted" : "branched"}</span>
           <span className="tw:font-serif tw:italic tw:truncate tw:max-w-[320px]">"{quote}"</span>
           {onClearQuote && (
             <button className="tw:w-4 tw:h-4 tw:rounded-[999px] tw:text-coral tw:grid tw:place-items-center tw:flex-none tw:hover:bg-coral tw:hover:text-white" onClick={onClearQuote} title="Clear quote">
@@ -474,7 +479,7 @@ export function Composer({
             className="tw:w-9 tw:h-9 tw:grid tw:place-items-center tw:bg-coral tw:text-white tw:rounded-[9px] tw:transition-[background-color,transform] tw:duration-[120ms] tw:ease-[ease] tw:hover:bg-[#ff4520] tw:hover:[transform:translateY(-1px)] tw:disabled:bg-ink-4 tw:disabled:cursor-not-allowed tw:disabled:[transform:none]"
             disabled={(!text.trim() && files.length === 0) || uploading}
             onClick={handleSend}
-            title="Send (Cmd/Ctrl+Enter)"
+            title="Send (Enter · Shift+Enter for newline)"
             type="button"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">

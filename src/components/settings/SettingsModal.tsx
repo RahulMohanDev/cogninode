@@ -82,6 +82,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             onChange={v => setPref("branchMode", v)}
           />
 
+          <ReadingSection
+            autoScroll={prefs.autoScroll}
+            onChange={v => setPref("autoScroll", v)}
+          />
+
           <ThemeSection
             value={prefs.theme}
             onChange={mode => setTheme(mode)}
@@ -465,6 +470,40 @@ function BranchModeSection({
           checked={value === "stay"}
           onChange={() => onChange("stay")}
           style={{ accentColor: "var(--coral)" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Section 3a: Reading ──────────────────────────────────────────────────────
+
+function ReadingSection({
+  autoScroll,
+  onChange,
+}: {
+  autoScroll: boolean;
+  onChange:   (v: boolean) => void;
+}) {
+  return (
+    <div className="tw:py-[18px] tw:px-0 tw:border-t tw:border-line tw:first:border-t-0">
+      <div className="tw:mb-2">
+        <h3 className="tw:m-0 tw:font-display tw:font-semibold tw:text-[16px] tw:tracking-[-0.01em] tw:text-ink">Reading</h3>
+        <p className="tw:mt-0.5 tw:mx-0 tw:mb-0 tw:text-[12px] tw:text-ink-3">How the view behaves while a reply streams in.</p>
+      </div>
+
+      <div className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-4 tw:py-3 tw:px-0 tw:border-b tw:border-line-2 tw:last:border-b-0">
+        <div>
+          <div className="tw:font-medium tw:text-[14px] tw:text-ink">Auto-scroll while responding</div>
+          <div className="tw:text-ink-3 tw:text-[13px] tw:mt-0.5">Follow the answer (and a thinking model's reasoning) to the bottom as it arrives. Turn off to keep the scroll where you put it.</div>
+        </div>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Auto-scroll while responding"
+          checked={autoScroll}
+          onChange={e => onChange(e.target.checked)}
+          style={{ accentColor: "var(--coral)", width: 18, height: 18 }}
         />
       </div>
     </div>

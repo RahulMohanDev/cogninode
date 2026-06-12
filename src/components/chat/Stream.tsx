@@ -7,7 +7,7 @@
 // the stream and each message receives the visible edit/delete/merge
 // affordances via its own props.
 
-import { forwardRef, useEffect, useRef, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, type MutableRefObject, type ReactNode } from "react";
 import { useLiveQuery }      from "dexie-react-hooks";
 import { db, type Message as DbMessage } from "../../lib/db";
 import { highlightTermsInElement, clearSearchHighlight } from "../../lib/domHighlight";
@@ -23,6 +23,8 @@ export interface StreamProps {
   /** Search terms to highlight inside the focused message. */
   focusQuery?:          string;
   streamState:          "idle" | "streaming" | "error";
+  /** Follow the reply to the bottom as it streams (user pref, default true). */
+  autoScroll:           boolean;
   streamingText:        string;
   streamingReasoning?:  string;
   streamError?:         string;
@@ -41,12 +43,19 @@ export interface StreamProps {
   collapseAction?:      ReactNode;
 }
 
+// Remembers each branch's last scroll offset (keyed by nodeId) so returning to
+// a chat lands exactly where the user left off instead of snapping to the
+// bottom. Module-scoped so it survives navigating away to /graphs etc. and
+// back; bounded by the number of nodes visited this session.
+const scrollMemory = new Map<string, number>();
+
 export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   {
     currentNodeId,
     focusMessageId,
     focusQuery,
     streamState,
+    autoScroll,
     streamingText,
     streamingReasoning,
     streamError,
@@ -71,9 +80,86 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   const pathMessages = liveMessages ?? [];
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // The scroll container is the forwarded ref. We also need to read its scroll
+  // position locally, so merge an internal ref into the forwarded one.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const setScrollRef = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref) (ref as MutableRefObject<HTMLDivElement | null>).current = node;
+  }, [ref]);
+
+  // True from the moment the viewed node changes until we've applied that
+  // node's scroll position. While pending, autoscroll is suppressed so it can't
+  // fire against stale/short content mid-switch.
+  const restorePendingRef = useRef(true);
+
+  // Remember where the user is, live, so returning to a chat lands where they
+  // left off (used when autoscroll is off). Skip while a restore is pending —
+  // stale content would save a bogus offset under the new node.
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || restorePendingRef.current) return;
+    scrollMemory.set(currentNodeId, el.scrollTop);
+  }, [currentNodeId]);
+
+  // The messages query lags a frame behind currentNodeId on a node switch
+  // (Dexie resolves async). Since the query filters by nodeId, the list is
+  // "ready" for this node only once its rows actually carry this nodeId.
+  const messagesReady =
+    liveMessages !== undefined &&
+    (pathMessages.length === 0 || pathMessages[0]!.nodeId === currentNodeId);
+
+  // Arm a restore whenever the viewed node changes (and on first mount).
+  useLayoutEffect(() => {
+    restorePendingRef.current = true;
+  }, [currentNodeId]);
+
+  // Once the new node's content has rendered (true height), place the scroll:
+  // with autoscroll on we sit at the bottom; with it off we return to the saved
+  // offset. One-shot per node entry — clears the pending flag.
+  useLayoutEffect(() => {
+    if (!restorePendingRef.current || !messagesReady) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const saved = scrollMemory.get(currentNodeId);
+    if (!autoScroll && saved !== undefined) {
+      el.scrollTop = saved;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+    restorePendingRef.current = false;
+  }, [currentNodeId, messagesReady, autoScroll]);
+
+  // Reveal a message the user just sent — even when autoscroll is off — so it
+  // jumps to the bottom once on send, then leaves the streaming reply alone.
+  // Detects an appended user message in the *same* node (not a node switch),
+  // and skips the first settled render of each node so a restore isn't undone.
+  const prevLenRef      = useRef(pathMessages.length);
+  const baselineNodeRef = useRef<string | null>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [pathMessages.length, streamingText, streamState]);
+    if (!messagesReady || restorePendingRef.current) return;
+    const last = pathMessages[pathMessages.length - 1];
+    if (baselineNodeRef.current !== currentNodeId) {
+      // First settled render for this node: set the baseline, don't scroll.
+      baselineNodeRef.current = currentNodeId;
+      prevLenRef.current = pathMessages.length;
+      return;
+    }
+    if (pathMessages.length > prevLenRef.current && last?.role === "user") {
+      bottomRef.current?.scrollIntoView({ behavior: "instant", block: "end" });
+    }
+    prevLenRef.current = pathMessages.length;
+  }, [pathMessages.length, currentNodeId, messagesReady]);
+
+  // Standard autoscroll: follow the bottom as content grows — including a
+  // thinking model's reasoning (streamingReasoning is in the deps). Gated by
+  // the user's autoScroll preference, so it can be turned off in Settings.
+  useEffect(() => {
+    if (restorePendingRef.current || !autoScroll) return;
+    bottomRef.current?.scrollIntoView({ behavior: "instant", block: "end" });
+  }, [pathMessages.length, streamingText, streamingReasoning, streamState, autoScroll]);
 
   // Search deep link: once the target message is rendered, center + flash
   // it, and highlight the matched terms inside it (semantic-only hits may
@@ -100,7 +186,7 @@ export const Stream = forwardRef<HTMLDivElement, StreamProps>(function Stream(
   const isEmpty = liveMessages !== undefined && pathMessages.length === 0 && streamState !== "streaming";
 
   return (
-    <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:scroll-smooth tw:pt-8 tw:px-0 tw:pb-[200px] tw:relative" ref={ref}>
+    <div className="tw:flex-1 tw:min-h-0 tw:overflow-y-auto tw:scroll-smooth tw:pt-8 tw:px-0 tw:pb-[200px] tw:relative" ref={setScrollRef} onScroll={handleScroll}>
       {reflectionsMode && (
         <div className="tw:sticky tw:top-0 tw:z-[5] tw:flex tw:items-center tw:gap-3 tw:py-2.5 tw:px-[22px] tw:bg-lilac tw:text-white tw:dark:text-[#0e0a14] tw:text-[13px] tw:border-b tw:border-b-[color-mix(in_oklab,var(--lilac)_60%,black)]" role="status" aria-live="polite">
           <svg className="tw:w-5 tw:h-5 tw:flex-none" viewBox="0 0 20 20" fill="none" aria-hidden="true">

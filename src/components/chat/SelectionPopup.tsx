@@ -1,6 +1,7 @@
 // Floating popup that appears when the user selects text inside the
-// chat stream. Offers a "Branch from selection" action which creates
-// a new node and routes the composer to it (with the selection as a quote).
+// chat stream. Offers two actions, both passing the selection as a quote:
+//   • "Branch from selection" — creates a new node and routes the composer to it.
+//   • "Continue in chat"      — quotes the passage inline in the current node.
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 
@@ -10,11 +11,14 @@ export interface SelectionInfo {
 }
 
 export interface SelectionPopupProps {
-  streamRef: RefObject<HTMLElement | null>;
-  onBranch:  (selectionText: string) => void;
+  streamRef:  RefObject<HTMLElement | null>;
+  onBranch:   (selectionText: string) => void;
+  /** Attach the selection as context and keep going in the current chat
+   *  (no new branch). */
+  onContinue: (selectionText: string) => void;
 }
 
-export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
+export function SelectionPopup({ streamRef, onBranch, onContinue }: SelectionPopupProps) {
   const [sel, setSel] = useState<SelectionInfo | null>(null);
   const selRef = useRef<SelectionInfo | null>(null);
   selRef.current = sel;
@@ -86,6 +90,20 @@ export function SelectionPopup({ streamRef, onBranch }: SelectionPopupProps) {
                 strokeWidth="1.4" strokeLinecap="round" />
         </svg>
         Branch from selection
+      </button>
+      <span className="tw:w-px tw:bg-[var(--veil-white-14)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:my-1 tw:mx-px" />
+      <button
+        className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2.5 tw:rounded-[6px] tw:whitespace-nowrap tw:hover:bg-[var(--veil-white-14)] tw:dark:hover:bg-[color-mix(in_oklab,var(--bg)_18%,transparent)]"
+        onClick={() => { onContinue(sel.text); close(); }}
+        title="Quote this passage and keep going in this chat"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M3 5 H13 M3 8 H10 M3 11 H7" stroke="currentColor"
+                strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M10.5 11.5 L13 9 M13 9 L13 13 M13 9 L9 13" stroke="currentColor"
+                strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Continue in chat
       </button>
       <span className="tw:w-px tw:bg-[var(--veil-white-14)] tw:dark:bg-[color-mix(in_oklab,var(--bg)_22%,transparent)] tw:my-1 tw:mx-px" />
       <button className="tw:inline-flex tw:items-center tw:gap-1.5 tw:py-1.5 tw:px-2.5 tw:rounded-[6px] tw:whitespace-nowrap tw:hover:bg-[var(--veil-white-14)] tw:dark:hover:bg-[color-mix(in_oklab,var(--bg)_18%,transparent)]" onClick={close} title="Close">
